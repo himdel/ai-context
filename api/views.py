@@ -1,6 +1,7 @@
 import json
 import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
@@ -142,6 +143,117 @@ def conversations(request):
     return Response(results)
 
 
+def _load_subagents(subagents_dir):
+    if not subagents_dir.is_dir():
+        return []
+    subagents = []
+    for meta_file in subagents_dir.glob("*.meta.json"):
+        agent_id = meta_file.stem.replace(".meta", "")
+        jsonl_file = subagents_dir / f"{agent_id}.jsonl"
+        if not jsonl_file.is_file():
+            continue
+        try:
+            meta = json.loads(meta_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            meta = {}
+
+        messages = []
+        first_ts = None
+        tool_use_ids = {}
+        try:
+            with open(jsonl_file) as f:
+                for line in f:
+                    data = json.loads(line)
+                    ts = data.get("timestamp", "")
+                    if ts and not first_ts:
+                        first_ts = ts
+                    msg = data.get("message", {})
+                    role = msg.get("role")
+                    if role not in ("user", "assistant"):
+                        continue
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        messages.append(
+                            {
+                                "role": role,
+                                "content": [{"type": "text", "text": content}],
+                            }
+                        )
+                    elif isinstance(content, list):
+                        blocks = []
+                        for block in content:
+                            if not isinstance(block, dict):
+                                continue
+                            btype = block.get("type")
+                            if btype == "text" and block.get("text", "").strip():
+                                blocks.append({"type": "text", "text": block["text"]})
+                            elif btype == "tool_use":
+                                tool_use_ids[block.get("id")] = block.get("name", "")
+                                blocks.append(
+                                    {
+                                        "type": "tool_use",
+                                        "name": block.get("name", ""),
+                                        "input": block.get("input", {}),
+                                    }
+                                )
+                            elif btype == "tool_result":
+                                tool_name = tool_use_ids.get(
+                                    block.get("tool_use_id"), ""
+                                )
+                                result_content = block.get("content", "")
+                                if isinstance(result_content, list):
+                                    result_content = "\n".join(
+                                        b.get("text", "")
+                                        for b in result_content
+                                        if isinstance(b, dict)
+                                    )
+                                blocks.append(
+                                    {
+                                        "type": "tool_result",
+                                        "name": tool_name,
+                                        "output": str(result_content),
+                                    }
+                                )
+                        if blocks:
+                            messages.append({"role": role, "content": blocks})
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        if messages:
+            subagents.append(
+                {
+                    "agent_type": meta.get("agentType", ""),
+                    "description": meta.get("description", ""),
+                    "timestamp": first_ts,
+                    "messages": messages,
+                }
+            )
+    return subagents
+
+
+def _find_closest_subagent(subagents, target_ts):
+    if not target_ts or not subagents:
+        return None
+    best = None
+    best_diff = None
+    for s in subagents:
+        if not s.get("timestamp"):
+            continue
+        try:
+            diff = abs(
+                datetime.fromisoformat(
+                    s["timestamp"].replace("Z", "+00:00")
+                ).timestamp()
+                - datetime.fromisoformat(target_ts.replace("Z", "+00:00")).timestamp()
+            )
+            if best_diff is None or diff < best_diff:
+                best = s
+                best_diff = diff
+        except (ValueError, TypeError):
+            continue
+    return best
+
+
 @api_view(["GET"])
 def conversation_detail(request, conversation_id):
     jsonl_file = _find_conversation(conversation_id)
@@ -209,6 +321,7 @@ def conversation_detail(request, conversation_id):
                                     "type": "tool_use",
                                     "name": block.get("name", ""),
                                     "input": block.get("input", {}),
+                                    "_id": block.get("id", ""),
                                 }
                             )
                         elif btype == "tool_result":
@@ -225,6 +338,7 @@ def conversation_detail(request, conversation_id):
                                     "type": "tool_result",
                                     "name": tool_name,
                                     "output": str(result_content),
+                                    "_tool_use_id": block.get("tool_use_id", ""),
                                 }
                             )
                     if blocks:
@@ -234,6 +348,36 @@ def conversation_detail(request, conversation_id):
 
     except (json.JSONDecodeError, OSError):
         return Response({"error": "failed to read conversation"}, status=500)
+
+    # Load subagents
+    subagents = _load_subagents(jsonl_file.parent / conversation_id / "subagents")
+
+    # Match subagents to Agent tool_use blocks by timestamp proximity
+    agent_tool_uses = {}  # tool_use_id -> timestamp
+    for m in messages:
+        for block in m.get("content", []):
+            if block.get("type") == "tool_use" and block.get("name") == "Agent":
+                agent_tool_uses[block.get("_id")] = m.get("timestamp", "")
+
+    # For each tool_result of an Agent call, find the closest subagent by timestamp
+    for m in messages:
+        for block in m.get("content", []):
+            if (
+                block.get("type") == "tool_result"
+                and block.get("name") == "Agent"
+                and subagents
+            ):
+                tool_ts = agent_tool_uses.get(block.get("_tool_use_id"), "")
+                best = _find_closest_subagent(subagents, tool_ts)
+                if best:
+                    block["subagent"] = best
+                    subagents = [s for s in subagents if s is not best]
+
+    # Clean internal fields
+    for m in messages:
+        for block in m.get("content", []):
+            block.pop("_id", None)
+            block.pop("_tool_use_id", None)
 
     msg_count = len(messages)
     return Response(

@@ -209,6 +209,29 @@ details > summary {
   user-select: none;
 }
 
+.subagent {
+  margin: 8px 0;
+  border: 1px solid #d0d0e8;
+  border-radius: 4px;
+  background: #fafaff;
+}
+
+.subagent > summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4338ca;
+  padding: 6px 12px;
+}
+
+.subagent .subagent-messages {
+  padding: 8px 12px;
+  border-top: 1px solid #e0e0f0;
+}
+
+.subagent .message {
+  margin-bottom: 12px;
+}
+
 .expand-all {
   cursor: pointer;
   color: #aaa;
@@ -474,12 +497,32 @@ function renderBlock(block) {
       '</div>';
   }
   if (block.type === 'tool_result') {
-    return '<details class="block tool_result">' +
+    var html = '<details class="block tool_result">' +
       '<summary class="tool-name">' + esc(block.name || 'Result') + ' output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
       '<div class="tool-output">' + esc(block.output) + '</div>' +
       '</details>';
+    if (block.subagent) {
+      html += renderSubagent(block.subagent);
+    }
+    return html;
   }
   return '';
+}
+
+function renderSubagent(sub) {
+  var label = (sub.agent_type || 'Agent') + (sub.description ? ': ' + sub.description : '');
+  var html = '<details class="subagent"><summary>' + esc(label) + ' <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>';
+  html += '<div class="subagent-messages">';
+  sub.messages.forEach(function(m) {
+    html += '<div class="message ' + m.role + '">';
+    html += '<div class="role">' + esc(m.role) + '</div>';
+    m.content.forEach(function(block) {
+      html += renderBlock(block);
+    });
+    html += '</div>';
+  });
+  html += '</div></details>';
+  return html;
 }
 
 function formatDuration(startIso, endIso) {
