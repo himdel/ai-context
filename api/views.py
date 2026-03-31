@@ -45,6 +45,7 @@ def conversation_detail(request, conversation_id):
         return Response({"error": "not found"}, status=404)
 
     messages = []
+    tool_use_ids = {}  # id -> name, for labeling tool_results
     try:
         with open(jsonl_file) as f:
             for line in f:
@@ -55,46 +56,57 @@ def conversation_detail(request, conversation_id):
                     continue
 
                 content = msg.get("content", "")
+                timestamp = data.get("timestamp", "")
 
-                if role == "user":
-                    if isinstance(content, list):
-                        # tool_result messages, skip
-                        continue
-                    if not isinstance(content, str) or not content.strip():
-                        continue
+                if role == "user" and isinstance(content, str) and content.strip():
                     messages.append(
                         {
                             "role": "user",
-                            "text": content,
-                            "timestamp": data.get("timestamp", ""),
+                            "content": [{"type": "text", "text": content}],
+                            "timestamp": timestamp,
                         }
                     )
 
-                elif role == "assistant":
-                    if isinstance(content, list):
-                        texts = [
-                            block["text"]
-                            for block in content
-                            if isinstance(block, dict)
-                            and block.get("type") == "text"
-                            and block.get("text")
-                        ]
-                        if texts:
-                            messages.append(
+                elif isinstance(content, list):
+                    blocks = []
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        btype = block.get("type")
+                        if btype == "text" and block.get("text", "").strip():
+                            blocks.append({"type": "text", "text": block["text"]})
+                        elif btype == "thinking" and block.get("text", "").strip():
+                            blocks.append({"type": "thinking", "text": block["text"]})
+                        elif btype == "tool_use":
+                            tool_use_ids[block.get("id")] = block.get("name", "")
+                            blocks.append(
                                 {
-                                    "role": "assistant",
-                                    "text": "\n\n".join(texts),
-                                    "timestamp": data.get("timestamp", ""),
+                                    "type": "tool_use",
+                                    "name": block.get("name", ""),
+                                    "input": block.get("input", {}),
                                 }
                             )
-                    elif isinstance(content, str) and content.strip():
+                        elif btype == "tool_result":
+                            tool_name = tool_use_ids.get(block.get("tool_use_id"), "")
+                            result_content = block.get("content", "")
+                            if isinstance(result_content, list):
+                                result_content = "\n".join(
+                                    b.get("text", "")
+                                    for b in result_content
+                                    if isinstance(b, dict)
+                                )
+                            blocks.append(
+                                {
+                                    "type": "tool_result",
+                                    "name": tool_name,
+                                    "output": str(result_content),
+                                }
+                            )
+                    if blocks:
                         messages.append(
-                            {
-                                "role": "assistant",
-                                "text": content,
-                                "timestamp": data.get("timestamp", ""),
-                            }
+                            {"role": role, "content": blocks, "timestamp": timestamp}
                         )
+
     except (json.JSONDecodeError, OSError):
         return Response({"error": "failed to read conversation"}, status=500)
 
