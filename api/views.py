@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -691,6 +692,184 @@ def plan_execute(request, plan_id):
 
     prompt = f"Execute the plan in {plan_file}"
     return _spawn_terminal([prompt], cwd)
+
+
+def _skill_id(path):
+    """Encode a filesystem path as a URL-safe base64 identifier."""
+    return base64.urlsafe_b64encode(str(path).encode()).decode().rstrip("=")
+
+
+def _skill_path(skill_id):
+    """Decode a skill ID back to a filesystem path."""
+    padded = skill_id + "=" * (-len(skill_id) % 4)
+    return Path(base64.urlsafe_b64decode(padded).decode())
+
+
+def _is_valid_skill_path(path):
+    """Ensure path is under ~/.claude/commands/ or <repo>/.claude/commands/."""
+    try:
+        resolved = path.resolve()
+    except (OSError, ValueError):
+        return False
+    global_commands = (CLAUDE_DIR / "commands").resolve()
+    if str(resolved).startswith(str(global_commands) + "/"):
+        return True
+    # Allow any <dir>/.claude/commands/ path
+    parts = resolved.parts
+    for i, part in enumerate(parts):
+        if part == ".claude" and i + 1 < len(parts) and parts[i + 1] == "commands":
+            return True
+    return False
+
+
+def _discover_repos():
+    """Scan ~/.claude/projects/*/ to find repo paths from JSONL first lines."""
+    projects_dir = CLAUDE_DIR / "projects"
+    if not projects_dir.is_dir():
+        return []
+    repos = set()
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl_file in project_dir.glob("*.jsonl"):
+            try:
+                with open(jsonl_file) as f:
+                    first_line = f.readline()
+                    if first_line:
+                        data = json.loads(first_line)
+                        cwd = data.get("cwd", "")
+                        if cwd:
+                            repos.add(cwd)
+                break  # only need one JSONL per project dir
+            except (json.JSONDecodeError, OSError):
+                continue
+    return sorted(repos)
+
+
+@api_view(["GET", "POST"])
+def skills_list(request):
+    if request.method == "POST":
+        name = request.data.get("name", "").strip()
+        scope = request.data.get("scope", "global")
+        content = request.data.get("content", "")
+
+        if not name or not re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", name):
+            return Response(
+                {"error": "name must be kebab-case (e.g. my-skill)"}, status=400
+            )
+
+        if scope == "global":
+            commands_dir = CLAUDE_DIR / "commands"
+        else:
+            repo_path = Path(scope)
+            if not repo_path.is_dir():
+                return Response({"error": "invalid repo path"}, status=400)
+            commands_dir = repo_path / ".claude" / "commands"
+
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = commands_dir / f"{name}.md"
+        if skill_file.exists():
+            return Response({"error": "skill already exists"}, status=409)
+
+        skill_file.write_text(content)
+        sid = _skill_id(skill_file)
+        return Response(
+            {
+                "id": sid,
+                "name": name,
+                "path": str(skill_file),
+                "scope": "global" if scope == "global" else scope,
+                "content": content,
+                "modified": datetime.fromtimestamp(
+                    skill_file.stat().st_mtime
+                ).isoformat(),
+            },
+            status=201,
+        )
+
+    # GET: list all skills
+    results = []
+
+    def _scan_commands_dir(commands_dir, scope):
+        if not commands_dir.is_dir():
+            return
+        for md_file in sorted(commands_dir.glob("*.md")):
+            try:
+                mtime = md_file.stat().st_mtime
+            except OSError:
+                continue
+            results.append(
+                {
+                    "id": _skill_id(md_file),
+                    "name": md_file.stem,
+                    "path": str(md_file),
+                    "scope": scope,
+                    "modified": datetime.fromtimestamp(mtime).isoformat(),
+                }
+            )
+
+    # Global skills
+    _scan_commands_dir(CLAUDE_DIR / "commands", "global")
+
+    # Per-repo skills
+    for repo in _discover_repos():
+        repo_commands = Path(repo) / ".claude" / "commands"
+        _scan_commands_dir(repo_commands, repo)
+
+    results.sort(key=lambda x: x["modified"], reverse=True)
+    return Response(results)
+
+
+@api_view(["GET", "PUT", "DELETE"])
+def skill_detail(request, skill_id):
+    path = _skill_path(skill_id)
+    if not _is_valid_skill_path(path) or not path.is_file():
+        return Response({"error": "not found"}, status=404)
+
+    if request.method == "DELETE":
+        try:
+            path.unlink()
+        except OSError:
+            return Response({"error": "failed to delete"}, status=500)
+        return Response({"status": "deleted"})
+
+    if request.method == "PUT":
+        content = request.data.get("content", "")
+        try:
+            path.write_text(content)
+        except OSError:
+            return Response({"error": "failed to write"}, status=500)
+
+    try:
+        content = path.read_text()
+        mtime = path.stat().st_mtime
+    except OSError:
+        return Response({"error": "failed to read"}, status=500)
+
+    # Determine scope
+    global_commands = (CLAUDE_DIR / "commands").resolve()
+    resolved = path.resolve()
+    if str(resolved).startswith(str(global_commands) + "/"):
+        scope = "global"
+    else:
+        # Find the repo root (parent of .claude/commands/)
+        parts = resolved.parts
+        scope = ""
+        for i, part in enumerate(parts):
+            if part == ".claude" and i + 1 < len(parts) and parts[i + 1] == "commands":
+                scope = str(Path(*parts[:i]))
+                break
+
+    return Response(
+        {
+            "id": skill_id,
+            "name": path.stem,
+            "path": str(path),
+            "scope": scope,
+            "content": content,
+            "modified": datetime.fromtimestamp(mtime).isoformat(),
+        }
+    )
 
 
 def _parse_conversation(jsonl_file, conversation_id, project_name):

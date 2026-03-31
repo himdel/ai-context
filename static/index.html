@@ -571,6 +571,91 @@ details > summary {
   gap: 6px;
   margin-bottom: 2px;
 }
+
+.skill-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  font-size: 13px;
+}
+.skill-item:hover { background: #e8e8e8; }
+.skill-item.active { background: #d0d8ff; }
+.skill-item .skill-name { color: #333; }
+.skill-item .skill-scope {
+  font-size: 11px;
+  color: #888;
+}
+
+.skill-detail-view { max-width: 800px; }
+.skill-detail-view .skill-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.skill-detail-view .skill-actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #d0d8e0;
+  border-radius: 4px;
+  background: #f0f4ff;
+  color: #4338ca;
+  cursor: pointer;
+  font-weight: 600;
+}
+.skill-detail-view .skill-actions button:hover { background: #e0e8ff; }
+.skill-detail-view .skill-edit-area {
+  width: 100%;
+  min-height: 300px;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.create-skill-form { max-width: 500px; }
+.create-skill-form input[type="text"] {
+  width: 100%;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.create-skill-form textarea {
+  width: 100%;
+  min-height: 200px;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+.create-skill-form label {
+  display: inline-block;
+  margin-right: 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.create-skill-form .scope-options { margin-bottom: 8px; }
+.create-skill-form button {
+  padding: 6px 16px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f8f8f8;
+  cursor: pointer;
+}
+.create-skill-form button:hover { background: #e8e8e8; }
+.create-skill-form .form-status {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 13px;
+  color: #888;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -585,6 +670,12 @@ details > summary {
     <h2><span class="toggle">&#x25BC;</span>Plans</h2>
     <div class="sidebar-list" id="plan-list"></div>
   </div>
+  <div class="sidebar-section collapsed" id="skills-section">
+    <h2><span class="toggle">&#x25BC;</span>Skills
+      <span id="new-skill-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="New skill">+</span>
+    </h2>
+    <div class="sidebar-list" id="skill-list"></div>
+  </div>
 </div>
 
 <div id="main" tabindex="-1" style="outline:none"></div>
@@ -592,15 +683,17 @@ details > summary {
 <script>
 const listEl = document.getElementById('conversation-list');
 const planListEl = document.getElementById('plan-list');
+const skillListEl = document.getElementById('skill-list');
 const mainEl = document.getElementById('main');
 const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
+let activeSkillId = null;
 
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn')) return;
+    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#new-skill-btn')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
@@ -608,6 +701,10 @@ document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
       // Load plans on first expand
       if (section.id === 'plans-section' && !planListEl.children.length) {
         loadPlansSidebar();
+      }
+      // Load skills on first expand
+      if (section.id === 'skills-section' && !skillListEl.children.length) {
+        loadSkillsSidebar();
       }
     } else {
       section.classList.add('collapsed');
@@ -732,6 +829,11 @@ document.getElementById('new-session-btn').onclick = function() {
   };
 };
 
+document.getElementById('new-skill-btn').onclick = function(e) {
+  e.stopPropagation();
+  showCreateSkillForm();
+};
+
 let homeTab = 'sessions';
 
 function showHomeScreen() {
@@ -740,6 +842,7 @@ function showHomeScreen() {
       '<div class="home-tabs">' +
         '<div class="home-tab' + (homeTab === 'sessions' ? ' active' : '') + '" data-tab="sessions">Sessions</div>' +
         '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
+        '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
       '</div>' +
       '<div class="home-columns" id="home-cols"></div>' +
     '</div>';
@@ -753,6 +856,8 @@ function showHomeScreen() {
 
   if (homeTab === 'plans') {
     showPlansHome();
+  } else if (homeTab === 'skills') {
+    showSkillsHome();
   } else {
     showSessionsHome();
   }
@@ -1085,9 +1190,11 @@ function closeConversation() {
   stopFollowing();
   activeId = null;
   activePlanId = null;
+  activeSkillId = null;
   history.pushState(null, '', '/');
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
   document.getElementById('conv-section').classList.remove('collapsed');
   showHomeScreen();
 }
@@ -1155,6 +1262,296 @@ function loadPlansSidebar() {
     });
 }
 
+function loadSkillsSidebar() {
+  fetch('/api/skills/')
+    .then(r => r.json())
+    .then(skillsList => {
+      skillListEl.innerHTML = '';
+      skillsList.forEach(s => {
+        var div = document.createElement('div');
+        div.className = 'skill-item';
+        div.dataset.id = s.id;
+        if (s.id === activeSkillId) div.classList.add('active');
+
+        var scopeLabel = s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/');
+        div.innerHTML =
+          '<div class="skill-scope">' + esc(scopeLabel) + '</div>' +
+          '<div class="skill-name">/' + esc(s.name) + '</div>';
+
+        div.onclick = function() { loadSkill(s.id); };
+        skillListEl.appendChild(div);
+      });
+    });
+}
+
+function showSkillsHome() {
+  fetch('/api/skills/')
+    .then(r => r.json())
+    .then(skillsList => {
+      // Group by scope: global first, then per-repo
+      var groups = {};
+      var groupOrder = [];
+      skillsList.forEach(s => {
+        if (!groups[s.scope]) {
+          groups[s.scope] = [];
+          groupOrder.push(s.scope);
+        }
+        groups[s.scope].push(s);
+      });
+
+      // Put global first
+      groupOrder.sort(function(a, b) {
+        if (a === 'global') return -1;
+        if (b === 'global') return 1;
+        return a.localeCompare(b);
+      });
+
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      groupOrder.forEach(function(scope) {
+        var skills = groups[scope];
+        var isGlobal = scope === 'global';
+        var short = isGlobal ? 'Global' : scope.replace(/^\/home\/[^/]+\//, '~/');
+        var name = isGlobal ? 'Global' : short.split('/').pop();
+
+        var col = document.createElement('div');
+        col.className = 'home-column';
+
+        var header = document.createElement('div');
+        header.className = 'home-column-header';
+        var nameDiv = document.createElement('div');
+        nameDiv.innerHTML = esc(name) + (!isGlobal ? '<span class="col-path">' + esc(short) + '</span>' : '');
+        if (!isGlobal) nameDiv.title = scope;
+        header.appendChild(nameDiv);
+        col.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'home-conv-list';
+
+        skills.forEach(function(s) {
+          var item = document.createElement('div');
+          item.className = 'home-conv-item';
+          var meta = '<div class="conv-meta">';
+          if (s.modified) meta += '<span>' + esc(formatDate(s.modified)) + '</span>';
+          meta += '</div>';
+          item.innerHTML = meta + '<div>/' + esc(s.name) + '</div>';
+          item.onclick = function() { loadSkill(s.id); };
+          list.appendChild(item);
+        });
+
+        col.appendChild(list);
+        container.appendChild(col);
+      });
+    });
+}
+
+function loadSkill(skillId, pushHistory) {
+  stopFollowing();
+  activeId = null;
+  activePlanId = null;
+  activeSkillId = skillId;
+  if (pushHistory !== false) {
+    history.pushState({skillId: skillId}, '', '/skills/' + skillId);
+  }
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.skill-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === skillId);
+  });
+  // Expand skills section, collapse others
+  document.getElementById('skills-section').classList.remove('collapsed');
+  document.getElementById('conv-section').classList.add('collapsed');
+  document.getElementById('plans-section').classList.add('collapsed');
+  if (!skillListEl.children.length) loadSkillsSidebar();
+  mainEl.innerHTML = '<div class="empty">Loading...</div>';
+
+  fetch('/api/skills/' + skillId + '/')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        mainEl.innerHTML = '<div class="empty">' + esc(data.error) + '</div>';
+        return;
+      }
+
+      var renderSkillView = function() {
+        mainEl.innerHTML = '';
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'conversation-toolbar';
+        toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
+        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        mainEl.appendChild(toolbar);
+
+        var header = document.createElement('div');
+        header.className = 'conversation-header';
+        var scopeLabel = data.scope === 'global' ? 'Global' : data.scope.replace(/^\/home\/[^/]+\//, '~/');
+        header.innerHTML = '<span>/' + esc(data.name) + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
+        mainEl.appendChild(header);
+
+        var view = document.createElement('div');
+        view.className = 'skill-detail-view';
+
+        var actions = document.createElement('div');
+        actions.className = 'skill-actions';
+
+        var editBtn = document.createElement('button');
+        editBtn.textContent = 'Edit';
+        editBtn.onclick = function() {
+          contentBlock.innerHTML = '';
+          var textarea = document.createElement('textarea');
+          textarea.className = 'skill-edit-area';
+          textarea.value = data.content;
+          contentBlock.appendChild(textarea);
+
+          actions.innerHTML = '';
+          var saveBtn = document.createElement('button');
+          saveBtn.textContent = 'Save';
+          saveBtn.onclick = function() {
+            saveBtn.textContent = '...';
+            fetch('/api/skills/' + skillId + '/', {
+              method: 'PUT',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({content: textarea.value})
+            })
+            .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+            .then(function(resp) {
+              if (resp.ok) {
+                loadSkill(skillId, false);
+              } else {
+                saveBtn.textContent = 'Error';
+                setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+              }
+            });
+          };
+          actions.appendChild(saveBtn);
+
+          var cancelBtn = document.createElement('button');
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.onclick = function() { loadSkill(skillId, false); };
+          actions.appendChild(cancelBtn);
+        };
+        actions.appendChild(editBtn);
+
+        var deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.style.color = '#dc2626';
+        deleteBtn.style.borderColor = '#fca5a5';
+        deleteBtn.onclick = function() {
+          if (!confirm('Delete skill /' + data.name + '?')) return;
+          fetch('/api/skills/' + skillId + '/', {method: 'DELETE'})
+            .then(function() {
+              loadSkillsSidebar();
+              closeConversation();
+            });
+        };
+        actions.appendChild(deleteBtn);
+
+        view.appendChild(actions);
+
+        var contentBlock = document.createElement('div');
+        contentBlock.className = 'block text';
+        contentBlock.innerHTML = renderMarkdown(data.content);
+        view.appendChild(contentBlock);
+
+        mainEl.appendChild(view);
+        mainEl.scrollTop = 0;
+        mainEl.focus();
+      };
+
+      renderSkillView();
+    });
+}
+
+function showCreateSkillForm(pushHistory) {
+  stopFollowing();
+  activeId = null;
+  activePlanId = null;
+  activeSkillId = null;
+  if (pushHistory !== false) {
+    history.pushState(null, '', '/skills/new');
+  }
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+
+  // Fetch skills to discover repo scopes
+  fetch('/api/skills/')
+    .then(r => r.json())
+    .then(skillsList => {
+      var scopes = ['global'];
+      var seen = {global: true};
+      skillsList.forEach(function(s) {
+        if (s.scope !== 'global' && !seen[s.scope]) {
+          seen[s.scope] = true;
+          scopes.push(s.scope);
+        }
+      });
+
+      mainEl.innerHTML = '';
+
+      var toolbar = document.createElement('div');
+      toolbar.className = 'conversation-toolbar';
+      toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
+      toolbar.querySelector('.close-conv').onclick = closeConversation;
+      mainEl.appendChild(toolbar);
+
+      var form = document.createElement('div');
+      form.className = 'create-skill-form';
+      form.innerHTML =
+        '<h3 style="margin-bottom:12px">New skill</h3>' +
+        '<input type="text" id="cs-name" placeholder="skill-name (kebab-case)">' +
+        '<div class="scope-options" id="cs-scopes"></div>' +
+        '<textarea id="cs-content" placeholder="Skill content (markdown)..."></textarea>' +
+        '<button id="cs-create">Create</button>' +
+        '<span class="form-status" id="cs-status"></span>';
+      mainEl.appendChild(form);
+
+      var scopesEl = document.getElementById('cs-scopes');
+      scopes.forEach(function(scope, i) {
+        var label = document.createElement('label');
+        var radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'cs-scope';
+        radio.value = scope;
+        if (i === 0) radio.checked = true;
+        label.appendChild(radio);
+        label.appendChild(document.createTextNode(' ' + (scope === 'global' ? 'Global' : scope.replace(/^\/home\/[^/]+\//, '~/'))));
+        scopesEl.appendChild(label);
+      });
+
+      document.getElementById('cs-name').focus();
+
+      document.getElementById('cs-create').onclick = function() {
+        var name = document.getElementById('cs-name').value.trim();
+        var content = document.getElementById('cs-content').value;
+        var scope = document.querySelector('input[name="cs-scope"]:checked').value;
+        var statusEl = document.getElementById('cs-status');
+
+        if (!name || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
+          statusEl.textContent = 'Name must be kebab-case';
+          return;
+        }
+
+        statusEl.textContent = 'Creating...';
+        fetch('/api/skills/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: name, scope: scope, content: content})
+        })
+        .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+        .then(function(resp) {
+          if (resp.ok) {
+            loadSkillsSidebar();
+            loadSkill(resp.data.id);
+          } else {
+            statusEl.textContent = resp.data.error || 'Error';
+          }
+        });
+      };
+    });
+}
+
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
@@ -1167,20 +1564,28 @@ document.addEventListener('visibilitychange', function() {
 });
 window.addEventListener('focus', handleReturnToPage);
 
-// open conversation/plan from URL on initial load, or show home screen
+// open conversation/plan/skill from URL on initial load, or show home screen
 const initConvMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
 const initPlanMatch = location.pathname.match(/^\/plans\/([^/]+)/);
+const initSkillMatch = location.pathname.match(/^\/skills\/(.+)/);
+const initSkillsHome = /^\/skills\/?$/.test(location.pathname);
 if (initConvMatch) loadConversation(initConvMatch[1], false);
 else if (initPlanMatch) loadPlan(initPlanMatch[1], false);
+else if (initSkillMatch) { if (initSkillMatch[1] === 'new') showCreateSkillForm(false); else loadSkill(initSkillMatch[1], false); }
+else if (initSkillsHome) { homeTab = 'skills'; showHomeScreen(); }
 else showHomeScreen();
 
 window.addEventListener('popstate', function(e) {
   const convMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
   const planMatch = location.pathname.match(/^\/plans\/([^/]+)/);
+  const skillMatch = location.pathname.match(/^\/skills\/(.+)/);
   if (convMatch) {
     loadConversation(convMatch[1], false);
   } else if (planMatch) {
     loadPlan(planMatch[1], false);
+  } else if (skillMatch) {
+    if (skillMatch[1] === 'new') showCreateSkillForm(false);
+    else loadSkill(skillMatch[1], false);
   } else {
     closeConversation();
   }
