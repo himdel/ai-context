@@ -265,7 +265,7 @@ function renderBlock(block) {
     return '<div class="block text">' + marked.parse(block.text) + '</div>';
   }
   if (block.type === 'thinking') {
-    return '<details class="block thinking"><summary>Thinking...</summary>' + esc(block.text) + '</details>';
+    return '<details class="block thinking"><summary>Thinking...</summary>' + marked.parse(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
     const input = JSON.stringify(block.input, null, 2);

@@ -75,8 +75,8 @@ def conversation_detail(request, conversation_id):
                         btype = block.get("type")
                         if btype == "text" and block.get("text", "").strip():
                             blocks.append({"type": "text", "text": block["text"]})
-                        elif btype == "thinking" and block.get("text", "").strip():
-                            blocks.append({"type": "thinking", "text": block["text"]})
+                        elif btype == "thinking" and block.get("thinking", "").strip():
+                            blocks.append({"type": "thinking", "text": block["thinking"]})
                         elif btype == "tool_use":
                             tool_use_ids[block.get("id")] = block.get("name", "")
                             blocks.append(
