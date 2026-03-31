@@ -84,6 +84,9 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .conversation-header .header-btns { margin-left: auto; white-space: nowrap; }
 .conversation-header .header-btns span { cursor: pointer; color: #888; font-size: 14px; margin-left: 8px; }
 .conversation-header .header-btns span:hover { color: #333; }
+.follow-indicator { color: #16a34a !important; cursor: default !important; font-size: 12px !important; }
+.follow-indicator::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; margin-right: 4px; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .conversation-item .blurb {
   font-size: 13px;
@@ -333,6 +336,10 @@ const listEl = document.getElementById('conversation-list');
 const mainEl = document.getElementById('main');
 const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
+let followInterval = null;
+let followConvId = null;
+let renderedMsgCount = 0;
+let followPollCount = 0;
 
 // Make all marked-generated links open in new tab
 marked.use({
@@ -486,7 +493,65 @@ function showHomeScreen() {
     });
 }
 
+function isNearBottom(el, threshold) {
+  return (el.scrollHeight - el.scrollTop - el.clientHeight) < (threshold || 150);
+}
+
+function startFollowing(id, msgCount) {
+  stopFollowing();
+  followConvId = id;
+  renderedMsgCount = msgCount;
+  followPollCount = 0;
+  followInterval = setInterval(pollForUpdates, 5000);
+}
+
+function stopFollowing() {
+  if (followInterval) clearInterval(followInterval);
+  followInterval = null;
+  followConvId = null;
+  renderedMsgCount = 0;
+  followPollCount = 0;
+}
+
+function pollForUpdates() {
+  if (document.hidden) return;
+  if (!followConvId || activeId !== followConvId) {
+    stopFollowing();
+    return;
+  }
+  followPollCount++;
+  if (followPollCount % 5 === 0) loadSidebar();
+
+  fetch('/api/conversations/' + followConvId + '/')
+    .then(r => r.json())
+    .then(data => {
+      if (activeId !== followConvId) return;
+      if (data.messages && data.messages.length > renderedMsgCount) {
+        var wasNear = isNearBottom(mainEl);
+        var newMessages = data.messages.slice(renderedMsgCount);
+        newMessages.forEach(function(m) {
+          var div = document.createElement('div');
+          div.className = 'message ' + m.role;
+          div.innerHTML = '<div class="role">' + esc(m.role) + '</div>';
+          m.content.forEach(function(block) {
+            div.innerHTML += renderBlock(block);
+          });
+          mainEl.appendChild(div);
+        });
+        renderedMsgCount = data.messages.length;
+        if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
+      }
+      if (!data.active) {
+        stopFollowing();
+        var indicator = mainEl.querySelector('.follow-indicator');
+        if (indicator) indicator.remove();
+      }
+    })
+    .catch(function() {});
+}
+
 function closeConversation() {
+  stopFollowing();
   activeId = null;
   history.pushState(null, '', '/');
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
@@ -542,6 +607,7 @@ window.addEventListener('popstate', function(e) {
 });
 
 function loadConversation(id, pushHistory) {
+  stopFollowing();
   activeId = id;
   if (pushHistory !== false) {
     history.pushState({id: id}, '', '/conversations/' + id);
@@ -631,6 +697,14 @@ function loadConversation(id, pushHistory) {
         });
         mainEl.scrollTop = 0;
         mainEl.focus();
+
+        if (data.active) {
+          var indicator = document.createElement('span');
+          indicator.className = 'follow-indicator';
+          indicator.textContent = 'Following';
+          header.querySelector('.header-btns').prepend(indicator);
+          startFollowing(id, data.messages.length);
+        }
       };
 
       if (data.cwd) {

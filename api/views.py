@@ -381,6 +381,7 @@ def conversation_detail(request, conversation_id):
             block.pop("_tool_use_id", None)
 
     msg_count = len(messages)
+    active_ids = _active_session_ids()
     return Response(
         {
             "id": conversation_id,
@@ -391,6 +392,7 @@ def conversation_detail(request, conversation_id):
             "message_count": msg_count,
             "first_timestamp": first_ts,
             "last_timestamp": last_ts,
+            "active": conversation_id in active_ids,
             "messages": messages,
         }
     )
