@@ -359,8 +359,8 @@ function loadConversation(id, pushHistory) {
           parts.push('<span>' + esc(project) + '</span>');
         }
         if (data.branch) {
-          if (currentGithubRepo) {
-            parts.push('<span>branch: <a href="https://github.com/' + esc(currentGithubRepo) + '/tree/' + esc(data.branch) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
+          if (currentGithubOrigin) {
+            parts.push('<span>branch: <a href="https://github.com/' + esc(currentGithubOrigin) + '/tree/' + esc(data.branch) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
           } else {
             parts.push('<span>branch: ' + esc(data.branch) + '</span>');
           }
@@ -396,7 +396,7 @@ function loadConversation(id, pushHistory) {
         fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd))
           .then(r => r.json())
           .then(gh => {
-            setGithubAutolink(gh.repo);
+            setGithubAutolink(gh);
             render();
           })
           .catch(() => { setGithubAutolink(null); render(); });
@@ -408,9 +408,11 @@ function loadConversation(id, pushHistory) {
 }
 
 let currentGithubRepo = null;
+let currentGithubOrigin = null;
 
-function setGithubAutolink(repo) {
-  currentGithubRepo = repo;
+function setGithubAutolink(gh) {
+  currentGithubRepo = (gh && gh.upstream) || (gh && gh.origin);
+  currentGithubOrigin = (gh && gh.origin) || (gh && gh.upstream);
 }
 
 function linkifyGithub(html) {
