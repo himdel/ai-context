@@ -255,6 +255,89 @@ details > summary {
   margin-left: 6px;
 }
 
+.block.plan-block {
+  background: #f5f0ff;
+  border: 1px solid #d0c0f0;
+  border-radius: 6px;
+  padding: 16px 20px;
+}
+
+.block.plan-block .plan-header {
+  font-weight: 700;
+  font-size: 14px;
+  color: #6d28d9;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #d0c0f0;
+}
+
+.block.plan-block .plan-content {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #222;
+}
+
+.block.plan-block .plan-content p { margin: 0.5em 0; }
+.block.plan-block .plan-content p:first-child { margin-top: 0; }
+.block.plan-block .plan-content h1, .block.plan-block .plan-content h2, .block.plan-block .plan-content h3 { margin: 0.75em 0 0.25em; }
+.block.plan-block .plan-content h1 { font-size: 1.3em; color: #4c1d95; }
+.block.plan-block .plan-content h2 { font-size: 1.15em; color: #5b21b6; }
+.block.plan-block .plan-content h3 { font-size: 1em; color: #6d28d9; }
+.block.plan-block .plan-content ul, .block.plan-block .plan-content ol { margin: 0.5em 0; padding-left: 1.5em; }
+.block.plan-block .plan-content pre { background: #ede9fe; padding: 8px 12px; border-radius: 4px; overflow-x: auto; }
+.block.plan-block .plan-content code { background: #ede9fe; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+.block.plan-block .plan-content pre code { background: none; padding: 0; }
+.block.plan-block .plan-content strong { color: #4c1d95; }
+.block.plan-block .plan-content blockquote { border-left: 3px solid #d0c0f0; padding-left: 12px; color: #666; margin: 0.5em 0; }
+
+.block.plan-block .plan-prompts {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #d0c0f0;
+}
+
+.block.plan-block .plan-prompts-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6d28d9;
+  margin-bottom: 6px;
+}
+
+.block.plan-block .plan-prompt {
+  font-size: 13px;
+  color: #555;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: #ede9fe;
+  border-radius: 4px;
+}
+
+.block.plan-block .plan-prompt-tool {
+  font-weight: 600;
+  color: #6d28d9;
+  font-size: 11px;
+  background: #ddd6fe;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+.block.plan-block .plan-file {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+  font-family: monospace;
+}
+
+.block.plan-enter {
+  font-size: 13px;
+  color: #6d28d9;
+  background: #f5f0ff;
+  border: 1px solid #d0c0f0;
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+
 .expand-all:hover { color: #555; }
 
 .new-session-form { max-width: 500px; }
@@ -912,6 +995,26 @@ function renderToolInput(name, input) {
     const desc = input.description ? '<div style="color:#888;font-size:11px">' + esc(input.description) + '</div>' : '';
     main = desc + '<code>' + esc(input.command || '') + '</code>';
   }
+  if (name === 'ExitPlanMode') {
+    var html = '';
+    if (input.plan) {
+      html += '<div class="plan-content">' + renderMarkdown(input.plan) + '</div>';
+    }
+    if (input.allowedPrompts && input.allowedPrompts.length) {
+      html += '<div class="plan-prompts"><div class="plan-prompts-label">Allowed prompts:</div>';
+      input.allowedPrompts.forEach(function(p) {
+        html += '<div class="plan-prompt"><span class="plan-prompt-tool">' + esc(p.tool) + '</span> ' + esc(p.prompt) + '</div>';
+      });
+      html += '</div>';
+    }
+    if (input.planFilePath) {
+      html += '<div class="plan-file">' + esc(input.planFilePath) + '</div>';
+    }
+    return html || esc(JSON.stringify(input, null, 2));
+  }
+  if (name === 'EnterPlanMode') {
+    return '<em>Entering plan mode...</em>';
+  }
   if (main === null) return esc(JSON.stringify(input, null, 2));
   var extra = {};
   var hasExtra = false;
@@ -928,6 +1031,15 @@ function renderBlock(block) {
     return '<details class="block thinking"><summary>Thinking... <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' + renderMarkdown(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
+    if (block.name === 'ExitPlanMode') {
+      return '<div class="block plan-block">' +
+        '<div class="plan-header">Plan</div>' +
+        renderToolInput(block.name, block.input) +
+        '</div>';
+    }
+    if (block.name === 'EnterPlanMode') {
+      return '<div class="block plan-enter">' + renderToolInput(block.name, block.input) + '</div>';
+    }
     return '<div class="block tool_use">' +
       '<div class="tool-name">' + esc(block.name) + '</div>' +
       '<div class="tool-input">' + renderToolInput(block.name, block.input) + '</div>' +
