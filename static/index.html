@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>contexts</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>C</text></svg>">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
@@ -1199,6 +1200,35 @@ function closeConversation() {
   showHomeScreen();
 }
 
+function updateFavicon(count) {
+  var canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  var ctx = canvas.getContext('2d');
+
+  // Background circle
+  ctx.beginPath();
+  ctx.arc(32, 32, 30, 0, 2 * Math.PI);
+  ctx.fillStyle = count > 0 ? '#16a34a' : '#999';
+  ctx.fill();
+
+  // Number text
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold ' + (count > 99 ? '28' : count > 9 ? '32' : '38') + 'px system-ui, sans-serif';
+  ctx.fillText(count > 99 ? '99+' : String(count), 32, 34);
+
+  var link = document.querySelector('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/png';
+  link.href = canvas.toDataURL('image/png');
+}
+
 let lastSidebarLoad = 0;
 
 function loadSidebar() {
@@ -1206,6 +1236,7 @@ function loadSidebar() {
   fetch('/api/conversations/')
     .then(r => r.json())
     .then(conversations => {
+      updateFavicon(conversations.filter(c => c.active).length);
       listEl.innerHTML = '';
       conversations.forEach(c => {
         const div = document.createElement('div');
