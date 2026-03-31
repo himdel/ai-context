@@ -155,7 +155,7 @@ details > summary {
 <body>
 
 <div id="sidebar">
-  <h2>Conversations</h2>
+  <h2>Conversations <span id="close-btn" style="float:right;cursor:pointer;display:none;font-size:14px;color:#888" title="Close">&times;</span></h2>
   <div id="conversation-list"></div>
 </div>
 
@@ -166,7 +166,16 @@ details > summary {
 <script>
 const listEl = document.getElementById('conversation-list');
 const mainEl = document.getElementById('main');
+const closeBtn = document.getElementById('close-btn');
 let activeId = null;
+
+closeBtn.onclick = function() {
+  activeId = null;
+  history.pushState(null, '', '/');
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  mainEl.innerHTML = '<div class="empty">Select a conversation</div>';
+  closeBtn.style.display = 'none';
+};
 
 fetch('/api/conversations/')
   .then(r => r.json())
@@ -186,10 +195,30 @@ fetch('/api/conversations/')
       div.onclick = () => loadConversation(c.id);
       listEl.appendChild(div);
     });
+
+    // open conversation from URL on initial load
+    const match = location.pathname.match(/^\/conversations\/([^/]+)/);
+    if (match) loadConversation(match[1], false);
   });
 
-function loadConversation(id) {
+window.addEventListener('popstate', function(e) {
+  const match = location.pathname.match(/^\/conversations\/([^/]+)/);
+  if (match) {
+    loadConversation(match[1], false);
+  } else {
+    activeId = null;
+    closeBtn.style.display = 'none';
+    document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+    mainEl.innerHTML = '<div class="empty">Select a conversation</div>';
+  }
+});
+
+function loadConversation(id, pushHistory) {
   activeId = id;
+  closeBtn.style.display = 'inline';
+  if (pushHistory !== false) {
+    history.pushState({id: id}, '', '/conversations/' + id);
+  }
   document.querySelectorAll('.conversation-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === id);
   });
