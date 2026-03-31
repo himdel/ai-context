@@ -67,11 +67,38 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   flex-shrink: 0;
 }
 
+.conversation-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  height: 0;
+  overflow: visible;
+  font-size: 12px;
+  color: #888;
+}
+
+.conversation-toolbar .header-btns {
+  white-space: nowrap;
+  background: rgba(255,255,255,0.92);
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 18px;
+}
+.conversation-toolbar .header-btns span { cursor: pointer; color: #888; font-size: 14px; margin-left: 8px; line-height: 18px; }
+.conversation-toolbar .header-btns span:hover { color: #333; }
+.follow-indicator { color: #16a34a !important; cursor: default !important; font-size: 12px !important; line-height: 18px !important; vertical-align: middle !important; }
+.follow-indicator::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; margin-right: 4px; animation: pulse 2s infinite; }
+
 .conversation-header {
   font-size: 12px;
   color: #888;
   margin-bottom: 16px;
   padding-bottom: 8px;
+  padding-right: 120px;
   border-bottom: 1px solid #eee;
   display: flex;
   flex-wrap: wrap;
@@ -81,11 +108,6 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .conversation-header span { white-space: nowrap; }
 .conversation-header a { color: #4338ca; text-decoration: none; }
 .conversation-header a:hover { text-decoration: underline; }
-.conversation-header .header-btns { margin-left: auto; white-space: nowrap; }
-.conversation-header .header-btns span { cursor: pointer; color: #888; font-size: 14px; margin-left: 8px; }
-.conversation-header .header-btns span:hover { color: #333; }
-.follow-indicator { color: #16a34a !important; cursor: default !important; font-size: 12px !important; }
-.follow-indicator::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; margin-right: 4px; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .message.new-msg { animation: fade-highlight 10s ease-out; }
 @keyframes fade-highlight { 0% { background: #e8f5e9; } 100% { background: transparent; } }
@@ -838,11 +860,15 @@ function loadConversation(id, pushHistory) {
         mainEl.innerHTML = '';
         currentCwd = data.cwd || null;
 
+        const toolbar = document.createElement('div');
+        toolbar.className = 'conversation-toolbar';
+        toolbar.innerHTML = '<span class="header-btns"><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
+        const project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
+
         const header = document.createElement('div');
         header.className = 'conversation-header';
         var parts = [];
 
-        const project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
         if (project && currentGithubRepo) {
           parts.push('<span><a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
         } else if (project) {
@@ -863,10 +889,9 @@ function loadConversation(id, pushHistory) {
         if (duration) parts.push('<span>' + esc(duration) + '</span>');
         if (data.model) parts.push('<span>' + esc(data.model) + '</span>');
         if (data.version) parts.push('<span>claude-code ' + esc(data.version) + '</span>');
-
-        parts.push('<span class="header-btns"><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>');
         header.innerHTML = parts.join('');
-        header.querySelector('.new-here').onclick = function() {
+
+        toolbar.querySelector('.new-here').onclick = function() {
           var btn = this;
           btn.textContent = '...';
           fetch('/api/sessions/new/', {
@@ -880,7 +905,7 @@ function loadConversation(id, pushHistory) {
             setTimeout(() => { btn.textContent = '+'; }, 2000);
           });
         };
-        header.querySelector('.resume-conv').onclick = function() {
+        toolbar.querySelector('.resume-conv').onclick = function() {
           var btn = this;
           btn.textContent = '...';
           fetch('/api/sessions/resume/', {
@@ -894,8 +919,9 @@ function loadConversation(id, pushHistory) {
             setTimeout(() => { btn.innerHTML = '&#x25b6;'; }, 2000);
           });
         };
-        header.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
-        header.querySelector('.close-conv').onclick = closeConversation;
+        toolbar.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
+        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        mainEl.appendChild(toolbar);
         mainEl.appendChild(header);
 
         data.messages.forEach(m => {
@@ -916,7 +942,7 @@ function loadConversation(id, pushHistory) {
           var indicator = document.createElement('span');
           indicator.className = 'follow-indicator';
           indicator.textContent = 'Following';
-          header.querySelector('.header-btns').prepend(indicator);
+          toolbar.querySelector('.header-btns').prepend(indicator);
           startFollowing(id, data.messages.length);
         }
       };
