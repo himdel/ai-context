@@ -986,7 +986,7 @@ function formatDate(iso) {
 function formatTime(iso) {
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString('en-CA', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+    return d.toLocaleDateString('en-CA') + ' ' + d.toLocaleTimeString('en-CA', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
   } catch(e) { return ''; }
 }
 
