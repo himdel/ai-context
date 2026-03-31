@@ -87,6 +87,8 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .follow-indicator { color: #16a34a !important; cursor: default !important; font-size: 12px !important; }
 .follow-indicator::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #16a34a; margin-right: 4px; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.message.new-msg { animation: fade-highlight 10s ease-out; }
+@keyframes fade-highlight { 0% { background: #e8f5e9; } 100% { background: transparent; } }
 
 .conversation-item .blurb {
   font-size: 13px;
@@ -531,7 +533,7 @@ function pollForUpdates() {
         var newMessages = data.messages.slice(renderedMsgCount);
         newMessages.forEach(function(m) {
           var div = document.createElement('div');
-          div.className = 'message ' + m.role;
+          div.className = 'message new-msg ' + m.role;
           div.innerHTML = '<div class="role">' + esc(m.role) + '</div>';
           m.content.forEach(function(block) {
             div.innerHTML += renderBlock(block);
