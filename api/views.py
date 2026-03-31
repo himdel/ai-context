@@ -425,7 +425,8 @@ def _find_conversation(conversation_id):
 
 def _clean_env():
     """Return os.environ without virtualenv pollution, plus DISPLAY."""
-    env = {k: v for k, v in os.environ.items() if k not in ("VIRTUAL_ENV",)}
+    strip = {"VIRTUAL_ENV", "DJANGO_SETTINGS_MODULE"}
+    env = {k: v for k, v in os.environ.items() if k not in strip}
     # Strip the venv bin dir from PATH
     venv = os.environ.get("VIRTUAL_ENV")
     if venv and "PATH" in env:
