@@ -238,13 +238,13 @@ const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 
 // Make all marked-generated links open in new tab
-const renderer = new marked.Renderer();
-const origLink = renderer.link.bind(renderer);
-renderer.link = function(token) {
-  var html = origLink(token);
-  return html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ');
-};
-marked.use({ renderer: renderer });
+marked.use({
+  hooks: {
+    postprocess: function(html) {
+      return html.replace(/<a href="/g, '<a target="_blank" rel="noopener noreferrer" href="');
+    },
+  },
+});
 
 // Load autolink patterns and register as a marked extension
 fetch('/api/autolinks/')
@@ -434,6 +434,7 @@ function linkifyGithub(html) {
 }
 
 function renderMarkdown(text) {
+  if (!text) return '';
   return linkifyGithub(marked.parse(text));
 }
 
