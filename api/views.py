@@ -723,7 +723,7 @@ def _is_valid_skill_path(path):
 
 
 def _discover_repos():
-    """Scan ~/.claude/projects/*/ to find repo paths from JSONL first lines."""
+    """Scan ~/.claude/projects/*/ to find repo paths from JSONL files."""
     projects_dir = CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return []
@@ -734,12 +734,12 @@ def _discover_repos():
         for jsonl_file in project_dir.glob("*.jsonl"):
             try:
                 with open(jsonl_file) as f:
-                    first_line = f.readline()
-                    if first_line:
-                        data = json.loads(first_line)
+                    for line in f:
+                        data = json.loads(line)
                         cwd = data.get("cwd", "")
                         if cwd:
                             repos.add(cwd)
+                            break
             except (json.JSONDecodeError, OSError):
                 continue
     return sorted(repos)
