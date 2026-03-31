@@ -12,6 +12,23 @@ CLAUDE_DIR = Path.home() / ".claude"
 _github_repo_cache = {}
 
 
+def _active_session_ids():
+    """Return set of session IDs that have a running process."""
+    ids = set()
+    sessions_dir = CLAUDE_DIR / "sessions"
+    if not sessions_dir.is_dir():
+        return ids
+    for f in sessions_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            pid = data.get("pid")
+            if pid and Path(f"/proc/{pid}").exists():
+                ids.add(data.get("sessionId", ""))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return ids
+
+
 @api_view(["GET"])
 def index(request):
     return Response({"status": "ok"})
@@ -77,6 +94,10 @@ def conversations(request):
                 )
                 results.append(entry)
 
+    active_ids = _active_session_ids()
+    for r in results:
+        r["active"] = r["id"] in active_ids
+
     results.sort(key=lambda x: x["date"], reverse=True)
     return Response(results)
 
@@ -89,6 +110,11 @@ def conversation_detail(request, conversation_id):
 
     messages = []
     cwd = None
+    branch = None
+    model = None
+    version = None
+    first_ts = None
+    last_ts = None
     tool_use_ids = {}  # id -> name, for labeling tool_results
     try:
         with open(jsonl_file) as f:
@@ -96,7 +122,18 @@ def conversation_detail(request, conversation_id):
                 data = json.loads(line)
                 if not cwd:
                     cwd = data.get("cwd", "")
+                if not branch:
+                    branch = data.get("gitBranch", "")
+                if not version:
+                    version = data.get("version", "")
+                ts = data.get("timestamp", "")
+                if ts:
+                    if not first_ts:
+                        first_ts = ts
+                    last_ts = ts
                 msg = data.get("message", {})
+                if not model:
+                    model = msg.get("model", "")
                 role = msg.get("role")
                 if role not in ("user", "assistant"):
                     continue
@@ -158,7 +195,20 @@ def conversation_detail(request, conversation_id):
     except (json.JSONDecodeError, OSError):
         return Response({"error": "failed to read conversation"}, status=500)
 
-    return Response({"id": conversation_id, "cwd": cwd, "messages": messages})
+    msg_count = len(messages)
+    return Response(
+        {
+            "id": conversation_id,
+            "cwd": cwd,
+            "branch": branch,
+            "model": model,
+            "version": version,
+            "message_count": msg_count,
+            "first_timestamp": first_ts,
+            "last_timestamp": last_ts,
+            "messages": messages,
+        }
+    )
 
 
 def _find_conversation(conversation_id):
@@ -176,25 +226,48 @@ def _find_conversation(conversation_id):
 
 def _parse_conversation(jsonl_file, conversation_id, project_name):
     try:
+        blurb = ""
+        cwd = ""
+        first_ts = ""
+        last_ts = ""
+        branch = ""
+        msg_count = 0
+
         with open(jsonl_file) as f:
             for line in f:
                 data = json.loads(line)
-                msg = data.get("message", {})
-                if msg.get("role") != "user":
-                    continue
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    # tool_result messages, skip
-                    continue
-                if not isinstance(content, str) or not content.strip():
-                    continue
+                ts = data.get("timestamp", "")
+                if ts:
+                    if not first_ts:
+                        first_ts = ts
+                    last_ts = ts
+                if not cwd:
+                    cwd = data.get("cwd", "")
+                if not branch:
+                    branch = data.get("gitBranch", "")
 
-                return {
-                    "id": conversation_id,
-                    "project": data.get("cwd", project_name),
-                    "date": data.get("timestamp", ""),
-                    "blurb": content[:200],
-                }
+                msg = data.get("message", {})
+                role = msg.get("role")
+                if role in ("user", "assistant"):
+                    msg_count += 1
+
+                if not blurb and role == "user":
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        blurb = content[:200]
+
+        if not blurb:
+            return None
+
+        return {
+            "id": conversation_id,
+            "project": cwd or project_name,
+            "date": first_ts,
+            "blurb": blurb,
+            "branch": branch,
+            "message_count": msg_count,
+            "last_timestamp": last_ts,
+        }
     except (json.JSONDecodeError, OSError):
         pass
     return None
