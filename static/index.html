@@ -493,6 +493,47 @@ details > summary {
   padding: 6px 12px 2px;
   letter-spacing: 0.5px;
 }
+
+.home-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+}
+.home-tab {
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #888;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.home-tab:hover { color: #555; }
+.home-tab.active { color: #333; border-bottom-color: #4338ca; }
+
+.plan-detail-view { max-width: 800px; }
+.plan-detail-view .plan-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.plan-detail-view .plan-actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #d0c0f0;
+  border-radius: 4px;
+  background: #f5f0ff;
+  color: #6d28d9;
+  cursor: pointer;
+  font-weight: 600;
+}
+.plan-detail-view .plan-actions button:hover { background: #ede9fe; }
+
+.home-conv-item .plan-meta-link {
+  color: #4338ca;
+  text-decoration: none;
+  font-size: 11px;
+}
+.home-conv-item .plan-meta-link:hover { text-decoration: underline; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -628,8 +669,33 @@ document.getElementById('new-session-btn').onclick = function() {
   };
 };
 
+let homeTab = 'sessions';
+
 function showHomeScreen() {
-  mainEl.innerHTML = '<div class="home-screen"><h3>Sessions</h3><div class="home-columns" id="home-cols"></div></div>';
+  mainEl.innerHTML =
+    '<div class="home-screen">' +
+      '<div class="home-tabs">' +
+        '<div class="home-tab' + (homeTab === 'sessions' ? ' active' : '') + '" data-tab="sessions">Sessions</div>' +
+        '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
+      '</div>' +
+      '<div class="home-columns" id="home-cols"></div>' +
+    '</div>';
+
+  mainEl.querySelectorAll('.home-tab').forEach(function(tab) {
+    tab.onclick = function() {
+      homeTab = tab.dataset.tab;
+      showHomeScreen();
+    };
+  });
+
+  if (homeTab === 'plans') {
+    showPlansHome();
+  } else {
+    showSessionsHome();
+  }
+}
+
+function showSessionsHome() {
   fetch('/api/conversations/')
     .then(r => r.json())
     .then(conversations => {
@@ -721,6 +787,172 @@ function showHomeScreen() {
         col.appendChild(list);
         container.appendChild(col);
       });
+    });
+}
+
+function showPlansHome() {
+  fetch('/api/plans/')
+    .then(r => r.json())
+    .then(plansList => {
+      // Group plans by project/cwd
+      var repos = {};
+      var repoOrder = [];
+      var ungrouped = [];
+      plansList.forEach(p => {
+        if (p.project) {
+          if (!repos[p.project]) {
+            repos[p.project] = [];
+            repoOrder.push(p.project);
+          }
+          repos[p.project].push(p);
+        } else {
+          ungrouped.push(p);
+        }
+      });
+
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      function addPlanColumn(cwd, plans) {
+        var short = cwd ? cwd.replace(/^\/home\/[^/]+\//, '~/') : 'Other';
+        var name = cwd ? short.split('/').pop() : 'Other';
+
+        var col = document.createElement('div');
+        col.className = 'home-column';
+
+        var header = document.createElement('div');
+        header.className = 'home-column-header';
+        var nameDiv = document.createElement('div');
+        nameDiv.innerHTML = esc(name) + (cwd ? '<span class="col-path">' + esc(short) + '</span>' : '');
+        if (cwd) nameDiv.title = cwd;
+        header.appendChild(nameDiv);
+        col.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'home-conv-list';
+
+        plans.forEach(function(p) {
+          var item = document.createElement('div');
+          item.className = 'home-conv-item';
+          var meta = '<div class="conv-meta">';
+          if (p.date) meta += '<span>' + esc(formatDate(p.date)) + '</span>';
+          if (p.branch) meta += '<span>' + esc(p.branch) + '</span>';
+          meta += '</div>';
+          item.innerHTML = meta + '<div>' + esc(p.title) + '</div>';
+          item.onclick = function() { loadPlan(p.id); };
+          list.appendChild(item);
+        });
+
+        col.appendChild(list);
+        container.appendChild(col);
+      }
+
+      repoOrder.forEach(function(cwd) {
+        addPlanColumn(cwd, repos[cwd]);
+      });
+      if (ungrouped.length) {
+        addPlanColumn('', ungrouped);
+      }
+    });
+}
+
+function loadPlan(planId, pushHistory) {
+  stopFollowing();
+  activeId = null;
+  if (pushHistory !== false) {
+    history.pushState({planId: planId}, '', '/plans/' + planId);
+  }
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  mainEl.innerHTML = '<div class="empty">Loading...</div>';
+
+  fetch('/api/plans/' + planId + '/')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        mainEl.innerHTML = '<div class="empty">' + esc(data.error) + '</div>';
+        return;
+      }
+
+      var renderPlan = function() {
+        mainEl.innerHTML = '';
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'conversation-toolbar';
+        toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
+        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        mainEl.appendChild(toolbar);
+
+        var header = document.createElement('div');
+        header.className = 'conversation-header';
+        var parts = [];
+
+        var project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
+        if (project && currentGithubRepo) {
+          parts.push('<span><a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
+        } else if (project) {
+          parts.push('<span>' + esc(project) + '</span>');
+        }
+        if (data.branch) {
+          if (currentGithubOrigin) {
+            parts.push('<span>branch: <a href="https://github.com/' + esc(currentGithubOrigin) + '/tree/' + esc(data.branch) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
+          } else {
+            parts.push('<span>branch: ' + esc(data.branch) + '</span>');
+          }
+        }
+        if (currentPR) {
+          parts.push('<span>PR: <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">#' + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
+        }
+        if (data.conversation_id) {
+          parts.push('<span>conversation: <a href="/conversations/' + esc(data.conversation_id) + '" style="color:#4338ca">' + esc(data.conversation_id.substring(0, 8)) + '...</a></span>');
+        }
+        header.innerHTML = parts.join('');
+        mainEl.appendChild(header);
+
+        var view = document.createElement('div');
+        view.className = 'plan-detail-view';
+
+        var actions = document.createElement('div');
+        actions.className = 'plan-actions';
+
+        var execBtn = document.createElement('button');
+        execBtn.textContent = 'Execute plan';
+        execBtn.onclick = function() {
+          execBtn.textContent = '...';
+          fetch('/api/plans/' + planId + '/execute/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cwd: data.cwd || ''})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(function(resp) {
+            execBtn.textContent = resp.ok ? 'Launched' : 'Error';
+            setTimeout(function() { execBtn.textContent = 'Execute plan'; }, 2000);
+          });
+        };
+        actions.appendChild(execBtn);
+        view.appendChild(actions);
+
+        var planBlock = document.createElement('div');
+        planBlock.className = 'block plan-block';
+        planBlock.innerHTML =
+          '<div class="plan-header">' + esc(data.title) + '</div>' +
+          '<div class="plan-content">' + renderMarkdown(data.content) + '</div>';
+        view.appendChild(planBlock);
+
+        mainEl.appendChild(view);
+        mainEl.scrollTop = 0;
+        mainEl.focus();
+      };
+
+      if (data.cwd) {
+        fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd) + '&branch=' + encodeURIComponent(data.branch || ''))
+          .then(r => r.json())
+          .then(gh => { setGithubAutolink(gh); renderPlan(); })
+          .catch(() => { setGithubAutolink(null); renderPlan(); });
+      } else {
+        setGithubAutolink(null);
+        renderPlan();
+      }
     });
 }
 
@@ -835,15 +1067,20 @@ document.addEventListener('visibilitychange', function() {
 });
 window.addEventListener('focus', handleReturnToPage);
 
-// open conversation from URL on initial load, or show home screen
-const initMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
-if (initMatch) loadConversation(initMatch[1], false);
+// open conversation/plan from URL on initial load, or show home screen
+const initConvMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
+const initPlanMatch = location.pathname.match(/^\/plans\/([^/]+)/);
+if (initConvMatch) loadConversation(initConvMatch[1], false);
+else if (initPlanMatch) loadPlan(initPlanMatch[1], false);
 else showHomeScreen();
 
 window.addEventListener('popstate', function(e) {
-  const match = location.pathname.match(/^\/conversations\/([^/]+)/);
-  if (match) {
-    loadConversation(match[1], false);
+  const convMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
+  const planMatch = location.pathname.match(/^\/plans\/([^/]+)/);
+  if (convMatch) {
+    loadConversation(convMatch[1], false);
+  } else if (planMatch) {
+    loadPlan(planMatch[1], false);
   } else {
     closeConversation();
   }
@@ -1042,7 +1279,8 @@ function renderToolInput(name, input) {
       html += '</div>';
     }
     if (input.planFilePath) {
-      html += '<div class="plan-file">' + esc(input.planFilePath) + '</div>';
+      var planId = input.planFilePath.split('/').pop().replace(/\.md$/, '');
+      html += '<div class="plan-file"><a href="/plans/' + esc(planId) + '" style="color:#6d28d9">' + esc(input.planFilePath) + '</a></div>';
     }
     return html || esc(JSON.stringify(input, null, 2));
   }

@@ -514,6 +514,185 @@ def session_resume(request):
     return _spawn_terminal(["--resume", conversation_id], cwd)
 
 
+def _build_plan_conversation_map():
+    """Scan all JSONL files to map plan filenames to originating conversations."""
+    plan_map = {}  # plan_stem -> {conversation_id, cwd, branch, timestamp}
+    projects_dir = CLAUDE_DIR / "projects"
+    if not projects_dir.is_dir():
+        return plan_map
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl_file in project_dir.glob("*.jsonl"):
+            conversation_id = jsonl_file.stem
+            cwd = ""
+            branch = ""
+            try:
+                with open(jsonl_file) as f:
+                    for line in f:
+                        data = json.loads(line)
+                        if not cwd:
+                            cwd = data.get("cwd", "")
+                        if not branch:
+                            branch = data.get("gitBranch", "")
+                        msg = data.get("message", {})
+                        content = msg.get("content")
+                        if not isinstance(content, list):
+                            continue
+                        for block in content:
+                            if (
+                                isinstance(block, dict)
+                                and block.get("type") == "tool_use"
+                                and block.get("name") == "ExitPlanMode"
+                            ):
+                                plan_path = block.get("input", {}).get(
+                                    "planFilePath", ""
+                                )
+                                if plan_path:
+                                    stem = Path(plan_path).stem
+                                    ts = data.get("timestamp", "")
+                                    if stem not in plan_map or (
+                                        ts and ts > plan_map[stem].get("timestamp", "")
+                                    ):
+                                        plan_map[stem] = {
+                                            "conversation_id": conversation_id,
+                                            "cwd": cwd,
+                                            "branch": branch,
+                                            "timestamp": ts,
+                                        }
+            except (json.JSONDecodeError, OSError):
+                pass
+    return plan_map
+
+
+@api_view(["GET"])
+def plans(request):
+    plans_dir = CLAUDE_DIR / "plans"
+    if not plans_dir.is_dir():
+        return Response([])
+
+    plan_map = _build_plan_conversation_map()
+    results = []
+
+    for plan_file in plans_dir.glob("*.md"):
+        plan_id = plan_file.stem
+        try:
+            text = plan_file.read_text()
+        except OSError:
+            continue
+
+        # Extract title from first # line
+        title = plan_id
+        blurb = ""
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+
+        # Extract blurb: first non-empty, non-heading line after title
+        past_title = False
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("# "):
+                past_title = True
+                continue
+            if past_title and line and not line.startswith("#"):
+                blurb = line[:200]
+                break
+
+        entry = {
+            "id": plan_id,
+            "title": title,
+            "blurb": blurb,
+            "file_path": str(plan_file),
+        }
+
+        conv_info = plan_map.get(plan_id)
+        if conv_info:
+            entry["conversation_id"] = conv_info["conversation_id"]
+            entry["project"] = conv_info["cwd"]
+            entry["branch"] = conv_info["branch"]
+            entry["date"] = conv_info["timestamp"]
+        else:
+            entry["conversation_id"] = None
+            entry["project"] = ""
+            entry["branch"] = ""
+            # Fall back to file mtime
+            try:
+                mtime = plan_file.stat().st_mtime
+                entry["date"] = datetime.fromtimestamp(mtime).isoformat()
+            except OSError:
+                entry["date"] = ""
+
+        results.append(entry)
+
+    results.sort(key=lambda x: x.get("date", ""), reverse=True)
+    return Response(results)
+
+
+@api_view(["GET"])
+def plan_detail(request, plan_id):
+    plan_file = CLAUDE_DIR / "plans" / f"{plan_id}.md"
+    if not plan_file.is_file():
+        return Response({"error": "not found"}, status=404)
+
+    try:
+        content = plan_file.read_text()
+    except OSError:
+        return Response({"error": "failed to read plan"}, status=500)
+
+    title = plan_id
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            title = line[2:].strip()
+            break
+
+    plan_map = _build_plan_conversation_map()
+    conv_info = plan_map.get(plan_id)
+
+    result = {
+        "id": plan_id,
+        "title": title,
+        "content": content,
+        "file_path": str(plan_file),
+    }
+
+    if conv_info:
+        result["conversation_id"] = conv_info["conversation_id"]
+        result["cwd"] = conv_info["cwd"]
+        result["branch"] = conv_info["branch"]
+        result["date"] = conv_info["timestamp"]
+    else:
+        result["conversation_id"] = None
+        result["cwd"] = ""
+        result["branch"] = ""
+        result["date"] = ""
+
+    return Response(result)
+
+
+@api_view(["POST"])
+def plan_execute(request, plan_id):
+    plan_file = CLAUDE_DIR / "plans" / f"{plan_id}.md"
+    if not plan_file.is_file():
+        return Response({"error": "not found"}, status=404)
+
+    cwd = request.data.get("cwd", "")
+    if not cwd:
+        plan_map = _build_plan_conversation_map()
+        conv_info = plan_map.get(plan_id)
+        if conv_info:
+            cwd = conv_info["cwd"]
+
+    if not cwd or not Path(cwd).is_dir():
+        cwd = str(Path.home())
+
+    prompt = f"Execute the plan in {plan_file}"
+    return _spawn_terminal([prompt], cwd)
+
+
 def _parse_conversation(jsonl_file, conversation_id, project_name):
     try:
         blurb = ""
