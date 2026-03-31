@@ -171,7 +171,7 @@ details > summary {
 <body>
 
 <div id="sidebar">
-  <h2>Conversations <span id="close-btn" style="float:right;cursor:pointer;display:none;font-size:14px;color:#888" title="Close">&times;</span></h2>
+  <h2>Conversations <span id="close-btn" style="float:right;cursor:pointer;display:none;font-size:14px;color:#888" title="Close">&times;</span><span id="reload-btn" style="float:right;cursor:pointer;display:none;font-size:14px;color:#888;margin-right:8px" title="Reload">&#x21bb;</span></h2>
   <div id="conversation-list"></div>
 </div>
 
@@ -183,6 +183,7 @@ details > summary {
 const listEl = document.getElementById('conversation-list');
 const mainEl = document.getElementById('main');
 const closeBtn = document.getElementById('close-btn');
+const reloadBtn = document.getElementById('reload-btn');
 let activeId = null;
 
 // Load autolink patterns and register as a marked extension
@@ -218,31 +219,43 @@ closeBtn.onclick = function() {
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   mainEl.innerHTML = '<div class="empty">Select a conversation</div>';
   closeBtn.style.display = 'none';
+  reloadBtn.style.display = 'none';
 };
 
-fetch('/api/conversations/')
-  .then(r => r.json())
-  .then(conversations => {
-    conversations.forEach(c => {
-      const div = document.createElement('div');
-      div.className = 'conversation-item';
-      div.dataset.id = c.id;
+reloadBtn.onclick = function() {
+  loadSidebar();
+  if (activeId) loadConversation(activeId, false);
+};
 
-      const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
+function loadSidebar() {
+  fetch('/api/conversations/')
+    .then(r => r.json())
+    .then(conversations => {
+      listEl.innerHTML = '';
+      conversations.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'conversation-item';
+        div.dataset.id = c.id;
+        if (c.id === activeId) div.classList.add('active');
 
-      div.innerHTML =
-        '<div class="project">' + esc(project) + '</div>' +
-        '<div class="date">' + esc(formatDate(c.date)) + '</div>' +
-        '<div class="blurb">' + esc(c.blurb) + '</div>';
+        const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
 
-      div.onclick = () => loadConversation(c.id);
-      listEl.appendChild(div);
+        div.innerHTML =
+          '<div class="project">' + esc(project) + '</div>' +
+          '<div class="date">' + esc(formatDate(c.date)) + '</div>' +
+          '<div class="blurb">' + esc(c.blurb) + '</div>';
+
+        div.onclick = () => loadConversation(c.id);
+        listEl.appendChild(div);
+      });
     });
+}
 
-    // open conversation from URL on initial load
-    const match = location.pathname.match(/^\/conversations\/([^/]+)/);
-    if (match) loadConversation(match[1], false);
-  });
+loadSidebar();
+
+// open conversation from URL on initial load
+const initMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
+if (initMatch) loadConversation(initMatch[1], false);
 
 window.addEventListener('popstate', function(e) {
   const match = location.pathname.match(/^\/conversations\/([^/]+)/);
@@ -251,6 +264,7 @@ window.addEventListener('popstate', function(e) {
   } else {
     activeId = null;
     closeBtn.style.display = 'none';
+    reloadBtn.style.display = 'none';
     document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
     mainEl.innerHTML = '<div class="empty">Select a conversation</div>';
   }
@@ -259,6 +273,7 @@ window.addEventListener('popstate', function(e) {
 function loadConversation(id, pushHistory) {
   activeId = id;
   closeBtn.style.display = 'inline';
+  reloadBtn.style.display = 'inline';
   if (pushHistory !== false) {
     history.pushState({id: id}, '', '/conversations/' + id);
   }
