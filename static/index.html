@@ -342,7 +342,6 @@ let activeId = null;
 let followInterval = null;
 let followConvId = null;
 let renderedMsgCount = 0;
-let followPollCount = 0;
 
 // Make all marked-generated links open in new tab
 marked.use({
@@ -504,7 +503,6 @@ function startFollowing(id, msgCount) {
   stopFollowing();
   followConvId = id;
   renderedMsgCount = msgCount;
-  followPollCount = 0;
   followInterval = setInterval(pollForUpdates, 5000);
 }
 
@@ -513,7 +511,6 @@ function stopFollowing() {
   followInterval = null;
   followConvId = null;
   renderedMsgCount = 0;
-  followPollCount = 0;
 }
 
 function pollForUpdates() {
@@ -522,8 +519,7 @@ function pollForUpdates() {
     stopFollowing();
     return;
   }
-  followPollCount++;
-  if (followPollCount % 5 === 0) loadSidebar();
+  if (Date.now() - lastSidebarLoad > 20000) loadSidebar();
 
   fetch('/api/conversations/' + followConvId + '/')
     .then(r => r.json())
@@ -561,7 +557,10 @@ function closeConversation() {
   showHomeScreen();
 }
 
+let lastSidebarLoad = 0;
+
 function loadSidebar() {
+  lastSidebarLoad = Date.now();
   fetch('/api/conversations/')
     .then(r => r.json())
     .then(conversations => {
@@ -594,6 +593,10 @@ function loadSidebar() {
 }
 
 loadSidebar();
+
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && Date.now() - lastSidebarLoad > 20000) loadSidebar();
+});
 
 // open conversation from URL on initial load, or show home screen
 const initMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
