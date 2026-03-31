@@ -165,6 +165,15 @@ details > summary {
   cursor: pointer;
   user-select: none;
 }
+
+.expand-all {
+  cursor: pointer;
+  color: #aaa;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.expand-all:hover { color: #555; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -368,7 +377,7 @@ function renderBlock(block) {
     return '<div class="block text">' + renderMarkdown(block.text) + '</div>';
   }
   if (block.type === 'thinking') {
-    return '<details class="block thinking"><summary>Thinking...</summary>' + renderMarkdown(block.text) + '</details>';
+    return '<details class="block thinking"><summary>Thinking... <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' + renderMarkdown(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
     return '<div class="block tool_use">' +
@@ -378,7 +387,7 @@ function renderBlock(block) {
   }
   if (block.type === 'tool_result') {
     return '<details class="block tool_result">' +
-      '<summary class="tool-name">' + esc(block.name || 'Result') + ' output</summary>' +
+      '<summary class="tool-name">' + esc(block.name || 'Result') + ' output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
       '<div class="tool-output">' + esc(block.output) + '</div>' +
       '</details>';
   }
@@ -391,6 +400,19 @@ function formatDate(iso) {
     return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   } catch(e) { return iso; }
 }
+
+mainEl.addEventListener('click', function(e) {
+  if (!e.target.classList.contains('expand-all')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const clicked = e.target.closest('details');
+  if (!clicked) return;
+
+  const willOpen = !clicked.open;
+  mainEl.querySelectorAll('details').forEach(d => { d.open = willOpen; });
+
+  e.target.closest('summary').scrollIntoView({ block: 'nearest' });
+});
 
 function esc(s) {
   const d = document.createElement('div');
