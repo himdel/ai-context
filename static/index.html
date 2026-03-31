@@ -84,11 +84,26 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 }
 
 .block.text {
-  white-space: pre-wrap;
   font-size: 14px;
   line-height: 1.5;
   color: #222;
 }
+
+.block.text p { margin: 0.5em 0; }
+.block.text p:first-child { margin-top: 0; }
+.block.text p:last-child { margin-bottom: 0; }
+.block.text pre { background: #f4f4f4; padding: 8px 12px; border-radius: 4px; overflow-x: auto; }
+.block.text code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+.block.text pre code { background: none; padding: 0; }
+.block.text ul, .block.text ol { margin: 0.5em 0; padding-left: 1.5em; }
+.block.text h1, .block.text h2, .block.text h3 { margin: 0.75em 0 0.25em; }
+.block.text h1 { font-size: 1.3em; }
+.block.text h2 { font-size: 1.15em; }
+.block.text h3 { font-size: 1em; }
+.block.text blockquote { border-left: 3px solid #ddd; padding-left: 12px; color: #666; margin: 0.5em 0; }
+.block.text table { border-collapse: collapse; margin: 0.5em 0; }
+.block.text th, .block.text td { border: 1px solid #ddd; padding: 4px 8px; }
+.block.text th { background: #f4f4f4; }
 
 .block.thinking {
   white-space: pre-wrap;
@@ -151,6 +166,7 @@ details > summary {
   user-select: none;
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
@@ -246,7 +262,7 @@ function loadConversation(id, pushHistory) {
 
 function renderBlock(block) {
   if (block.type === 'text') {
-    return '<div class="block text">' + esc(block.text) + '</div>';
+    return '<div class="block text">' + marked.parse(block.text) + '</div>';
   }
   if (block.type === 'thinking') {
     return '<details class="block thinking"><summary>Thinking...</summary>' + esc(block.text) + '</details>';
