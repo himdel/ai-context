@@ -325,10 +325,15 @@ function setGithubAutolink(repo) {
 
 function linkifyGithub(html) {
   if (!currentGithubRepo) return html;
-  return html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
+  html = html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
     var url = 'https://github.com/' + currentGithubRepo + '/pull/' + id;
     return before + '<a href="' + esc(url) + '">#' + id + '</a>';
   });
+  html = html.replace(/<code>([0-9a-f]{7})<\/code>/g, function(match, sha) {
+    var url = 'https://github.com/' + currentGithubRepo + '/commit/' + sha;
+    return '<code><a href="' + esc(url) + '">' + sha + '</a></code>';
+  });
+  return html;
 }
 
 function renderMarkdown(text) {
