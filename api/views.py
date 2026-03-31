@@ -1,4 +1,6 @@
 import json
+import re
+import subprocess
 from pathlib import Path
 
 from django.conf import settings
@@ -7,6 +9,7 @@ from rest_framework.response import Response
 
 
 CLAUDE_DIR = Path.home() / ".claude"
+_github_repo_cache = {}
 
 
 @api_view(["GET"])
@@ -22,6 +25,35 @@ def autolinks(request):
             for prefix, url in getattr(settings, "AUTOLINKS", [])
         ]
     )
+
+
+@api_view(["GET"])
+def github_repo(request):
+    path = request.query_params.get("path", "")
+    if not path:
+        return Response({"repo": None})
+    if path in _github_repo_cache:
+        return Response({"repo": _github_repo_cache[path]})
+
+    repo = None
+    for remote in ("upstream", "origin"):
+        try:
+            url = subprocess.check_output(
+                ["git", "-C", path, "remote", "get-url", remote],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            m = re.match(
+                r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url
+            )
+            if m:
+                repo = m.group(1)
+                break
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+
+    _github_repo_cache[path] = repo
+    return Response({"repo": repo})
 
 
 @api_view(["GET"])
@@ -56,11 +88,14 @@ def conversation_detail(request, conversation_id):
         return Response({"error": "not found"}, status=404)
 
     messages = []
+    cwd = None
     tool_use_ids = {}  # id -> name, for labeling tool_results
     try:
         with open(jsonl_file) as f:
             for line in f:
                 data = json.loads(line)
+                if not cwd:
+                    cwd = data.get("cwd", "")
                 msg = data.get("message", {})
                 role = msg.get("role")
                 if role not in ("user", "assistant"):
@@ -123,7 +158,7 @@ def conversation_detail(request, conversation_id):
     except (json.JSONDecodeError, OSError):
         return Response({"error": "failed to read conversation"}, status=500)
 
-    return Response({"id": conversation_id, "messages": messages})
+    return Response({"id": conversation_id, "cwd": cwd, "messages": messages})
 
 
 def _find_conversation(conversation_id):

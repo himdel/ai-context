@@ -269,28 +269,61 @@ function loadConversation(id, pushHistory) {
     .then(r => r.json())
     .then(data => {
       if (activeId !== id) return;
-      mainEl.innerHTML = '';
-      data.messages.forEach(m => {
-        const div = document.createElement('div');
-        div.className = 'message ' + m.role;
-        div.innerHTML = '<div class="role">' + esc(m.role) + '</div>';
+      const render = () => {
+        mainEl.innerHTML = '';
+        data.messages.forEach(m => {
+          const div = document.createElement('div');
+          div.className = 'message ' + m.role;
+          div.innerHTML = '<div class="role">' + esc(m.role) + '</div>';
 
-        m.content.forEach(block => {
-          div.innerHTML += renderBlock(block);
+          m.content.forEach(block => {
+            div.innerHTML += renderBlock(block);
+          });
+
+          mainEl.appendChild(div);
         });
+        mainEl.scrollTop = 0;
+      };
 
-        mainEl.appendChild(div);
-      });
-      mainEl.scrollTop = 0;
+      if (data.cwd) {
+        fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd))
+          .then(r => r.json())
+          .then(gh => {
+            setGithubAutolink(gh.repo);
+            render();
+          })
+          .catch(() => { setGithubAutolink(null); render(); });
+      } else {
+        setGithubAutolink(null);
+        render();
+      }
     });
+}
+
+let currentGithubRepo = null;
+
+function setGithubAutolink(repo) {
+  currentGithubRepo = repo;
+}
+
+function linkifyGithub(html) {
+  if (!currentGithubRepo) return html;
+  return html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
+    var url = 'https://github.com/' + currentGithubRepo + '/pull/' + id;
+    return before + '<a href="' + esc(url) + '">#' + id + '</a>';
+  });
+}
+
+function renderMarkdown(text) {
+  return linkifyGithub(marked.parse(text));
 }
 
 function renderBlock(block) {
   if (block.type === 'text') {
-    return '<div class="block text">' + marked.parse(block.text) + '</div>';
+    return '<div class="block text">' + renderMarkdown(block.text) + '</div>';
   }
   if (block.type === 'thinking') {
-    return '<details class="block thinking"><summary>Thinking...</summary>' + marked.parse(block.text) + '</details>';
+    return '<details class="block thinking"><summary>Thinking...</summary>' + renderMarkdown(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
     const input = JSON.stringify(block.input, null, 2);
