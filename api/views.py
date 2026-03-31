@@ -59,20 +59,57 @@ def _parse_github_remote(path, remote):
     return None
 
 
+def _find_pr_for_branch(repo, branch):
+    if not repo or not branch or branch in ("main", "master"):
+        return None
+    try:
+        out = subprocess.check_output(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--head",
+                branch,
+                "--json",
+                "number,url,state",
+                "--limit",
+                "1",
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        prs = json.loads(out)
+        if prs:
+            return prs[0]
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+        pass
+    return None
+
+
 @api_view(["GET"])
 def github_repo(request):
     path = request.query_params.get("path", "")
+    branch = request.query_params.get("branch", "")
     if not path:
-        return Response({"upstream": None, "origin": None})
-    if path in _github_repo_cache:
-        return Response(_github_repo_cache[path])
+        return Response({"upstream": None, "origin": None, "pr": None})
+
+    cache_key = f"{path}:{branch}"
+    if cache_key in _github_repo_cache:
+        return Response(_github_repo_cache[cache_key])
+
+    upstream = _parse_github_remote(path, "upstream")
+    origin = _parse_github_remote(path, "origin")
+    pr = _find_pr_for_branch(upstream or origin, branch)
 
     result = {
-        "upstream": _parse_github_remote(path, "upstream"),
-        "origin": _parse_github_remote(path, "origin"),
+        "upstream": upstream,
+        "origin": origin,
+        "pr": pr,
     }
 
-    _github_repo_cache[path] = result
+    _github_repo_cache[cache_key] = result
     return Response(result)
 
 

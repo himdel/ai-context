@@ -365,6 +365,9 @@ function loadConversation(id, pushHistory) {
             parts.push('<span>branch: ' + esc(data.branch) + '</span>');
           }
         }
+        if (currentPR) {
+          parts.push('<span>PR: <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">#' + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
+        }
         if (data.message_count) parts.push('<span>' + data.message_count + ' messages</span>');
         var duration = formatDuration(data.first_timestamp, data.last_timestamp);
         if (duration) parts.push('<span>' + esc(duration) + '</span>');
@@ -393,7 +396,7 @@ function loadConversation(id, pushHistory) {
       };
 
       if (data.cwd) {
-        fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd))
+        fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd) + '&branch=' + encodeURIComponent(data.branch || ''))
           .then(r => r.json())
           .then(gh => {
             setGithubAutolink(gh);
@@ -409,10 +412,12 @@ function loadConversation(id, pushHistory) {
 
 let currentGithubRepo = null;
 let currentGithubOrigin = null;
+let currentPR = null;
 
 function setGithubAutolink(gh) {
   currentGithubRepo = (gh && gh.upstream) || (gh && gh.origin);
   currentGithubOrigin = (gh && gh.origin) || (gh && gh.upstream);
+  currentPR = gh && gh.pr;
 }
 
 function linkifyGithub(html) {
