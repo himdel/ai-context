@@ -42,19 +42,17 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 APPEND_SLASH = True
 
-# Autolink patterns: list of (prefix, separator, url_template) tuples.
+# Autolink patterns: list of (prefix, url_template) tuples.
 # "AAP-123" in text becomes a link to url_template with {id} replaced.
 AUTOLINKS = [
-    ("AAP", "-", "https://redhat.atlassian.net/browse/AAP-{id}"),
-    ("ANSTRAT", "-", "https://redhat.atlassian.net/browse/ANSTRAT-{id}"),
+    ("AAP-", "https://redhat.atlassian.net/browse/AAP-{id}"),
+    ("ANSTRAT-", "https://redhat.atlassian.net/browse/ANSTRAT-{id}"),
     (
-        "ansible/metrics-utility",
-        "#",
+        "ansible/metrics-utility#",
         "https://github.com/ansible/metrics-utility/pull/{id}",
     ),
     (
-        "ansible/metrics-service",
-        "#",
+        "ansible/metrics-service#",
         "https://github.com/ansible/metrics-service/pull/{id}",
     ),
 ]

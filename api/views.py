@@ -21,8 +21,8 @@ def index(request):
 def autolinks(request):
     return Response(
         [
-            {"prefix": prefix, "separator": sep, "url": url}
-            for prefix, sep, url in getattr(settings, "AUTOLINKS", [])
+            {"prefix": prefix, "url": url}
+            for prefix, url in getattr(settings, "AUTOLINKS", [])
         ]
     )
 
