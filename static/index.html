@@ -240,19 +240,93 @@ details > summary {
 }
 
 .expand-all:hover { color: #555; }
+
+.new-session-form { max-width: 500px; }
+.new-session-form textarea {
+  width: 100%;
+  min-height: 100px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+.new-session-form input[type="text"] {
+  width: 100%;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.new-session-form button {
+  padding: 6px 16px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f8f8f8;
+  cursor: pointer;
+}
+.new-session-form button:hover { background: #e8e8e8; }
+.new-session-form .form-status {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 13px;
+  color: #888;
+}
+.new-session-form .cwd-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.new-session-form .cwd-buttons button {
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #555;
+}
+
+.home-screen {
+  max-width: 500px;
+  margin: 0 auto;
+  padding-top: 15vh;
+}
+.home-screen h3 { margin-bottom: 16px; color: #555; }
+.home-screen .home-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.home-screen .home-buttons button {
+  padding: 10px 16px;
+  font-size: 14px;
+  text-align: left;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f8f8f8;
+  cursor: pointer;
+  color: #333;
+}
+.home-screen .home-buttons button:hover { background: #e8e8e8; }
+.home-screen .home-buttons button .home-btn-path {
+  font-size: 11px;
+  color: #888;
+  display: block;
+  margin-top: 2px;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
 <div id="sidebar">
-  <h2>Conversations <span id="reload-list-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload list">&#x21bb;</span></h2>
+  <h2>Conversations <span id="reload-list-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload list">&#x21bb;</span><span id="new-session-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New session">+</span></h2>
   <div id="conversation-list"></div>
 </div>
 
-<div id="main" tabindex="-1" style="outline:none">
-  <div class="empty">Select a conversation</div>
-</div>
+<div id="main" tabindex="-1" style="outline:none"></div>
 
 <script>
 const listEl = document.getElementById('conversation-list');
@@ -300,11 +374,123 @@ reloadListBtn.onclick = function() {
   loadSidebar();
 };
 
+document.getElementById('new-session-btn').onclick = function() {
+  activeId = null;
+  history.pushState(null, '', '/');
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  mainEl.innerHTML =
+    '<div class="new-session-form">' +
+      '<h3 style="margin-bottom:12px">New session</h3>' +
+      '<textarea id="ns-prompt" placeholder="Enter your prompt..."></textarea>' +
+      '<input type="text" id="ns-cwd" placeholder="Working directory (optional)">' +
+      '<div class="cwd-buttons" id="ns-cwds"></div>' +
+      '<button id="ns-launch">Launch</button>' +
+      '<span class="form-status" id="ns-status"></span>' +
+    '</div>';
+  document.getElementById('ns-prompt').focus();
+
+  // Populate recent cwds from conversations
+  fetch('/api/conversations/')
+    .then(r => r.json())
+    .then(conversations => {
+      var seen = {};
+      var cwds = [];
+      conversations.forEach(c => {
+        var p = c.project;
+        if (p && !seen[p]) {
+          seen[p] = true;
+          cwds.push(p);
+        }
+      });
+      var container = document.getElementById('ns-cwds');
+      if (!container) return;
+      cwds.forEach(cwd => {
+        var btn = document.createElement('button');
+        btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
+        btn.title = cwd;
+        btn.onclick = function() { document.getElementById('ns-cwd').value = cwd; };
+        container.appendChild(btn);
+      });
+    });
+
+  document.getElementById('ns-launch').onclick = function() {
+    var prompt = document.getElementById('ns-prompt').value.trim();
+    document.getElementById('ns-status').textContent = 'Launching...';
+    fetch('/api/sessions/new/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: prompt, cwd: document.getElementById('ns-cwd').value.trim()})
+    })
+    .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+    .then(({ok, data}) => {
+      var statusEl = document.getElementById('ns-status');
+      if (!ok) { statusEl.textContent = data.error || 'Error'; return; }
+      statusEl.textContent = 'Launched, waiting for session...';
+      // Poll for the new conversation to appear
+      var knownIds = new Set();
+      document.querySelectorAll('.conversation-item').forEach(el => knownIds.add(el.dataset.id));
+      var attempts = 0;
+      var poll = setInterval(function() {
+        attempts++;
+        if (attempts > 30) { clearInterval(poll); statusEl.textContent = 'Launched (session not yet visible)'; loadSidebar(); return; }
+        fetch('/api/conversations/')
+          .then(r => r.json())
+          .then(conversations => {
+            var newConv = conversations.find(c => !knownIds.has(c.id));
+            if (newConv) {
+              clearInterval(poll);
+              loadSidebar();
+              loadConversation(newConv.id);
+            }
+          });
+      }, 1000);
+    });
+  };
+};
+
+function showHomeScreen() {
+  mainEl.innerHTML = '<div class="home-screen"><h3>New session</h3><div class="home-buttons" id="home-btns"></div></div>';
+  fetch('/api/conversations/')
+    .then(r => r.json())
+    .then(conversations => {
+      var seen = {};
+      var cwds = [];
+      conversations.forEach(c => {
+        if (c.project && !seen[c.project]) {
+          seen[c.project] = true;
+          cwds.push(c.project);
+        }
+      });
+      var container = document.getElementById('home-btns');
+      if (!container) return;
+      cwds.forEach(cwd => {
+        var btn = document.createElement('button');
+        var short = cwd.replace(/^\/home\/[^/]+\//, '~/');
+        var name = short.split('/').pop();
+        btn.innerHTML = esc(name) + '<span class="home-btn-path">' + esc(short) + '</span>';
+        btn.title = cwd;
+        btn.onclick = function() {
+          btn.textContent = 'Launching...';
+          fetch('/api/sessions/new/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cwd: cwd})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(({ok, data}) => {
+            btn.textContent = ok ? 'Launched' : (data.error || 'Error');
+          });
+        };
+        container.appendChild(btn);
+      });
+    });
+}
+
 function closeConversation() {
   activeId = null;
   history.pushState(null, '', '/');
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  mainEl.innerHTML = '<div class="empty">Select a conversation</div>';
+  showHomeScreen();
 }
 
 function loadSidebar() {
@@ -341,9 +527,10 @@ function loadSidebar() {
 
 loadSidebar();
 
-// open conversation from URL on initial load
+// open conversation from URL on initial load, or show home screen
 const initMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
 if (initMatch) loadConversation(initMatch[1], false);
+else showHomeScreen();
 
 window.addEventListener('popstate', function(e) {
   const match = location.pathname.match(/^\/conversations\/([^/]+)/);
@@ -397,8 +584,36 @@ function loadConversation(id, pushHistory) {
         if (data.model) parts.push('<span>' + esc(data.model) + '</span>');
         if (data.version) parts.push('<span>claude-code ' + esc(data.version) + '</span>');
 
-        parts.push('<span class="header-btns"><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>');
+        parts.push('<span class="header-btns"><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>');
         header.innerHTML = parts.join('');
+        header.querySelector('.new-here').onclick = function() {
+          var btn = this;
+          btn.textContent = '...';
+          fetch('/api/sessions/new/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cwd: data.cwd})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(({ok}) => {
+            btn.textContent = ok ? '\u2713' : '\u2717';
+            setTimeout(() => { btn.textContent = '+'; }, 2000);
+          });
+        };
+        header.querySelector('.resume-conv').onclick = function() {
+          var btn = this;
+          btn.textContent = '...';
+          fetch('/api/sessions/resume/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({conversation_id: id, cwd: data.cwd})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(({ok, data: result}) => {
+            btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
+            setTimeout(() => { btn.innerHTML = '&#x25b6;'; }, 2000);
+          });
+        };
         header.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
         header.querySelector('.close-conv').onclick = closeConversation;
         mainEl.appendChild(header);

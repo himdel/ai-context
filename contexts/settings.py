@@ -58,3 +58,8 @@ AUTOLINKS = [
 ]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Terminal emulator command for launching Claude Code sessions from the UI.
+# The prompt or --resume args are appended to this list.
+TERMINAL_CMD = ["rxvt-unicode", "-e"]
+TERMINAL_DISPLAY = ":0"

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from datetime import datetime
@@ -406,6 +407,62 @@ def _find_conversation(conversation_id):
         if candidate.is_file():
             return candidate
     return None
+
+
+def _spawn_terminal(args, cwd):
+    """Spawn a terminal running claude with the given args and cwd."""
+    cmd = settings.TERMINAL_CMD + ["claude"] + args
+    env = {**os.environ, "DISPLAY": settings.TERMINAL_DISPLAY}
+    try:
+        proc = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+        return Response({"status": "ok", "pid": proc.pid})
+    except FileNotFoundError:
+        return Response(
+            {"error": "terminal emulator not found, check TERMINAL_CMD in settings"},
+            status=500,
+        )
+
+
+@api_view(["POST"])
+def session_new(request):
+    prompt = request.data.get("prompt", "").strip()
+
+    cwd = request.data.get("cwd", "")
+    if cwd:
+        if not Path(cwd).is_dir():
+            return Response({"error": "cwd is not a valid directory"}, status=400)
+    else:
+        cwd = str(Path.home())
+
+    return _spawn_terminal([prompt] if prompt else [], cwd)
+
+
+@api_view(["POST"])
+def session_resume(request):
+    conversation_id = request.data.get("conversation_id", "").strip()
+    if not conversation_id:
+        return Response({"error": "conversation_id is required"}, status=400)
+
+    if conversation_id in _active_session_ids():
+        return Response({"error": "session is already active"}, status=409)
+
+    jsonl_file = _find_conversation(conversation_id)
+    if not jsonl_file:
+        return Response({"error": "conversation not found"}, status=404)
+
+    cwd = request.data.get("cwd", "")
+    if not cwd:
+        try:
+            with open(jsonl_file) as f:
+                first_line = json.loads(f.readline())
+                cwd = first_line.get("cwd", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if not cwd or not Path(cwd).is_dir():
+        cwd = str(Path.home())
+
+    return _spawn_terminal(["--resume", conversation_id], cwd)
 
 
 def _parse_conversation(jsonl_file, conversation_id, project_name):
