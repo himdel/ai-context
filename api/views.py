@@ -740,7 +740,6 @@ def _discover_repos():
                         cwd = data.get("cwd", "")
                         if cwd:
                             repos.add(cwd)
-                break  # only need one JSONL per project dir
             except (json.JSONDecodeError, OSError):
                 continue
     return sorted(repos)
