@@ -335,6 +335,28 @@ function renderMarkdown(text) {
   return linkifyGithub(marked.parse(text));
 }
 
+function renderToolInput(name, input) {
+  var main = null;
+  var skip = [];
+  if (name === 'Read') {
+    skip = ['file_path', 'offset', 'limit'];
+    main = esc(input.file_path || '') +
+      (input.offset ? ' :' + input.offset : '') +
+      (input.limit ? ' (' + input.limit + ' lines)' : '');
+  }
+  if (name === 'Bash') {
+    skip = ['command', 'description'];
+    const desc = input.description ? '<div style="color:#888;font-size:11px">' + esc(input.description) + '</div>' : '';
+    main = desc + '<code>' + esc(input.command || '') + '</code>';
+  }
+  if (main === null) return esc(JSON.stringify(input, null, 2));
+  var extra = {};
+  var hasExtra = false;
+  for (var k in input) { if (skip.indexOf(k) === -1) { extra[k] = input[k]; hasExtra = true; } }
+  if (hasExtra) main += '\n' + esc(JSON.stringify(extra, null, 2));
+  return main;
+}
+
 function renderBlock(block) {
   if (block.type === 'text') {
     return '<div class="block text">' + renderMarkdown(block.text) + '</div>';
@@ -343,10 +365,9 @@ function renderBlock(block) {
     return '<details class="block thinking"><summary>Thinking...</summary>' + renderMarkdown(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
-    const input = JSON.stringify(block.input, null, 2);
     return '<div class="block tool_use">' +
       '<div class="tool-name">' + esc(block.name) + '</div>' +
-      '<div class="tool-input">' + esc(input) + '</div>' +
+      '<div class="tool-input">' + renderToolInput(block.name, block.input) + '</div>' +
       '</div>';
   }
   if (block.type === 'tool_result') {
