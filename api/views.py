@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -11,6 +12,16 @@ CLAUDE_DIR = Path.home() / ".claude"
 @api_view(["GET"])
 def index(request):
     return Response({"status": "ok"})
+
+
+@api_view(["GET"])
+def autolinks(request):
+    return Response(
+        [
+            {"prefix": prefix, "url": url}
+            for prefix, url in getattr(settings, "AUTOLINKS", [])
+        ]
+    )
 
 
 @api_view(["GET"])
@@ -76,7 +87,9 @@ def conversation_detail(request, conversation_id):
                         if btype == "text" and block.get("text", "").strip():
                             blocks.append({"type": "text", "text": block["text"]})
                         elif btype == "thinking" and block.get("thinking", "").strip():
-                            blocks.append({"type": "thinking", "text": block["thinking"]})
+                            blocks.append(
+                                {"type": "thinking", "text": block["thinking"]}
+                            )
                         elif btype == "tool_use":
                             tool_use_ids[block.get("id")] = block.get("name", "")
                             blocks.append(

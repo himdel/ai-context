@@ -42,4 +42,10 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 APPEND_SLASH = True
 
+# Autolink patterns: list of (prefix, url_template) tuples.
+# "AAP-123" in text becomes a link to url_template with {id} replaced.
+AUTOLINKS = [
+    ("AAP", "https://redhat.atlassian.net/browse/AAP-{id}"),
+]
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

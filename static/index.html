@@ -185,6 +185,31 @@ const mainEl = document.getElementById('main');
 const closeBtn = document.getElementById('close-btn');
 let activeId = null;
 
+// Load autolink patterns and register as a marked extension
+fetch('/api/autolinks/')
+  .then(r => r.json())
+  .then(autolinks => {
+    if (!autolinks.length) return;
+    const extensions = autolinks.map(al => {
+      const name = 'autolink-' + al.prefix;
+      return {
+        name: name,
+        level: 'inline',
+        start: function(src) { return src.match(new RegExp(al.prefix + '-'))?.index; },
+        tokenizer: function(src) {
+          const match = src.match(new RegExp('^(' + al.prefix + '-(\\d+))'));
+          if (match) {
+            return { type: name, raw: match[0], text: match[1], id: match[2], url: al.url.replace('{id}', match[2]) };
+          }
+        },
+        renderer: function(token) {
+          return '<a href="' + esc(token.url) + '">' + esc(token.text) + '</a>';
+        },
+      };
+    });
+    marked.use({ extensions: extensions });
+  });
+
 closeBtn.onclick = function() {
   activeId = null;
   history.pushState(null, '', '/');
