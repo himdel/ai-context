@@ -723,7 +723,7 @@ def _is_valid_skill_path(path):
 
 
 def _discover_repos():
-    """Scan ~/.claude/projects/*/ to find repo paths from JSONL files."""
+    """Return deduplicated repo paths from all known conversations."""
     projects_dir = CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return []
@@ -732,16 +732,9 @@ def _discover_repos():
         if not project_dir.is_dir():
             continue
         for jsonl_file in project_dir.glob("*.jsonl"):
-            try:
-                with open(jsonl_file) as f:
-                    for line in f:
-                        data = json.loads(line)
-                        cwd = data.get("cwd", "")
-                        if cwd:
-                            repos.add(cwd)
-                            break
-            except (json.JSONDecodeError, OSError):
-                continue
+            entry = _parse_conversation(jsonl_file, jsonl_file.stem, project_dir.name)
+            if entry and entry.get("project"):
+                repos.add(entry["project"])
     return sorted(repos)
 
 
