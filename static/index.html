@@ -823,9 +823,17 @@ function loadSidebar() {
 
 loadSidebar();
 
+function handleReturnToPage() {
+  if (Date.now() - lastSidebarLoad > 20000) {
+    loadSidebar();
+    if (!activeId) showHomeScreen();
+  }
+}
+
 document.addEventListener('visibilitychange', function() {
-  if (!document.hidden && Date.now() - lastSidebarLoad > 20000) loadSidebar();
+  if (!document.hidden) handleReturnToPage();
 });
+window.addEventListener('focus', handleReturnToPage);
 
 // open conversation from URL on initial load, or show home screen
 const initMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
