@@ -426,6 +426,26 @@ def _spawn_terminal(args, cwd):
 
 
 @api_view(["POST"])
+def terminal_run(request):
+    """Spawn a terminal running an arbitrary command in a given cwd."""
+    cmd = request.data.get("cmd", [])
+    if not cmd or not isinstance(cmd, list):
+        return Response({"error": "cmd must be a non-empty list"}, status=400)
+
+    cwd = request.data.get("cwd", "")
+    if not cwd or not Path(cwd).is_dir():
+        return Response({"error": "cwd is not a valid directory"}, status=400)
+
+    full_cmd = settings.TERMINAL_CMD + cmd
+    env = {**os.environ, "DISPLAY": settings.TERMINAL_DISPLAY}
+    try:
+        proc = subprocess.Popen(full_cmd, cwd=cwd, env=env, start_new_session=True)
+        return Response({"status": "ok", "pid": proc.pid})
+    except FileNotFoundError:
+        return Response({"error": "terminal emulator not found"}, status=500)
+
+
+@api_view(["POST"])
 def session_new(request):
     prompt = request.data.get("prompt", "").strip()
 

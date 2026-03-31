@@ -89,6 +89,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .message.new-msg { animation: fade-highlight 10s ease-out; }
 @keyframes fade-highlight { 0% { background: #e8f5e9; } 100% { background: transparent; } }
+.exticon { margin-left: 2px; }
 
 .conversation-item .blurb {
   font-size: 13px;
@@ -625,6 +626,7 @@ function loadConversation(id, pushHistory) {
       if (activeId !== id) return;
       const render = () => {
         mainEl.innerHTML = '';
+        currentCwd = data.cwd || null;
 
         const header = document.createElement('div');
         header.className = 'conversation-header';
@@ -727,6 +729,7 @@ function loadConversation(id, pushHistory) {
 let currentGithubRepo = null;
 let currentGithubOrigin = null;
 let currentPR = null;
+let currentCwd = null;
 
 function setGithubAutolink(gh) {
   currentGithubRepo = (gh && gh.upstream) || (gh && gh.origin);
@@ -735,17 +738,33 @@ function setGithubAutolink(gh) {
 }
 
 function linkifyGithub(html) {
-  if (!currentGithubRepo) return html;
-  html = html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
-    var url = 'https://github.com/' + currentGithubRepo + '/pull/' + id;
-    return before + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">#' + id + '</a>';
-  });
+  if (currentGithubRepo) {
+    html = html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
+      var url = 'https://github.com/' + currentGithubRepo + '/pull/' + id;
+      return before + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">#' + id + '</a>';
+    });
+  }
   html = html.replace(/<code>([0-9a-f]{7})<\/code>/g, function(match, sha) {
-    var url = 'https://github.com/' + currentGithubRepo + '/commit/' + sha;
-    return '<code><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + sha + '</a></code>';
+    var link = '<code><a href="#" class="git-show-link" data-sha="' + sha + '">' + sha + '</a></code>';
+    if (currentGithubRepo) {
+      var url = 'https://github.com/' + currentGithubRepo + '/commit/' + sha;
+      link += '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="exticon" title="View on GitHub">&#x2197;</a>';
+    }
+    return link;
   });
   return html;
 }
+
+document.addEventListener('click', function(e) {
+  var link = e.target.closest('.git-show-link');
+  if (!link || !currentCwd) return;
+  e.preventDefault();
+  fetch('/api/terminal/run/', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cmd: ['git', 'show', link.dataset.sha], cwd: currentCwd})
+  });
+});
 
 function renderMarkdown(text) {
   if (!text) return '';
