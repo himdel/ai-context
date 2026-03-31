@@ -175,7 +175,7 @@ details > summary {
   <div id="conversation-list"></div>
 </div>
 
-<div id="main">
+<div id="main" tabindex="-1" style="outline:none">
   <div class="empty">Select a conversation</div>
 </div>
 
@@ -300,6 +300,7 @@ function loadConversation(id, pushHistory) {
           mainEl.appendChild(div);
         });
         mainEl.scrollTop = 0;
+        mainEl.focus();
       };
 
       if (data.cwd) {
