@@ -1,0 +1,10 @@
+[project]
+name = "contexts"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.0.3",
+    "djangorestframework>=3.17.1",
+    "ruff>=0.15.8",
+]
