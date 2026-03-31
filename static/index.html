@@ -190,14 +190,17 @@ fetch('/api/autolinks/')
   .then(r => r.json())
   .then(autolinks => {
     if (!autolinks.length) return;
+    const reEscape = s => s.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
     const extensions = autolinks.map(al => {
       const name = 'autolink-' + al.prefix;
+      const pre = reEscape(al.prefix);
+      const sep = reEscape(al.separator);
       return {
         name: name,
         level: 'inline',
-        start: function(src) { return src.match(new RegExp(al.prefix + '-'))?.index; },
+        start: function(src) { return src.match(new RegExp(pre + sep))?.index; },
         tokenizer: function(src) {
-          const match = src.match(new RegExp('^(' + al.prefix + '-(\\d+))'));
+          const match = src.match(new RegExp('^(' + pre + sep + '(\\d+))'));
           if (match) {
             return { type: name, raw: match[0], text: match[1], id: match[2], url: al.url.replace('{id}', match[2]) };
           }
