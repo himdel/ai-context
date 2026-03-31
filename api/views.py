@@ -423,10 +423,24 @@ def _find_conversation(conversation_id):
     return None
 
 
+def _clean_env():
+    """Return os.environ without virtualenv pollution, plus DISPLAY."""
+    env = {k: v for k, v in os.environ.items() if k not in ("VIRTUAL_ENV",)}
+    # Strip the venv bin dir from PATH
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv and "PATH" in env:
+        venv_bin = os.path.join(venv, "bin")
+        env["PATH"] = os.pathsep.join(
+            p for p in env["PATH"].split(os.pathsep) if p != venv_bin
+        )
+    env["DISPLAY"] = settings.TERMINAL_DISPLAY
+    return env
+
+
 def _spawn_terminal(args, cwd):
     """Spawn a terminal running claude with the given args and cwd."""
     cmd = settings.TERMINAL_CMD + ["claude"] + args
-    env = {**os.environ, "DISPLAY": settings.TERMINAL_DISPLAY}
+    env = _clean_env()
     try:
         proc = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
         return Response({"status": "ok", "pid": proc.pid})
@@ -449,7 +463,7 @@ def terminal_run(request):
         return Response({"error": "cwd is not a valid directory"}, status=400)
 
     full_cmd = settings.TERMINAL_CMD + cmd
-    env = {**os.environ, "DISPLAY": settings.TERMINAL_DISPLAY}
+    env = _clean_env()
     try:
         proc = subprocess.Popen(full_cmd, cwd=cwd, env=env, start_new_session=True)
         return Response({"status": "ok", "pid": proc.pid})
