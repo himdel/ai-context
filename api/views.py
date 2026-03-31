@@ -140,6 +140,18 @@ def conversations(request):
     for r in results:
         r["active"] = r["id"] in active_ids
 
+    # Filter by repo (matches project/cwd path substring)
+    repo_filter = request.query_params.get("repo", "")
+    if repo_filter:
+        results = [r for r in results if repo_filter in r.get("project", "")]
+
+    # Filter by active status
+    active_filter = request.query_params.get("active", "")
+    if active_filter == "true":
+        results = [r for r in results if r["active"]]
+    elif active_filter == "false":
+        results = [r for r in results if not r["active"]]
+
     results.sort(key=lambda x: x["date"], reverse=True)
     return Response(results)
 

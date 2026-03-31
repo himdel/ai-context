@@ -295,32 +295,88 @@ details > summary {
 }
 
 .home-screen {
-  max-width: 500px;
-  margin: 0 auto;
-  padding-top: 15vh;
+  max-width: 100%;
+  padding-top: 24px;
 }
 .home-screen h3 { margin-bottom: 16px; color: #555; }
-.home-screen .home-buttons {
+.home-columns {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
-.home-screen .home-buttons button {
-  padding: 10px 16px;
-  font-size: 14px;
-  text-align: left;
+.home-column {
+  flex: 1;
+  min-width: 220px;
+  max-width: 320px;
   border: 1px solid #ddd;
   border-radius: 6px;
-  background: #f8f8f8;
-  cursor: pointer;
-  color: #333;
+  background: #fafafa;
+  overflow: hidden;
 }
-.home-screen .home-buttons button:hover { background: #e8e8e8; }
-.home-screen .home-buttons button .home-btn-path {
+.home-column-header {
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #ddd;
+  background: #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.home-column-header .col-path {
   font-size: 11px;
   color: #888;
+  font-weight: normal;
   display: block;
   margin-top: 2px;
+}
+.home-column-header button {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.home-column-header button:hover { background: #e8e8e8; }
+.home-conv-list { padding: 4px 0; }
+.home-conv-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-conv-item:hover { background: #e8e8e8; }
+.home-conv-item .conv-meta {
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.home-conv-item .conv-meta .indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.home-conv-item .conv-meta .indicator.active { background: #16a34a; }
+.home-section-label {
+  font-size: 10px;
+  color: #aaa;
+  text-transform: uppercase;
+  padding: 6px 12px 2px;
+  letter-spacing: 0.5px;
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -458,39 +514,97 @@ document.getElementById('new-session-btn').onclick = function() {
 };
 
 function showHomeScreen() {
-  mainEl.innerHTML = '<div class="home-screen"><h3>New session</h3><div class="home-buttons" id="home-btns"></div></div>';
+  mainEl.innerHTML = '<div class="home-screen"><h3>Sessions</h3><div class="home-columns" id="home-cols"></div></div>';
   fetch('/api/conversations/')
     .then(r => r.json())
     .then(conversations => {
-      var seen = {};
-      var cwds = [];
+      // Group conversations by repo (project/cwd)
+      var repos = {};
+      var repoOrder = [];
       conversations.forEach(c => {
-        if (c.project && !seen[c.project]) {
-          seen[c.project] = true;
-          cwds.push(c.project);
+        if (!c.project) return;
+        if (!repos[c.project]) {
+          repos[c.project] = [];
+          repoOrder.push(c.project);
         }
+        repos[c.project].push(c);
       });
-      var container = document.getElementById('home-btns');
+
+      var container = document.getElementById('home-cols');
       if (!container) return;
-      cwds.forEach(cwd => {
-        var btn = document.createElement('button');
+
+      repoOrder.forEach(cwd => {
+        var convs = repos[cwd];
         var short = cwd.replace(/^\/home\/[^/]+\//, '~/');
         var name = short.split('/').pop();
-        btn.innerHTML = esc(name) + '<span class="home-btn-path">' + esc(short) + '</span>';
-        btn.title = cwd;
-        btn.onclick = function() {
-          btn.textContent = 'Launching...';
+
+        var col = document.createElement('div');
+        col.className = 'home-column';
+
+        // Header with repo name and new button
+        var header = document.createElement('div');
+        header.className = 'home-column-header';
+        var nameDiv = document.createElement('div');
+        nameDiv.innerHTML = esc(name) + '<span class="col-path">' + esc(short) + '</span>';
+        nameDiv.title = cwd;
+        header.appendChild(nameDiv);
+
+        var newBtn = document.createElement('button');
+        newBtn.textContent = '+ New';
+        newBtn.onclick = function() {
+          newBtn.textContent = '...';
           fetch('/api/sessions/new/', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({cwd: cwd})
           })
           .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-          .then(({ok, data}) => {
-            btn.textContent = ok ? 'Launched' : (data.error || 'Error');
+          .then(({ok}) => {
+            newBtn.textContent = ok ? 'Launched' : 'Error';
+            setTimeout(() => { newBtn.textContent = '+ New'; }, 2000);
           });
         };
-        container.appendChild(btn);
+        header.appendChild(newBtn);
+        col.appendChild(header);
+
+        // Split into active and inactive
+        var activeConvs = convs.filter(c => c.active);
+        var inactiveConvs = convs.filter(c => !c.active);
+        var maxInactive = 5;
+
+        var list = document.createElement('div');
+        list.className = 'home-conv-list';
+
+        function addConvItem(c) {
+          var item = document.createElement('div');
+          item.className = 'home-conv-item';
+          var meta = '<div class="conv-meta">' +
+            '<span class="indicator' + (c.active ? ' active' : '') + '"></span>' +
+            '<span>' + esc(formatDate(c.date)) + '</span>' +
+            '</div>';
+          item.innerHTML = meta + '<div>' + esc(c.blurb) + '</div>';
+          item.onclick = function() { loadConversation(c.id); };
+          list.appendChild(item);
+        }
+
+        if (activeConvs.length) {
+          var label = document.createElement('div');
+          label.className = 'home-section-label';
+          label.textContent = 'Active';
+          list.appendChild(label);
+          activeConvs.forEach(addConvItem);
+        }
+
+        if (inactiveConvs.length) {
+          var label = document.createElement('div');
+          label.className = 'home-section-label';
+          label.textContent = 'Recent';
+          list.appendChild(label);
+          inactiveConvs.slice(0, maxInactive).forEach(addConvItem);
+        }
+
+        col.appendChild(list);
+        container.appendChild(col);
       });
     });
 }
