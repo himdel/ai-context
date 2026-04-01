@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import os
 import re
 import subprocess
@@ -10,6 +11,7 @@ from django.conf import settings
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+logger = logging.getLogger(__name__)
 
 CLAUDE_DIR = Path.home() / ".claude"
 _github_repo_cache = {}
@@ -48,45 +50,55 @@ def autolinks(request):
 
 
 def _parse_github_remote(path, remote):
+    cmd = ["git", "-C", path, "remote", "get-url", remote]
     try:
         url = subprocess.check_output(
-            ["git", "-C", path, "remote", "get-url", remote],
+            cmd,
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
+        logger.info("ran %s, exit 0", cmd)
         m = re.match(r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url)
         if m:
             return m.group(1)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
+    except subprocess.CalledProcessError as e:
+        logger.info("ran %s, exit %d", cmd, e.returncode)
+    except FileNotFoundError:
+        logger.info("ran %s, command not found", cmd)
     return None
 
 
 def _find_pr_for_branch(repo, branch):
     if not repo or not branch or branch in ("main", "master"):
         return None
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--head",
+        branch,
+        "--json",
+        "number,url,state",
+        "--limit",
+        "1",
+    ]
     try:
         out = subprocess.check_output(
-            [
-                "gh",
-                "pr",
-                "list",
-                "--repo",
-                repo,
-                "--head",
-                branch,
-                "--json",
-                "number,url,state",
-                "--limit",
-                "1",
-            ],
+            cmd,
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
+        logger.info("ran %s, exit 0", cmd)
         prs = json.loads(out)
         if prs:
             return prs[0]
-    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+    except subprocess.CalledProcessError as e:
+        logger.info("ran %s, exit %d", cmd, e.returncode)
+    except FileNotFoundError:
+        logger.info("ran %s, command not found", cmd)
+    except json.JSONDecodeError:
         pass
     return None
 
@@ -439,18 +451,16 @@ def _clean_env():
     return env
 
 
-def _spawn_terminal(args, cwd):
-    """Spawn a terminal running claude with the given args and cwd."""
-    cmd = settings.TERMINAL_CMD + ["claude"] + args
+def _spawn_in_terminal(cmd, cwd):
+    """Spawn a command in a terminal with a clean env."""
+    full_cmd = settings.TERMINAL_CMD + cmd
     env = _clean_env()
     try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, start_new_session=True)
+        proc = subprocess.Popen(full_cmd, cwd=cwd, env=env, start_new_session=True)
+        logger.info("spawned %s, pid %d", full_cmd, proc.pid)
         return Response({"status": "ok", "pid": proc.pid})
     except FileNotFoundError:
-        return Response(
-            {"error": "terminal emulator not found, check TERMINAL_CMD in settings"},
-            status=500,
-        )
+        return Response({"error": "terminal emulator not found"}, status=500)
 
 
 @api_view(["POST"])
@@ -464,13 +474,7 @@ def terminal_run(request):
     if not cwd or not Path(cwd).is_dir():
         return Response({"error": "cwd is not a valid directory"}, status=400)
 
-    full_cmd = settings.TERMINAL_CMD + cmd
-    env = _clean_env()
-    try:
-        proc = subprocess.Popen(full_cmd, cwd=cwd, env=env, start_new_session=True)
-        return Response({"status": "ok", "pid": proc.pid})
-    except FileNotFoundError:
-        return Response({"error": "terminal emulator not found"}, status=500)
+    return _spawn_in_terminal(cmd, cwd)
 
 
 @api_view(["POST"])
@@ -484,7 +488,7 @@ def session_new(request):
     else:
         cwd = str(Path.home())
 
-    return _spawn_terminal([prompt] if prompt else [], cwd)
+    return _spawn_in_terminal(["claude", prompt] if prompt else ["claude"], cwd)
 
 
 @api_view(["POST"])
@@ -512,7 +516,7 @@ def session_resume(request):
     if not cwd or not Path(cwd).is_dir():
         cwd = str(Path.home())
 
-    return _spawn_terminal(["--resume", conversation_id], cwd)
+    return _spawn_in_terminal(["claude", "--resume", conversation_id], cwd)
 
 
 def _build_plan_conversation_map():
@@ -691,7 +695,7 @@ def plan_execute(request, plan_id):
         cwd = str(Path.home())
 
     prompt = f"Execute the plan in {plan_file}"
-    return _spawn_terminal([prompt], cwd)
+    return _spawn_in_terminal(["claude", prompt], cwd)
 
 
 def _skill_id(path):
