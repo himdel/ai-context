@@ -13,14 +13,13 @@ from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_DIR = Path.home() / ".claude"
 _github_repo_cache = {}
 
 
 def _active_session_ids():
     """Return set of session IDs that have a running process."""
     ids = set()
-    sessions_dir = CLAUDE_DIR / "sessions"
+    sessions_dir = settings.CLAUDE_DIR / "sessions"
     if not sessions_dir.is_dir():
         return ids
     for f in sessions_dir.glob("*.json"):
@@ -130,7 +129,7 @@ def github_repo(request):
 
 @api_view(["GET"])
 def conversations(request):
-    projects_dir = CLAUDE_DIR / "projects"
+    projects_dir = settings.CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return Response([])
 
@@ -424,7 +423,7 @@ def conversation_detail(request, conversation_id):
 
 
 def _find_conversation(conversation_id):
-    projects_dir = CLAUDE_DIR / "projects"
+    projects_dir = settings.CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return None
     for project_dir in projects_dir.iterdir():
@@ -522,7 +521,7 @@ def session_resume(request):
 def _build_plan_conversation_map():
     """Scan all JSONL files to map plan filenames to originating conversations."""
     plan_map = {}  # plan_stem -> {conversation_id, cwd, branch, timestamp}
-    projects_dir = CLAUDE_DIR / "projects"
+    projects_dir = settings.CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return plan_map
     for project_dir in projects_dir.iterdir():
@@ -572,7 +571,7 @@ def _build_plan_conversation_map():
 
 @api_view(["GET"])
 def plans(request):
-    plans_dir = CLAUDE_DIR / "plans"
+    plans_dir = settings.CLAUDE_DIR / "plans"
     if not plans_dir.is_dir():
         return Response([])
 
@@ -638,7 +637,7 @@ def plans(request):
 
 @api_view(["GET"])
 def plan_detail(request, plan_id):
-    plan_file = CLAUDE_DIR / "plans" / f"{plan_id}.md"
+    plan_file = settings.CLAUDE_DIR / "plans" / f"{plan_id}.md"
     if not plan_file.is_file():
         return Response({"error": "not found"}, status=404)
 
@@ -680,7 +679,7 @@ def plan_detail(request, plan_id):
 
 @api_view(["POST"])
 def plan_execute(request, plan_id):
-    plan_file = CLAUDE_DIR / "plans" / f"{plan_id}.md"
+    plan_file = settings.CLAUDE_DIR / "plans" / f"{plan_id}.md"
     if not plan_file.is_file():
         return Response({"error": "not found"}, status=404)
 
@@ -715,7 +714,7 @@ def _is_valid_skill_path(path):
         resolved = path.resolve()
     except (OSError, ValueError):
         return False
-    global_commands = (CLAUDE_DIR / "commands").resolve()
+    global_commands = (settings.CLAUDE_DIR / "commands").resolve()
     if str(resolved).startswith(str(global_commands) + "/"):
         return True
     # Allow any <dir>/.claude/commands/ path
@@ -728,7 +727,7 @@ def _is_valid_skill_path(path):
 
 def _discover_repos():
     """Return deduplicated repo paths from all known conversations."""
-    projects_dir = CLAUDE_DIR / "projects"
+    projects_dir = settings.CLAUDE_DIR / "projects"
     if not projects_dir.is_dir():
         return []
     repos = set()
@@ -755,7 +754,7 @@ def skills_list(request):
             )
 
         if scope == "global":
-            commands_dir = CLAUDE_DIR / "commands"
+            commands_dir = settings.CLAUDE_DIR / "commands"
         else:
             repo_path = Path(scope)
             if not repo_path.is_dir():
@@ -805,7 +804,7 @@ def skills_list(request):
             )
 
     # Global skills
-    _scan_commands_dir(CLAUDE_DIR / "commands", "global")
+    _scan_commands_dir(settings.CLAUDE_DIR / "commands", "global")
 
     # Per-repo skills
     for repo in _discover_repos():
@@ -843,7 +842,7 @@ def skill_detail(request, skill_id):
         return Response({"error": "failed to read"}, status=500)
 
     # Determine scope
-    global_commands = (CLAUDE_DIR / "commands").resolve()
+    global_commands = (settings.CLAUDE_DIR / "commands").resolve()
     resolved = path.resolve()
     if str(resolved).startswith(str(global_commands) + "/"):
         scope = "global"
