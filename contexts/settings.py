@@ -59,6 +59,22 @@ AUTOLINKS = [
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "api": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}
+
 # Path to the Claude Code data directory (~/.claude).
 CLAUDE_DIR = Path.home() / ".claude"
 
