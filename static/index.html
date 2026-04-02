@@ -657,6 +657,9 @@ details > summary {
   font-size: 13px;
   color: #888;
 }
+
+/* Repo identity */
+.repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -690,6 +693,50 @@ const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
 let activeSkillId = null;
+
+// Repo visual identity — deterministic icon + color per repo path
+var RepoIdentity = {
+  _cache: {},
+  _hash: function(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  },
+  _icon: function(hash, hue, size) {
+    var color = 'hsl(' + hue + ',55%,45%)';
+    var bg = 'hsl(' + hue + ',30%,90%)';
+    var bits = hash >>> 8;
+    var rects = '';
+    for (var r = 0; r < 5; r++) {
+      for (var c = 0; c < 3; c++) {
+        if ((bits >> (r * 3 + c)) & 1) {
+          rects += '<rect x="' + c + '" y="' + r + '" width="1" height="1" fill="' + color + '"/>';
+          if (c < 2) rects += '<rect x="' + (4 - c) + '" y="' + r + '" width="1" height="1" fill="' + color + '"/>';
+        }
+      }
+    }
+    return '<span class="repo-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" width="' + size + '" height="' + size + '" style="background:' + bg + ';border-radius:2px">' + rects + '</svg></span>';
+  },
+  get: function(repoPath) {
+    if (!repoPath) return null;
+    if (this._cache[repoPath]) return this._cache[repoPath];
+    var hash = this._hash(repoPath);
+    var hue = (hash & 0xFF) * 360 / 256;
+    var id = {
+      color: 'hsl(' + hue + ',55%,45%)',
+      colorLight: 'hsl(' + hue + ',40%,93%)',
+      colorBorder: 'hsl(' + hue + ',55%,55%)',
+      colorText: 'hsl(' + hue + ',50%,35%)',
+      iconSm: this._icon(hash, hue, 16),
+      iconMd: this._icon(hash, hue, 24),
+    };
+    this._cache[repoPath] = id;
+    return id;
+  }
+};
 
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
@@ -890,12 +937,17 @@ function showSessionsHome() {
 
         var col = document.createElement('div');
         col.className = 'home-column';
+        var rid = RepoIdentity.get(cwd);
 
         // Header with repo name and new button
         var header = document.createElement('div');
         header.className = 'home-column-header';
+        if (rid) {
+          header.style.background = rid.colorLight;
+          col.style.borderTop = '3px solid ' + rid.colorBorder;
+        }
         var nameDiv = document.createElement('div');
-        nameDiv.innerHTML = esc(name) + '<span class="col-path">' + esc(short) + '</span>';
+        nameDiv.innerHTML = (rid ? rid.iconMd : '') + esc(name) + '<span class="col-path">' + esc(short) + '</span>';
         nameDiv.title = cwd;
         header.appendChild(nameDiv);
 
@@ -988,11 +1040,16 @@ function showPlansHome() {
 
         var col = document.createElement('div');
         col.className = 'home-column';
+        var rid = cwd ? RepoIdentity.get(cwd) : null;
 
         var header = document.createElement('div');
         header.className = 'home-column-header';
+        if (rid) {
+          header.style.background = rid.colorLight;
+          col.style.borderTop = '3px solid ' + rid.colorBorder;
+        }
         var nameDiv = document.createElement('div');
-        nameDiv.innerHTML = esc(name) + (cwd ? '<span class="col-path">' + esc(short) + '</span>' : '');
+        nameDiv.innerHTML = (rid ? rid.iconMd : '') + esc(name) + (cwd ? '<span class="col-path">' + esc(short) + '</span>' : '');
         if (cwd) nameDiv.title = cwd;
         header.appendChild(nameDiv);
         col.appendChild(header);
@@ -1061,13 +1118,18 @@ function loadPlan(planId, pushHistory) {
 
         var header = document.createElement('div');
         header.className = 'conversation-header';
+        var prid = data.cwd ? RepoIdentity.get(data.cwd) : null;
+        if (prid) {
+          header.style.borderLeft = '3px solid ' + prid.colorBorder;
+          header.style.paddingLeft = '12px';
+        }
         var parts = [];
 
         var project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
         if (project && currentGithubRepo) {
-          parts.push('<span><a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
+          parts.push('<span>' + (prid ? prid.iconSm : '') + '<a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
         } else if (project) {
-          parts.push('<span>' + esc(project) + '</span>');
+          parts.push('<span>' + (prid ? prid.iconSm : '') + esc(project) + '</span>');
         }
         if (data.branch) {
           if (currentGithubOrigin) {
@@ -1247,10 +1309,11 @@ function loadSidebar() {
 
         const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
         const duration = formatDuration(c.date, c.last_timestamp);
+        const rid = RepoIdentity.get(c.project);
 
         div.innerHTML =
           '<div class="row">' +
-            '<div class="project">' + esc(project) + (c.branch ? ' (' + esc(c.branch) + ')' : '') + '</div>' +
+            '<div class="project"' + (rid ? ' style="color:' + rid.colorText + '"' : '') + '>' + (rid ? rid.iconSm : '') + esc(project) + (c.branch ? ' (' + esc(c.branch) + ')' : '') + '</div>' +
             '<span class="indicator' + (c.active ? ' active' : '') + '"></span>' +
           '</div>' +
           '<div class="row">' +
@@ -1279,10 +1342,11 @@ function loadPlansSidebar() {
         if (p.id === activePlanId) div.classList.add('active');
 
         var project = p.project ? p.project.replace(/^\/home\/[^/]+\//, '~/') : '';
+        var plrid = p.project ? RepoIdentity.get(p.project) : null;
         div.innerHTML =
           '<div class="plan-info">' +
             (p.date ? '<span>' + esc(formatDate(p.date)) + '</span>' : '') +
-            (project ? '<span>' + esc(project) + '</span>' : '') +
+            (project ? '<span>' + (plrid ? plrid.iconSm : '') + esc(project) + '</span>' : '') +
             (p.branch ? '<span>' + esc(p.branch) + '</span>' : '') +
           '</div>' +
           '<div class="plan-title">' + esc(p.title) + '</div>';
@@ -1305,8 +1369,9 @@ function loadSkillsSidebar() {
         if (s.id === activeSkillId) div.classList.add('active');
 
         var scopeLabel = s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/');
+        var skrid = s.scope !== 'global' ? RepoIdentity.get(s.scope) : null;
         div.innerHTML =
-          '<div class="skill-scope">' + esc(scopeLabel) + '</div>' +
+          '<div class="skill-scope">' + (skrid ? skrid.iconSm : '') + esc(scopeLabel) + '</div>' +
           '<div class="skill-name">/' + esc(s.name) + '</div>';
 
         div.onclick = function() { loadSkill(s.id); };
@@ -1348,11 +1413,16 @@ function showSkillsHome() {
 
         var col = document.createElement('div');
         col.className = 'home-column';
+        var skrid2 = !isGlobal ? RepoIdentity.get(scope) : null;
 
         var header = document.createElement('div');
         header.className = 'home-column-header';
+        if (skrid2) {
+          header.style.background = skrid2.colorLight;
+          col.style.borderTop = '3px solid ' + skrid2.colorBorder;
+        }
         var nameDiv = document.createElement('div');
-        nameDiv.innerHTML = esc(name) + (!isGlobal ? '<span class="col-path">' + esc(short) + '</span>' : '');
+        nameDiv.innerHTML = (skrid2 ? skrid2.iconMd : '') + esc(name) + (!isGlobal ? '<span class="col-path">' + esc(short) + '</span>' : '');
         if (!isGlobal) nameDiv.title = scope;
         header.appendChild(nameDiv);
         col.appendChild(header);
@@ -1653,12 +1723,17 @@ function loadConversation(id, pushHistory) {
 
         const header = document.createElement('div');
         header.className = 'conversation-header';
+        var crid = data.cwd ? RepoIdentity.get(data.cwd) : null;
+        if (crid) {
+          header.style.borderLeft = '3px solid ' + crid.colorBorder;
+          header.style.paddingLeft = '12px';
+        }
         var parts = [];
 
         if (project && currentGithubRepo) {
-          parts.push('<span><a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
+          parts.push('<span>' + (crid ? crid.iconSm : '') + '<a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
         } else if (project) {
-          parts.push('<span>' + esc(project) + '</span>');
+          parts.push('<span>' + (crid ? crid.iconSm : '') + esc(project) + '</span>');
         }
         if (data.branch) {
           if (currentGithubOrigin) {
