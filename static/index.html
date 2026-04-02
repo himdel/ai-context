@@ -805,7 +805,7 @@ reloadListBtn.onclick = function() {
 
 document.getElementById('new-session-btn').onclick = function() {
   activeId = null;
-  history.pushState(null, '', '/');
+  history.pushState(null, '', '/conversations');
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   mainEl.innerHTML =
     '<div class="new-session-form">' +
@@ -884,7 +884,12 @@ document.getElementById('new-skill-btn').onclick = function(e) {
 
 let homeTab = 'conversations';
 
-function showHomeScreen() {
+var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills'};
+
+function showHomeScreen(pushHistory) {
+  if (pushHistory !== false) {
+    history.pushState(null, '', homeTabUrls[homeTab] || '/conversations');
+  }
   mainEl.innerHTML =
     '<div class="home-screen">' +
       '<div class="home-tabs">' +
@@ -1249,16 +1254,16 @@ function pollForUpdates() {
     .catch(function() {});
 }
 
-function closeConversation() {
+function closeConversation(tab) {
   stopFollowing();
   activeId = null;
   activePlanId = null;
   activeSkillId = null;
-  history.pushState(null, '', '/');
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
   document.getElementById('conv-section').classList.remove('collapsed');
+  if (tab) homeTab = tab;
   showHomeScreen();
 }
 
@@ -1656,7 +1661,7 @@ function showCreateSkillForm(pushHistory) {
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
-    if (!activeId) showHomeScreen();
+    if (!activeId) showHomeScreen(false);
   }
 }
 
@@ -1665,31 +1670,33 @@ document.addEventListener('visibilitychange', function() {
 });
 window.addEventListener('focus', handleReturnToPage);
 
+function routeUrl(pathname, pushHistory) {
+  var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
+  var planMatch = pathname.match(/^\/plans\/([^/]+)/);
+  var skillNew = /^\/skills\/new\/?$/.test(pathname);
+  var skillMatch = pathname.match(/^\/skills\/(.+)/);
+  if (convMatch) {
+    loadConversation(convMatch[1], pushHistory);
+  } else if (planMatch) {
+    loadPlan(planMatch[1], pushHistory);
+  } else if (skillNew) {
+    showCreateSkillForm(pushHistory);
+  } else if (skillMatch) {
+    loadSkill(skillMatch[1], pushHistory);
+  } else if (/^\/skills\b/.test(pathname)) {
+    homeTab = 'skills'; showHomeScreen(pushHistory);
+  } else if (/^\/plans\b/.test(pathname)) {
+    homeTab = 'plans'; showHomeScreen(pushHistory);
+  } else {
+    homeTab = 'conversations'; showHomeScreen(pushHistory);
+  }
+}
+
 // open conversation/plan/skill from URL on initial load, or show home screen
-const initConvMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
-const initPlanMatch = location.pathname.match(/^\/plans\/([^/]+)/);
-const initSkillMatch = location.pathname.match(/^\/skills\/(.+)/);
-const initSkillsHome = /^\/skills\/?$/.test(location.pathname);
-if (initConvMatch) loadConversation(initConvMatch[1], false);
-else if (initPlanMatch) loadPlan(initPlanMatch[1], false);
-else if (initSkillMatch) { if (initSkillMatch[1] === 'new') showCreateSkillForm(false); else loadSkill(initSkillMatch[1], false); }
-else if (initSkillsHome) { homeTab = 'skills'; showHomeScreen(); }
-else showHomeScreen();
+routeUrl(location.pathname, false);
 
 window.addEventListener('popstate', function(e) {
-  const convMatch = location.pathname.match(/^\/conversations\/([^/]+)/);
-  const planMatch = location.pathname.match(/^\/plans\/([^/]+)/);
-  const skillMatch = location.pathname.match(/^\/skills\/(.+)/);
-  if (convMatch) {
-    loadConversation(convMatch[1], false);
-  } else if (planMatch) {
-    loadPlan(planMatch[1], false);
-  } else if (skillMatch) {
-    if (skillMatch[1] === 'new') showCreateSkillForm(false);
-    else loadSkill(skillMatch[1], false);
-  } else {
-    closeConversation();
-  }
+  routeUrl(location.pathname, false);
 });
 
 function loadConversation(id, pushHistory) {
