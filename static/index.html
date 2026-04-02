@@ -1457,9 +1457,6 @@ function loadSkill(skillId, pushHistory) {
   activeId = null;
   activePlanId = null;
   activeSkillId = skillId;
-  if (pushHistory !== false) {
-    history.pushState({skillId: skillId}, '', '/skills/' + skillId);
-  }
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => {
@@ -1478,6 +1475,9 @@ function loadSkill(skillId, pushHistory) {
       if (data.error) {
         mainEl.innerHTML = '<div class="empty">' + esc(data.error) + '</div>';
         return;
+      }
+      if (pushHistory !== false) {
+        history.pushState({skillId: skillId}, '', skillDisplayUrl(data.scope, data.name));
       }
 
       var renderSkillView = function() {
@@ -1670,11 +1670,29 @@ document.addEventListener('visibilitychange', function() {
 });
 window.addEventListener('focus', handleReturnToPage);
 
+// Skill URL helpers: display as /skills/global/name or /skills/~/repo/name
+function skillDisplayUrl(scope, name) {
+  var scopeSlug = scope === 'global' ? 'global' : scope.replace(/^\/home\/[^/]+\//, '~/');
+  return '/skills/' + encodeURIComponent(scopeSlug) + '/' + encodeURIComponent(name);
+}
+
+function loadSkillByUrl(scopeSlug, name, pushHistory) {
+  fetch('/api/skills/')
+    .then(r => r.json())
+    .then(skills => {
+      var match = skills.find(s => {
+        var slug = s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/');
+        return slug === scopeSlug && s.name === name;
+      });
+      if (match) loadSkill(match.id, pushHistory);
+    });
+}
+
 function routeUrl(pathname, pushHistory) {
   var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
   var planMatch = pathname.match(/^\/plans\/([^/]+)/);
   var skillNew = /^\/skills\/new\/?$/.test(pathname);
-  var skillMatch = pathname.match(/^\/skills\/(.+)/);
+  var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
   if (convMatch) {
     loadConversation(convMatch[1], pushHistory);
   } else if (planMatch) {
@@ -1682,7 +1700,7 @@ function routeUrl(pathname, pushHistory) {
   } else if (skillNew) {
     showCreateSkillForm(pushHistory);
   } else if (skillMatch) {
-    loadSkill(skillMatch[1], pushHistory);
+    loadSkillByUrl(decodeURIComponent(skillMatch[1]), decodeURIComponent(skillMatch[2]), pushHistory);
   } else if (/^\/skills\b/.test(pathname)) {
     homeTab = 'skills'; showHomeScreen(pushHistory);
   } else if (/^\/plans\b/.test(pathname)) {
