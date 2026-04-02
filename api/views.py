@@ -14,6 +14,7 @@ from rest_framework.response import Response
 logger = logging.getLogger(__name__)
 
 _github_repo_cache = {}
+_github_remote_cache = {}
 
 
 def _active_session_ids():
@@ -49,6 +50,11 @@ def autolinks(request):
 
 
 def _parse_github_remote(path, remote):
+    cache_key = f"{path}:{remote}"
+    if cache_key in _github_remote_cache:
+        return _github_remote_cache[cache_key]
+
+    result = None
     cmd = ["git", "-C", path, "remote", "get-url", remote]
     try:
         url = subprocess.check_output(
@@ -59,12 +65,14 @@ def _parse_github_remote(path, remote):
         logger.info("ran %s, exit 0", cmd)
         m = re.match(r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url)
         if m:
-            return m.group(1)
+            result = m.group(1)
     except subprocess.CalledProcessError as e:
         logger.info("ran %s, exit %d", cmd, e.returncode)
     except FileNotFoundError:
         logger.info("ran %s, command not found", cmd)
-    return None
+
+    _github_remote_cache[cache_key] = result
+    return result
 
 
 def _find_pr_for_branch(repo, branch, path):
