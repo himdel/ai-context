@@ -27,4 +27,6 @@ urlpatterns = [
     path("sessions/new", views.session_new),
     path("sessions/resume/", views.session_resume),
     path("sessions/resume", views.session_resume),
+    path("sessions/fork/", views.session_fork),
+    path("sessions/fork", views.session_fork),
 ]

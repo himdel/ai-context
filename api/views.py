@@ -558,6 +558,33 @@ def session_resume(request):
     return _spawn_in_terminal(["claude", "--resume", conversation_id], cwd)
 
 
+@api_view(["POST"])
+def session_fork(request):
+    conversation_id = request.data.get("conversation_id", "").strip()
+    if not conversation_id:
+        return Response({"error": "conversation_id is required"}, status=400)
+
+    jsonl_file = _find_conversation(conversation_id)
+    if not jsonl_file:
+        return Response({"error": "conversation not found"}, status=404)
+
+    cwd = request.data.get("cwd", "")
+    if not cwd:
+        try:
+            with open(jsonl_file) as f:
+                first_line = json.loads(f.readline())
+                cwd = first_line.get("cwd", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    if not cwd or not Path(cwd).is_dir():
+        cwd = str(Path.home())
+
+    return _spawn_in_terminal(
+        ["claude", "--resume", conversation_id, "--fork-session"], cwd
+    )
+
+
 def _build_plan_conversation_map():
     """Scan all JSONL files to map plan filenames to originating conversations."""
     plan_map = {}  # plan_stem -> {conversation_id, cwd, branch, timestamp}

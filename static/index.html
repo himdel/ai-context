@@ -1747,7 +1747,7 @@ function loadConversation(id, pushHistory) {
 
         const toolbar = document.createElement('div');
         toolbar.className = 'conversation-toolbar';
-        toolbar.innerHTML = '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
+        toolbar.innerHTML = '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="fork-conv" title="Fork and resume in terminal">&#x2442;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
         const project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
 
         const header = document.createElement('div');
@@ -1810,6 +1810,20 @@ function loadConversation(id, pushHistory) {
           .then(({ok, data: result}) => {
             btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
             setTimeout(() => { btn.innerHTML = '&#x25b6;'; }, 2000);
+          });
+        };
+        toolbar.querySelector('.fork-conv').onclick = function() {
+          var btn = this;
+          btn.textContent = '...';
+          fetch('/api/sessions/fork/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({conversation_id: id, cwd: data.cwd})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(({ok, data: result}) => {
+            btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
+            setTimeout(() => { btn.innerHTML = '&#x2442;'; }, 2000);
           });
         };
         toolbar.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
