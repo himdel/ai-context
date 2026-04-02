@@ -76,7 +76,7 @@ def _parse_github_remote(path, remote):
 
 
 def _find_pr_for_branch(repo, branch, path):
-    if not repo or not branch or branch in ("main", "master"):
+    if not repo or not branch or branch in ("main", "master", "HEAD"):
         return None
 
     from api.models import GitHubPR
