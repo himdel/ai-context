@@ -1787,7 +1787,7 @@ document.addEventListener('click', function(e) {
   fetch('/api/terminal/run/', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cmd: ['git', 'show', link.dataset.sha], cwd: currentCwd})
+    body: JSON.stringify({cmd: ['git', '-c', 'core.pager=less -+F -R', 'show', link.dataset.sha], cwd: currentCwd})
   });
 });
 
