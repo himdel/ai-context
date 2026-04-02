@@ -70,6 +70,15 @@ def _parse_github_remote(path, remote):
 def _find_pr_for_branch(repo, branch):
     if not repo or not branch or branch in ("main", "master"):
         return None
+
+    from api.models import GitHubPR
+
+    cached = GitHubPR.objects.filter(repo=repo, branch=branch).first()
+    if cached:
+        if cached.number is None:
+            return None
+        return {"number": cached.number, "url": cached.url, "state": cached.state}
+
     cmd = [
         "gh",
         "pr",
@@ -83,6 +92,7 @@ def _find_pr_for_branch(repo, branch):
         "--limit",
         "1",
     ]
+    pr = None
     try:
         out = subprocess.check_output(
             cmd,
@@ -92,14 +102,24 @@ def _find_pr_for_branch(repo, branch):
         logger.info("ran %s, exit 0", cmd)
         prs = json.loads(out)
         if prs:
-            return prs[0]
+            pr = prs[0]
     except subprocess.CalledProcessError as e:
         logger.info("ran %s, exit %d", cmd, e.returncode)
     except FileNotFoundError:
         logger.info("ran %s, command not found", cmd)
     except json.JSONDecodeError:
         pass
-    return None
+
+    if pr:
+        GitHubPR.objects.create(
+            repo=repo,
+            branch=branch,
+            number=pr["number"],
+            url=pr["url"],
+            state=pr["state"],
+        )
+
+    return pr
 
 
 @api_view(["GET"])
