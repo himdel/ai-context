@@ -882,13 +882,13 @@ document.getElementById('new-skill-btn').onclick = function(e) {
   showCreateSkillForm();
 };
 
-let homeTab = 'sessions';
+let homeTab = 'conversations';
 
 function showHomeScreen() {
   mainEl.innerHTML =
     '<div class="home-screen">' +
       '<div class="home-tabs">' +
-        '<div class="home-tab' + (homeTab === 'sessions' ? ' active' : '') + '" data-tab="sessions">Sessions</div>' +
+        '<div class="home-tab' + (homeTab === 'conversations' ? ' active' : '') + '" data-tab="conversations">Conversations</div>' +
         '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
         '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
       '</div>' +
