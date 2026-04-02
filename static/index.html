@@ -1648,7 +1648,7 @@ function loadConversation(id, pushHistory) {
 
         const toolbar = document.createElement('div');
         toolbar.className = 'conversation-toolbar';
-        toolbar.innerHTML = '<span class="header-btns"><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
+        toolbar.innerHTML = '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
         const project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
 
         const header = document.createElement('div');
@@ -1677,6 +1677,9 @@ function loadConversation(id, pushHistory) {
         if (data.version) parts.push('<span>claude-code ' + esc(data.version) + '</span>');
         header.innerHTML = parts.join('');
 
+        toolbar.querySelector('.scroll-bottom').onclick = function() {
+          mainEl.scrollTop = mainEl.scrollHeight;
+        };
         toolbar.querySelector('.new-here').onclick = function() {
           var btn = this;
           btn.textContent = '...';
