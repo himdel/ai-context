@@ -67,7 +67,7 @@ def _parse_github_remote(path, remote):
     return None
 
 
-def _find_pr_for_branch(repo, branch):
+def _find_pr_for_branch(repo, branch, path):
     if not repo or not branch or branch in ("main", "master"):
         return None
 
@@ -78,6 +78,18 @@ def _find_pr_for_branch(repo, branch):
         if cached.number is None:
             return None
         return {"number": cached.number, "url": cached.url, "state": cached.state}
+
+    try:
+        remote_branches = subprocess.check_output(
+            ["git", "-C", path, "branch", "-r", "--list", f"*/{branch}"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if not remote_branches:
+            logger.info("no remote-tracking branch for %s, skipping gh pr list", branch)
+            return None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
 
     cmd = [
         "gh",
@@ -135,7 +147,7 @@ def github_repo(request):
 
     upstream = _parse_github_remote(path, "upstream")
     origin = _parse_github_remote(path, "origin")
-    pr = _find_pr_for_branch(upstream or origin, branch)
+    pr = _find_pr_for_branch(upstream or origin, branch, path)
 
     result = {
         "upstream": upstream,
