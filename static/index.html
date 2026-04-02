@@ -676,7 +676,7 @@ details > summary {
   </div>
   <div class="sidebar-section collapsed" id="skills-section">
     <h2><span class="toggle">&#x25BC;</span>Skills
-      <span id="new-skill-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="New skill">+</span>
+      <span id="reload-skills-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload skills">&#x21bb;</span><span id="new-skill-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New skill">+</span>
     </h2>
     <div class="sidebar-list" id="skill-list"></div>
   </div>
@@ -801,6 +801,10 @@ fetch('/api/autolinks/')
 
 reloadListBtn.onclick = function() {
   loadSidebar();
+};
+
+document.getElementById('reload-skills-btn').onclick = function() {
+  loadSkillsSidebar();
 };
 
 document.getElementById('new-session-btn').onclick = function() {
@@ -1118,7 +1122,7 @@ function loadPlan(planId, pushHistory) {
         var toolbar = document.createElement('div');
         toolbar.className = 'conversation-toolbar';
         toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
-        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        toolbar.querySelector('.close-conv').onclick = function() { closeConversation('plans'); };
         mainEl.appendChild(toolbar);
 
         var header = document.createElement('div');
@@ -1486,7 +1490,7 @@ function loadSkill(skillId, pushHistory) {
         var toolbar = document.createElement('div');
         toolbar.className = 'conversation-toolbar';
         toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
-        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        toolbar.querySelector('.close-conv').onclick = function() { closeConversation('skills'); };
         mainEl.appendChild(toolbar);
 
         var header = document.createElement('div');
@@ -1548,7 +1552,7 @@ function loadSkill(skillId, pushHistory) {
           fetch('/api/skills/' + skillId + '/', {method: 'DELETE'})
             .then(function() {
               loadSkillsSidebar();
-              closeConversation();
+              closeConversation('skills');
             });
         };
         actions.appendChild(deleteBtn);
@@ -1599,7 +1603,7 @@ function showCreateSkillForm(pushHistory) {
       var toolbar = document.createElement('div');
       toolbar.className = 'conversation-toolbar';
       toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
-      toolbar.querySelector('.close-conv').onclick = closeConversation;
+      toolbar.querySelector('.close-conv').onclick = function() { closeConversation('skills'); };
       mainEl.appendChild(toolbar);
 
       var form = document.createElement('div');
@@ -1809,7 +1813,7 @@ function loadConversation(id, pushHistory) {
           });
         };
         toolbar.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
-        toolbar.querySelector('.close-conv').onclick = closeConversation;
+        toolbar.querySelector('.close-conv').onclick = function() { closeConversation('conversations'); };
         mainEl.appendChild(toolbar);
         mainEl.appendChild(header);
 
