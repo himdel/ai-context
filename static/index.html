@@ -1665,7 +1665,7 @@ function showCreateSkillForm(pushHistory) {
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
-    if (!activeId) showHomeScreen(false);
+    if (!activeId && !activePlanId && !activeSkillId) showHomeScreen(false);
   }
 }
 
