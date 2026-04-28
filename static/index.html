@@ -622,6 +622,7 @@ details > summary {
   font-weight: 600;
 }
 .skill-detail-view .skill-actions button:hover { background: #e0e8ff; }
+.skill-detail-view .skill-actions button.has-dropdown::after { content: ' \25BE'; }
 .skill-detail-view .run-dropdown { position: relative; }
 .skill-detail-view .run-dropdown-panel {
   display: none;
@@ -1630,61 +1631,79 @@ function loadSkill(skillId, pushHistory) {
         runWrap.className = 'run-dropdown';
         var runBtn = document.createElement('button');
         runBtn.textContent = 'Run';
-        var runPanel = document.createElement('div');
-        runPanel.className = 'run-dropdown-panel';
-        runBtn.onclick = function() {
-          if (runPanel.classList.contains('open')) {
-            runPanel.classList.remove('open');
-            return;
-          }
-          runPanel.innerHTML = '<button disabled style="color:#aaa">Loading...</button>';
-          runPanel.classList.add('open');
-          fetch('/api/conversations/')
-            .then(r => r.json())
-            .then(conversations => {
-              var seen = {};
-              var cwds = [];
-              conversations.forEach(c => {
-                var p = c.project;
-                if (p && !seen[p]) {
-                  seen[p] = true;
-                  cwds.push(p);
+        if (data.scope === 'global') {
+          runBtn.classList.add('has-dropdown');
+          var runPanel = document.createElement('div');
+          runPanel.className = 'run-dropdown-panel';
+          runBtn.onclick = function() {
+            if (runPanel.classList.contains('open')) {
+              runPanel.classList.remove('open');
+              return;
+            }
+            runPanel.innerHTML = '<button disabled style="color:#aaa">Loading...</button>';
+            runPanel.classList.add('open');
+            fetch('/api/conversations/')
+              .then(r => r.json())
+              .then(conversations => {
+                var seen = {};
+                var cwds = [];
+                conversations.forEach(c => {
+                  var p = c.project;
+                  if (p && !seen[p]) {
+                    seen[p] = true;
+                    cwds.push(p);
+                  }
+                });
+                runPanel.innerHTML = '';
+                if (!cwds.length) {
+                  runPanel.innerHTML = '<button disabled style="color:#aaa">No repos found</button>';
+                  return;
                 }
+                cwds.forEach(cwd => {
+                  var btn = document.createElement('button');
+                  btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
+                  btn.title = cwd;
+                  btn.onclick = function() {
+                    runPanel.classList.remove('open');
+                    runBtn.textContent = '...';
+                    fetch('/api/sessions/new/', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({prompt: '/' + data.name, cwd: cwd})
+                    })
+                    .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+                    .then(function(resp) {
+                      runBtn.textContent = resp.ok ? 'Launched' : 'Error';
+                      runBtn.classList.add('has-dropdown');
+                      setTimeout(function() { runBtn.textContent = 'Run'; }, 2000);
+                    });
+                  };
+                  runPanel.appendChild(btn);
+                });
               });
-              runPanel.innerHTML = '';
-              if (!cwds.length) {
-                runPanel.innerHTML = '<button disabled style="color:#aaa">No repos found</button>';
-                return;
-              }
-              cwds.forEach(cwd => {
-                var btn = document.createElement('button');
-                btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
-                btn.title = cwd;
-                btn.onclick = function() {
-                  runPanel.classList.remove('open');
-                  runBtn.textContent = '...';
-                  fetch('/api/sessions/new/', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: '/' + data.name, cwd: cwd})
-                  })
-                  .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-                  .then(function(resp) {
-                    runBtn.textContent = resp.ok ? 'Launched' : 'Error';
-                    setTimeout(function() { runBtn.textContent = 'Run'; }, 2000);
-                  });
-                };
-                runPanel.appendChild(btn);
-              });
+          };
+          runWrap.appendChild(runBtn);
+          runWrap.appendChild(runPanel);
+          document.addEventListener('click', function(e) {
+            if (!runWrap.contains(e.target)) runPanel.classList.remove('open');
+          });
+        } else {
+          runBtn.onclick = function() {
+            runBtn.textContent = '...';
+            fetch('/api/sessions/new/', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({prompt: '/' + data.name, cwd: data.scope})
+            })
+            .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+            .then(function(resp) {
+              runBtn.textContent = resp.ok ? 'Launched' : 'Error';
+              setTimeout(function() { runBtn.textContent = 'Run'; }, 2000);
             });
-        };
-        runWrap.appendChild(runBtn);
-        runWrap.appendChild(runPanel);
+          };
+          runWrap.appendChild(runBtn);
+        }
         actions.appendChild(runWrap);
-
-        document.addEventListener('click', function(e) {
-          if (!runWrap.contains(e.target)) runPanel.classList.remove('open');
-        });
 
         view.appendChild(actions);
 
