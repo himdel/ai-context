@@ -964,6 +964,7 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
                 if not blurb and role == "user":
                     content = msg.get("content", "")
                     if isinstance(content, str) and content.strip():
+                        content = re.sub(r"</?[\w-]+>", "", content).strip()
                         blurb = content[:200]
 
         if not blurb:
