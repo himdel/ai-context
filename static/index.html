@@ -230,6 +230,14 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   overflow-y: auto;
 }
 
+.skill-link {
+  color: #4338ca;
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: monospace;
+}
+.skill-link:hover { color: #3730a3; }
+
 .block.tool_result {
   font-size: 13px;
   background: #f0faf0;
@@ -1813,6 +1821,23 @@ function loadSkillByUrl(scopeSlug, name, pushHistory) {
     });
 }
 
+function navigateToSkillByName(name) {
+  fetch('/api/skills/')
+    .then(function(r) { return r.json(); })
+    .then(function(skills) {
+      var matches = skills.filter(function(s) { return s.name === name; });
+      if (!matches.length) return;
+      if (matches.length === 1) { loadSkill(matches[0].id); return; }
+      if (currentCwd) {
+        var cwdMatch = matches.find(function(s) {
+          return s.scope !== 'global' && currentCwd.startsWith(s.scope);
+        });
+        if (cwdMatch) { loadSkill(cwdMatch.id); return; }
+      }
+      loadSkill(matches[0].id);
+    });
+}
+
 function routeUrl(pathname, pushHistory) {
   var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
   var planMatch = pathname.match(/^\/plans\/([^/]+)/);
@@ -2032,6 +2057,14 @@ document.addEventListener('click', function(e) {
     return;
   }
 
+  var skillLink = e.target.closest('.skill-link');
+  if (skillLink) {
+    e.preventDefault();
+    var skillName = skillLink.dataset.skill;
+    if (skillName) navigateToSkillByName(skillName);
+    return;
+  }
+
   var link = e.target.closest('.git-show-link');
   if (!link || !currentCwd) return;
   e.preventDefault();
@@ -2044,7 +2077,18 @@ document.addEventListener('click', function(e) {
 
 function renderMarkdown(text) {
   if (!text) return '';
-  return linkifyGithub(marked.parse(text));
+  var html = linkifyGithub(marked.parse(text));
+  html = html.replace(/<command-message>([^<]*)<\/command-message>\s*<command-name>\/?([^<]+)<\/command-name>/g, function(match, msg, name) {
+    if (!/^[\w][\w.-]*$/.test(name)) return match;
+    return '<a href="#" class="skill-link" data-skill="' + esc(name) + '" title="' + esc(msg) + '">/' + esc(name) + '</a>';
+  });
+  html = html.replace(/<command-message>[^<]*<\/command-message>\n?/g, '');
+  html = html.replace(/<command-name>\/?([^<]+)<\/command-name>/g, function(match, name) {
+    if (!/^[\w][\w.-]*$/.test(name)) return match;
+    return '<a href="#" class="skill-link" data-skill="' + esc(name) + '">/' + esc(name) + '</a>';
+  });
+  html = html.replace(/<\/?command-args>/g, '');
+  return html;
 }
 
 function renderToolInput(name, input) {
@@ -2094,6 +2138,14 @@ function blockToMarkdown(block) {
   if (block.type === 'text') return block.text || '';
   if (block.type === 'thinking') return '<thinking>\n' + (block.text || '') + '\n</thinking>';
   if (block.type === 'tool_use') {
+    if (block.name === 'Skill' && block.input && block.input.skill) {
+      var md = '**/' + block.input.skill + '**';
+      var extra = {};
+      var hasExtra = false;
+      for (var k in block.input) { if (k !== 'skill') { extra[k] = block.input[k]; hasExtra = true; } }
+      if (hasExtra) md += '\n```json\n' + JSON.stringify(extra, null, 2) + '\n```';
+      return md;
+    }
     var md = '**' + (block.name || 'Tool') + '**';
     if (block.input) md += '\n```json\n' + JSON.stringify(block.input, null, 2) + '\n```';
     return md;
@@ -2147,6 +2199,18 @@ function renderBlock(block) {
     }
     if (block.name === 'EnterPlanMode') {
       return '<div class="block plan-enter">' + renderToolInput(block.name, block.input) + '</div>';
+    }
+    if (block.name === 'Skill' && block.input && block.input.skill) {
+      var sn = block.input.skill;
+      var extra = {};
+      var hasExtra = false;
+      for (var k in block.input) { if (k !== 'skill') { extra[k] = block.input[k]; hasExtra = true; } }
+      return '<div class="block tool_use">' +
+        '<div class="tool-name">Skill</div>' +
+        '<div class="tool-input">' +
+          '<a href="#" class="skill-link" data-skill="' + esc(sn) + '" title="View skill /' + esc(sn) + '">/' + esc(sn) + '</a>' +
+          (hasExtra ? '\n' + esc(JSON.stringify(extra, null, 2)) : '') +
+        '</div></div>';
     }
     return '<div class="block tool_use">' +
       '<div class="tool-name">' + esc(block.name) + '</div>' +
