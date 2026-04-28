@@ -44,3 +44,7 @@ open http://localhost:8042
 ```
 
 Tweak `contexts/settings.py` if your terminal is not `rxvt-unicode`, X display not `:0`, etc.
+
+---
+
+![](./screenshot.png)
