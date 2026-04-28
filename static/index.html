@@ -681,7 +681,9 @@ details > summary {
     <div class="sidebar-list" id="conversation-list"></div>
   </div>
   <div class="sidebar-section collapsed" id="plans-section">
-    <h2><span class="toggle">&#x25BC;</span>Plans</h2>
+    <h2><span class="toggle">&#x25BC;</span>Plans
+      <span id="reload-plans-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload plans">&#x21bb;</span><span id="new-plan-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New plan">+</span>
+    </h2>
     <div class="sidebar-list" id="plan-list"></div>
   </div>
   <div class="sidebar-section collapsed" id="skills-section">
@@ -751,7 +753,7 @@ var RepoIdentity = {
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#new-skill-btn')) return;
+    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
@@ -889,6 +891,24 @@ document.getElementById('new-session-btn').onclick = function() {
       }, 1000);
     });
   };
+};
+
+document.getElementById('reload-plans-btn').onclick = function(e) {
+  e.stopPropagation();
+  loadPlansSidebar();
+};
+
+document.getElementById('new-plan-btn').onclick = function(e) {
+  e.stopPropagation();
+  fetch('/api/sessions/new/', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({prompt: '/plan'})
+  })
+  .then(r => r.json())
+  .then(() => {
+    setTimeout(loadPlansSidebar, 2000);
+  });
 };
 
 document.getElementById('new-skill-btn').onclick = function(e) {
