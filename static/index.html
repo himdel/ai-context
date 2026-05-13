@@ -2098,11 +2098,28 @@ function loadConversation(id, pushHistory) {
         mainEl.appendChild(toolbar);
         mainEl.appendChild(header);
 
+        taskSubjects = {};
+        data.messages.forEach(m => {
+          m.content.forEach(block => {
+            if (block.type === 'tool_result' && block.name === 'TaskCreate') {
+              var tm = (block.output || '').match(/Task #(\d+) created successfully: (.+)/);
+              if (tm) {
+                block._taskId = tm[1];
+                taskSubjects[tm[1]] = tm[2];
+              }
+            }
+          });
+        });
+
         data.messages.forEach(m => {
           const div = document.createElement('div');
           div.className = 'message ' + m.role;
           div._messageData = m;
-          div.innerHTML = '<div class="role"><span>' + esc(m.role) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
+          var toolTypes = m.content.filter(b => b.type === 'tool_use' || b.type === 'tool_result');
+          var roleLabel = toolTypes.length > 0 && toolTypes.length === m.content.length
+            ? (m.role === 'assistant' ? 'tool use' : 'tool result')
+            : m.role;
+          div.innerHTML = '<div class="role"><span>' + esc(roleLabel) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
 
           m.content.forEach(block => {
             div.innerHTML += renderBlock(block);
@@ -2252,14 +2269,18 @@ function formatJson(str) {
   }
 }
 
+var taskSubjects = {};
+
 function renderToolInput(name, input) {
   var main = null;
   var skip = [];
   if (name === 'Read') {
     skip = ['file_path', 'offset', 'limit'];
-    main = esc(input.file_path || '') +
-      (input.offset ? ' :' + input.offset : '') +
-      (input.limit ? ' (' + input.limit + ' lines)' : '');
+    main = '<div class="edit-file">' + esc(input.file_path || '') + '</div>' +
+      (input.offset || input.limit ? '<span style="color:#888;font-size:11px">' +
+        (input.offset ? ':' + input.offset : '') +
+        (input.limit ? ' (' + input.limit + ' lines)' : '') +
+      '</span>' : '');
   }
   if (name === 'Bash') {
     skip = ['command', 'description'];
@@ -2311,6 +2332,85 @@ function renderToolInput(name, input) {
   }
   if (name === 'EnterPlanMode') {
     return '<em>Entering plan mode...</em>';
+  }
+  if (name === 'Grep') {
+    skip = ['pattern', 'path', 'head_limit', 'output_mode', '-A', '-B', '-C'];
+    main = '<code>grep</code> <code>' + esc(input.pattern || '') + '</code>' +
+      (input.path ? ' ' + esc(input.path) : '');
+  }
+  if (name === 'Glob') {
+    skip = ['pattern'];
+    main = '<code>' + esc(input.pattern || '') + '</code>';
+  }
+  if (name === 'Write') {
+    var header = '<div class="edit-file">' + esc(input.file_path || '') + '</div>';
+    var content = input.content || '';
+    var lines = content.split('\n').length;
+    var label = lines + ' line' + (lines === 1 ? '' : 's');
+    return header + '<details class="write-content"><summary style="color:#888;font-size:11px;cursor:pointer">' + esc(label) + '</summary>' +
+      '<pre style="margin:4px 0 0;background:#dfd;padding:6px 8px;border-radius:3px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + esc(content) + '</pre></details>';
+  }
+  if (name === 'TaskUpdate') {
+    skip = ['taskId', 'status', 'activeForm'];
+    var scolor = input.status === 'completed' ? '#15803d' : input.status === 'in_progress' ? '#b45309' : '#555';
+    var sbg = input.status === 'completed' ? '#dcfce7' : input.status === 'in_progress' ? '#fef3c7' : '#f0f0f0';
+    main = '#' + esc(input.taskId || '?');
+    if (input.status) main += ' <span style="background:' + sbg + ';color:' + scolor + ';padding:1px 6px;border-radius:3px;font-size:11px">' + esc(input.status) + '</span>';
+    var subj = taskSubjects[input.taskId];
+    if (subj) main += ' <span style="color:#888">' + esc(subj) + '</span>';
+  }
+  if (name === 'TaskCreate') {
+    skip = ['subject', 'description', 'activeForm'];
+    var tid = '';
+    for (var k in taskSubjects) { if (taskSubjects[k] === input.subject) { tid = k; break; } }
+    main = (tid ? '#' + esc(tid) + ' ' : '') + '<strong>' + esc(input.subject || '') + '</strong>';
+    if (input.description) main += '<div style="color:#888;font-size:11px;margin-top:2px">' + esc(input.description) + '</div>';
+  }
+  if (name === 'AskUserQuestion') {
+    var html = '';
+    var questions = input.questions || [];
+    questions.forEach(function(q) {
+      if (q.header) html += '<div style="font-weight:600;color:#4338ca;margin-bottom:2px">' + esc(q.header) + '</div>';
+      html += '<div style="margin-bottom:4px">' + esc(q.question || '') + '</div>';
+      if (q.options && q.options.length) {
+        html += '<div style="margin-left:8px;font-size:11px;color:#888">';
+        q.options.forEach(function(o) {
+          html += '<div>&#8226; <strong>' + esc(o.label) + '</strong>' +
+            (o.description ? ' &mdash; ' + esc(o.description) : '') + '</div>';
+        });
+        html += '</div>';
+      }
+    });
+    return html || esc(JSON.stringify(input, null, 2));
+  }
+  if (name === 'WebFetch') {
+    skip = ['url', 'prompt'];
+    main = '<a href="' + esc(input.url || '') + '" target="_blank" rel="noopener noreferrer" style="color:#4338ca">' + esc(input.url || '') + '</a>';
+    if (input.prompt) main += '<div style="color:#888;font-size:11px;margin-top:2px">' + esc(input.prompt) + '</div>';
+  }
+  if (name === 'WebSearch') {
+    skip = ['query'];
+    main = '<code>' + esc(input.query || '') + '</code>';
+  }
+  if (main === null && name.indexOf('mcp__') === 0) {
+    skip = ['cloudId', 'responseContentFormat', 'contentFormat'];
+    if (input.issueIdOrKey) {
+      skip.push('issueIdOrKey');
+      main = '<strong>' + esc(input.issueIdOrKey) + '</strong>';
+      if (input.summary) { skip.push('summary'); main += ' ' + esc(input.summary); }
+    } else if (input.jql) {
+      skip.push('jql');
+      main = '<code>' + esc(input.jql) + '</code>';
+    } else if (input.summary) {
+      skip.push('summary');
+      main = (input.projectKey ? esc(input.projectKey) + ': ' : '') + '<strong>' + esc(input.summary) + '</strong>';
+      if (input.projectKey) skip.push('projectKey');
+    } else if (input.query) {
+      skip.push('query');
+      main = '<code>' + esc(input.query) + '</code>';
+    } else {
+      main = '';
+    }
   }
   if (main === null) return formatJson(JSON.stringify(input)) || esc(JSON.stringify(input, null, 2));
   var extra = {};
@@ -2404,7 +2504,7 @@ function renderBlock(block) {
       '</div>';
   }
   if (block.type === 'tool_result') {
-    var resultBody = block.name === 'Agent'
+    var resultBody = (block.name === 'Agent' || block.name === 'ExitPlanMode')
       ? renderMarkdown(block.output || '')
       : (formatJson(block.output || '') || esc(block.output));
     var html = '<details class="block tool_result">' +
