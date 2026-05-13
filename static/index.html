@@ -318,27 +318,23 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 }
 .skill-link:hover { color: #3730a3; }
 
-.block.tool_result {
-  font-size: 13px;
-  background: #f0faf0;
-  border: 1px solid #c0e0c0;
-  border-radius: 4px;
-  padding: 8px 12px;
+.tool-result-inline {
+  margin-top: 6px;
+  border-top: 1px solid #d0d8f0;
+  padding-top: 6px;
 }
-
-.block.tool_result .tool-name {
-  font-weight: 600;
+.tool-result-inline summary {
+  font-size: 11px;
   color: #15803d;
-  margin-bottom: 4px;
 }
-
-.block.tool_result .tool-output {
+.tool-result-inline .tool-output {
   white-space: pre-wrap;
   font-family: monospace;
   font-size: 12px;
   color: #555;
   max-height: 300px;
   overflow-y: auto;
+  margin-top: 4px;
 }
 
 details > summary {
@@ -2101,12 +2097,9 @@ function loadConversation(id, pushHistory) {
         taskSubjects = {};
         data.messages.forEach(m => {
           m.content.forEach(block => {
-            if (block.type === 'tool_result' && block.name === 'TaskCreate') {
-              var tm = (block.output || '').match(/Task #(\d+) created successfully: (.+)/);
-              if (tm) {
-                block._taskId = tm[1];
-                taskSubjects[tm[1]] = tm[2];
-              }
+            if (block.type === 'tool_use' && block.name === 'TaskCreate' && block.result) {
+              var tm = block.result.match(/Task #(\d+) created successfully: (.+)/);
+              if (tm) taskSubjects[tm[1]] = tm[2];
             }
           });
         });
@@ -2115,11 +2108,7 @@ function loadConversation(id, pushHistory) {
           const div = document.createElement('div');
           div.className = 'message ' + m.role;
           div._messageData = m;
-          var toolTypes = m.content.filter(b => b.type === 'tool_use' || b.type === 'tool_result');
-          var roleLabel = toolTypes.length > 0 && toolTypes.length === m.content.length
-            ? (m.role === 'assistant' ? 'tool use' : 'tool result')
-            : m.role;
-          div.innerHTML = '<div class="role"><span>' + esc(roleLabel) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
+          div.innerHTML = '<div class="role"><span>' + esc(m.role) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
 
           m.content.forEach(block => {
             div.innerHTML += renderBlock(block);
@@ -2434,13 +2423,8 @@ function blockToMarkdown(block) {
     }
     var md = '**' + (block.name || 'Tool') + '**';
     if (block.input) md += '\n```json\n' + JSON.stringify(block.input, null, 2) + '\n```';
-    return md;
-  }
-  if (block.type === 'tool_result') {
-    var md = '**' + (block.name || 'Result') + ' output**\n```\n' + (block.output || '') + '\n```';
-    if (block.subagent) {
-      md += '\n\n' + subagentToMarkdown(block.subagent);
-    }
+    if (block.result) md += '\n**output**\n```\n' + block.result + '\n```';
+    if (block.subagent) md += '\n\n' + subagentToMarkdown(block.subagent);
     return md;
   }
   return '';
@@ -2469,6 +2453,22 @@ function messageToMarkdown(msgEl) {
   return parts.join('\n\n');
 }
 
+function renderToolResult(block) {
+  if (!block.result && !block.subagent) return '';
+  var html = '';
+  if (block.result) {
+    var resultBody = (block.name === 'Agent' || block.name === 'ExitPlanMode')
+      ? renderMarkdown(block.result)
+      : (formatJson(block.result) || esc(block.result));
+    html += '<details class="tool-result-inline"><summary>output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
+      '<div class="tool-output">' + resultBody + '</div></details>';
+  }
+  if (block.subagent) {
+    html += renderSubagent(block.subagent);
+  }
+  return html;
+}
+
 function renderBlock(block) {
   if (block.type === 'text') {
     return '<div class="block text">' + renderMarkdown(block.text) + '</div>';
@@ -2477,14 +2477,15 @@ function renderBlock(block) {
     return '<details class="block thinking"><summary>Thinking... <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' + renderMarkdown(block.text) + '</details>';
   }
   if (block.type === 'tool_use') {
+    var result = renderToolResult(block);
     if (block.name === 'ExitPlanMode') {
       return '<div class="block plan-block">' +
         '<div class="plan-header">Plan</div>' +
         renderToolInput(block.name, block.input) +
-        '</div>';
+        result + '</div>';
     }
     if (block.name === 'EnterPlanMode') {
-      return '<div class="block plan-enter">' + renderToolInput(block.name, block.input) + '</div>';
+      return '<div class="block plan-enter">' + renderToolInput(block.name, block.input) + result + '</div>';
     }
     if (block.name === 'Skill' && block.input && block.input.skill) {
       var sn = block.input.skill;
@@ -2496,25 +2497,12 @@ function renderBlock(block) {
         '<div class="tool-input">' +
           '<a href="#" class="skill-link" data-skill="' + esc(sn) + '" title="View skill /' + esc(sn) + '">/' + esc(sn) + '</a>' +
           (hasExtra ? '\n' + esc(JSON.stringify(extra, null, 2)) : '') +
-        '</div></div>';
+        '</div>' + result + '</div>';
     }
     return '<div class="block tool_use">' +
       '<div class="tool-name">' + esc(block.name) + '</div>' +
       '<div class="tool-input">' + renderToolInput(block.name, block.input) + '</div>' +
-      '</div>';
-  }
-  if (block.type === 'tool_result') {
-    var resultBody = (block.name === 'Agent' || block.name === 'ExitPlanMode')
-      ? renderMarkdown(block.output || '')
-      : (formatJson(block.output || '') || esc(block.output));
-    var html = '<details class="block tool_result">' +
-      '<summary class="tool-name">' + esc(block.name || 'Result') + ' output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
-      '<div class="tool-output">' + resultBody + '</div>' +
-      '</details>';
-    if (block.subagent) {
-      html += renderSubagent(block.subagent);
-    }
-    return html;
+      result + '</div>';
   }
   return '';
 }

@@ -525,6 +525,30 @@ def conversation_detail(request, conversation_id):
                     block["subagent"] = best
                     subagents = [s for s in subagents if s is not best]
 
+    # Merge tool_result into corresponding tool_use blocks
+    tool_use_map = {}
+    for m in messages:
+        for block in m.get("content", []):
+            if block.get("type") == "tool_use":
+                tool_use_map[block.get("_id")] = block
+
+    def _merge_result(result_block):
+        tool_use = tool_use_map.get(result_block.get("_tool_use_id"))
+        if tool_use:
+            tool_use["result"] = result_block.get("output", "")
+            if "subagent" in result_block:
+                tool_use["subagent"] = result_block["subagent"]
+            return True
+        return False
+
+    for m in messages:
+        m["content"] = [
+            b
+            for b in m["content"]
+            if not (b.get("type") == "tool_result" and _merge_result(b))
+        ]
+    messages = [m for m in messages if m.get("content")]
+
     # Clean internal fields
     for m in messages:
         for block in m.get("content", []):
