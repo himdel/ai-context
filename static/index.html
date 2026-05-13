@@ -205,10 +205,10 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .block.text h2 { font-size: 1.15em; }
 .block.text h3 { font-size: 1em; }
 .block.text blockquote { border-left: 3px solid #ddd; padding-left: 12px; color: #666; margin: 0.5em 0; }
-.block.text table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
-.block.text th, .block.text td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
-.block.text th { background: #f4f4f4; font-weight: 600; }
-.block.text tr:nth-child(even) { background: #f0f0f0; }
+.block.text table, .tool-output table, .agent-prompt table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
+.block.text th, .block.text td, .tool-output th, .tool-output td, .agent-prompt th, .agent-prompt td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+.block.text th, .tool-output th, .agent-prompt th { background: #f4f4f4; font-weight: 600; }
+.block.text tr:nth-child(even), .tool-output tr:nth-child(even), .agent-prompt tr:nth-child(even) { background: #f0f0f0; }
 
 .block.thinking {
   white-space: pre-wrap;
@@ -242,6 +242,73 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   max-height: 200px;
   overflow-y: auto;
 }
+
+.agent-header {
+  font-weight: 600;
+  color: #4338ca;
+  margin-bottom: 4px;
+}
+.agent-type {
+  font-weight: 400;
+  color: #6d28d9;
+  background: #ede9fe;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.agent-desc {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+}
+.agent-prompt {
+  font-family: system-ui, sans-serif;
+  white-space: normal;
+  font-size: 12px;
+  color: #333;
+  padding: 2px 0;
+}
+.agent-prompt ol, .agent-prompt ul {
+  padding-left: 1.5em;
+}
+
+.edit-file {
+  font-weight: 600;
+  color: #4338ca;
+  margin-bottom: 6px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.edit-flag {
+  font-weight: 400;
+  color: #888;
+}
+.edit-diff {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.edit-old, .edit-new {
+  padding: 4px 8px 4px 20px;
+  position: relative;
+}
+.edit-old::before, .edit-new::before {
+  position: absolute;
+  left: 6px;
+  font-weight: 700;
+}
+.edit-old {
+  background: #fdd;
+  color: #900;
+}
+.edit-old::before { content: "\2212"; }
+.edit-new {
+  background: #dfd;
+  color: #060;
+}
+.edit-new::before { content: "+"; }
 
 .skill-link {
   color: #4338ca;
@@ -2199,6 +2266,31 @@ function renderToolInput(name, input) {
     const desc = input.description ? '<div style="color:#888;font-size:11px">' + esc(input.description) + '</div>' : '';
     main = desc + '<code>' + esc(input.command || '') + '</code>';
   }
+  if (name === 'Agent') {
+    var label = 'Agent';
+    if (input.subagent_type) label += ' <span class="agent-type">' + esc(input.subagent_type) + '</span>';
+    var html = '<div class="agent-header">' + label + '</div>';
+    if (input.description) html += '<div class="agent-desc">' + esc(input.description) + '</div>';
+    if (input.prompt) html += '<div class="agent-prompt">' + renderMarkdown(input.prompt) + '</div>';
+    var extra = {};
+    var hasExtra = false;
+    var skip = ['description', 'subagent_type', 'prompt'];
+    for (var k in input) { if (skip.indexOf(k) === -1) { extra[k] = input[k]; hasExtra = true; } }
+    if (hasExtra) html += '<div style="margin-top:6px;color:#888;font-size:11px">' + esc(JSON.stringify(extra, null, 2)) + '</div>';
+    return html;
+  }
+  if (name === 'Edit') {
+    var header = '<div class="edit-file">' + esc(input.file_path || '') +
+      (input.replace_all ? ' <span class="edit-flag">(replace all)</span>' : '') +
+      '</div>';
+    var old_s = input.old_string || '';
+    var new_s = input.new_string || '';
+    var diff = '<div class="edit-diff">';
+    if (old_s) diff += '<div class="edit-old">' + esc(old_s) + '</div>';
+    if (new_s) diff += '<div class="edit-new">' + esc(new_s) + '</div>';
+    diff += '</div>';
+    return header + diff;
+  }
   if (name === 'ExitPlanMode') {
     var html = '';
     if (input.plan) {
@@ -2312,9 +2404,12 @@ function renderBlock(block) {
       '</div>';
   }
   if (block.type === 'tool_result') {
+    var resultBody = block.name === 'Agent'
+      ? renderMarkdown(block.output || '')
+      : (formatJson(block.output || '') || esc(block.output));
     var html = '<details class="block tool_result">' +
       '<summary class="tool-name">' + esc(block.name || 'Result') + ' output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
-      '<div class="tool-output">' + (formatJson(block.output || '') || esc(block.output)) + '</div>' +
+      '<div class="tool-output">' + resultBody + '</div>' +
       '</details>';
     if (block.subagent) {
       html += renderSubagent(block.subagent);
