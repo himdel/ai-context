@@ -22,6 +22,18 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   border-bottom: 1px solid #ddd;
 }
 
+#conv-search {
+  width: calc(100% - 24px);
+  margin: 8px 12px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  display: block;
+}
+#conv-search:focus { outline: none; border-color: #99f; }
+
 .conversation-item {
   padding: 12px 16px;
   border-bottom: 1px solid #eee;
@@ -717,6 +729,7 @@ details > summary {
 <div id="sidebar">
   <div class="sidebar-section" id="conv-section">
     <h2><span class="toggle">&#x25BC;</span>Conversations <span id="reload-list-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload list">&#x21bb;</span><span id="new-session-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New session">+</span></h2>
+    <input type="text" id="conv-search" placeholder="Search conversations...">
     <div class="sidebar-list" id="conversation-list"></div>
   </div>
   <div class="sidebar-section collapsed" id="plans-section">
@@ -1371,10 +1384,22 @@ function updateFavicon(count) {
 }
 
 let lastSidebarLoad = 0;
+let searchQuery = '';
+let searchTimer = null;
+
+const searchInput = document.getElementById('conv-search');
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchQuery = searchInput.value.trim();
+    loadSidebar();
+  }, 300);
+});
 
 function loadSidebar() {
   lastSidebarLoad = Date.now();
-  fetch('/api/conversations/')
+  const params = searchQuery ? '?q=' + encodeURIComponent(searchQuery) : '';
+  fetch('/api/conversations/' + params)
     .then(r => r.json())
     .then(conversations => {
       updateFavicon(conversations.filter(c => c.active).length);

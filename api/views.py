@@ -181,7 +181,7 @@ def conversations(request):
 
         for jsonl_file in project_dir.glob("*.jsonl"):
             conversation_id = jsonl_file.stem
-            entry = _parse_conversation(jsonl_file, conversation_id, project_name)
+            entry = _ensure_index(jsonl_file, conversation_id, project_name)
             if entry:
                 entry["url"] = request.build_absolute_uri(
                     f"/api/conversations/{conversation_id}/"
@@ -191,6 +191,18 @@ def conversations(request):
     active_ids = _active_session_ids()
     for r in results:
         r["active"] = r["id"] in active_ids
+
+    # Full-text search in cached conversation text
+    search_query = request.query_params.get("q", "").strip()
+    if search_query:
+        from api.models import ConversationIndex
+
+        matching_ids = set(
+            ConversationIndex.objects.filter(
+                searchable_text__icontains=search_query
+            ).values_list("conversation_id", flat=True)
+        )
+        results = [r for r in results if r["id"] in matching_ids]
 
     # Filter by repo (matches project/cwd path substring)
     repo_filter = request.query_params.get("repo", "")
@@ -794,17 +806,27 @@ def _is_valid_skill_path(path):
 
 def _discover_repos():
     """Return deduplicated repo paths from all known conversations."""
-    projects_dir = settings.CLAUDE_DIR / "projects"
-    if not projects_dir.is_dir():
-        return []
-    repos = set()
-    for project_dir in projects_dir.iterdir():
-        if not project_dir.is_dir():
-            continue
-        for jsonl_file in project_dir.glob("*.jsonl"):
-            entry = _parse_conversation(jsonl_file, jsonl_file.stem, project_dir.name)
-            if entry and entry.get("project"):
-                repos.add(entry["project"])
+    from api.models import ConversationIndex
+
+    repos = set(
+        ConversationIndex.objects.exclude(project="")
+        .values_list("project", flat=True)
+        .distinct()
+    )
+
+    # Fall back to scanning files if the index is empty
+    if not repos:
+        projects_dir = settings.CLAUDE_DIR / "projects"
+        if not projects_dir.is_dir():
+            return []
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for jsonl_file in project_dir.glob("*.jsonl"):
+                entry = _ensure_index(jsonl_file, jsonl_file.stem, project_dir.name)
+                if entry and entry.get("project"):
+                    repos.add(entry["project"])
+
     return sorted(repos)
 
 
@@ -942,6 +964,7 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
         last_ts = ""
         branch = ""
         msg_count = 0
+        text_parts = []
 
         with open(jsonl_file) as f:
             for line in f:
@@ -958,14 +981,24 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
 
                 msg = data.get("message", {})
                 role = msg.get("role")
-                if role in ("user", "assistant"):
-                    msg_count += 1
+                if role not in ("user", "assistant"):
+                    continue
+                msg_count += 1
 
-                if not blurb and role == "user":
-                    content = msg.get("content", "")
-                    if isinstance(content, str) and content.strip():
-                        content = re.sub(r"</?[\w-]+>", "", content).strip()
-                        blurb = content[:200]
+                content = msg.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    cleaned = re.sub(r"</?[\w-]+>", "", content).strip()
+                    if not blurb and role == "user":
+                        blurb = cleaned[:200]
+                    text_parts.append(cleaned)
+                elif isinstance(content, list):
+                    for block in content:
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == "text"
+                            and block.get("text", "").strip()
+                        ):
+                            text_parts.append(block["text"])
 
         if not blurb:
             return None
@@ -978,7 +1011,54 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
             "branch": branch,
             "message_count": msg_count,
             "last_timestamp": last_ts,
+            "searchable_text": "\n".join(text_parts),
         }
     except (json.JSONDecodeError, OSError):
         pass
     return None
+
+
+def _ensure_index(jsonl_file, conversation_id, project_name):
+    from api.models import ConversationIndex
+
+    try:
+        stat = jsonl_file.stat()
+    except OSError:
+        return None
+
+    try:
+        cached = ConversationIndex.objects.get(conversation_id=conversation_id)
+        if cached.file_size == stat.st_size and cached.file_mtime == stat.st_mtime:
+            return {
+                "id": conversation_id,
+                "project": cached.project,
+                "date": cached.first_timestamp,
+                "blurb": cached.blurb,
+                "branch": cached.branch,
+                "message_count": cached.message_count,
+                "last_timestamp": cached.last_timestamp,
+            }
+    except ConversationIndex.DoesNotExist:
+        pass
+
+    parsed = _parse_conversation(jsonl_file, conversation_id, project_name)
+    if not parsed:
+        return None
+
+    ConversationIndex.objects.update_or_create(
+        conversation_id=conversation_id,
+        defaults={
+            "project": parsed["project"],
+            "branch": parsed["branch"],
+            "blurb": parsed["blurb"],
+            "first_timestamp": parsed["date"],
+            "last_timestamp": parsed["last_timestamp"],
+            "message_count": parsed["message_count"],
+            "searchable_text": parsed.get("searchable_text", ""),
+            "file_size": stat.st_size,
+            "file_mtime": stat.st_mtime,
+        },
+    )
+
+    parsed.pop("searchable_text", None)
+    return parsed
