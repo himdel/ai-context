@@ -1,7 +1,7 @@
 from django.db import models
 
 
-class GitHubPR(models.Model):
+class ForgePR(models.Model):
     repo = models.CharField(max_length=255)
     branch = models.CharField(max_length=255)
     number = models.IntegerField(null=True)

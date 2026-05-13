@@ -1217,20 +1217,22 @@ function loadPlan(planId, pushHistory) {
         var parts = [];
 
         var project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
-        if (project && currentGithubRepo) {
-          parts.push('<span>' + (prid ? prid.iconSm : '') + '<a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
+        if (project && currentForgeRepo) {
+          parts.push('<span>' + (prid ? prid.iconSm : '') + '<a href="' + esc(forgeRepoUrl(currentForgeRepo)) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
         } else if (project) {
           parts.push('<span>' + (prid ? prid.iconSm : '') + esc(project) + '</span>');
         }
         if (data.branch) {
-          if (currentGithubOrigin) {
-            parts.push('<span>branch: <a href="https://github.com/' + esc(currentGithubOrigin) + '/tree/' + esc(data.branch) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
+          if (currentForgeOrigin) {
+            parts.push('<span>branch: <a href="' + esc(forgeBranchUrl(currentForgeOrigin, data.branch)) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
           } else {
             parts.push('<span>branch: ' + esc(data.branch) + '</span>');
           }
         }
         if (currentPR) {
-          parts.push('<span>PR: <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">#' + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
+          var prLabel = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? 'MR' : 'PR';
+          var prPrefix = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? '!' : '#';
+          parts.push('<span>' + prLabel + ': <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">' + prPrefix + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
         }
         if (data.conversation_id) {
           parts.push('<span>conversation: <a href="/conversations/' + esc(data.conversation_id) + '" style="color:#4338ca">' + esc(data.conversation_id.substring(0, 8)) + '...</a></span>');
@@ -1277,10 +1279,10 @@ function loadPlan(planId, pushHistory) {
       if (data.cwd) {
         fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd) + '&branch=' + encodeURIComponent(data.branch || ''))
           .then(r => r.json())
-          .then(gh => { setGithubAutolink(gh); renderPlan(); })
-          .catch(() => { setGithubAutolink(null); renderPlan(); });
+          .then(gh => { setForgeAutolink(gh); renderPlan(); })
+          .catch(() => { setForgeAutolink(null); renderPlan(); });
       } else {
-        setGithubAutolink(null);
+        setForgeAutolink(null);
         renderPlan();
       }
     });
@@ -1949,20 +1951,22 @@ function loadConversation(id, pushHistory) {
         }
         var parts = [];
 
-        if (project && currentGithubRepo) {
-          parts.push('<span>' + (crid ? crid.iconSm : '') + '<a href="https://github.com/' + esc(currentGithubRepo) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
+        if (project && currentForgeRepo) {
+          parts.push('<span>' + (crid ? crid.iconSm : '') + '<a href="' + esc(forgeRepoUrl(currentForgeRepo)) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
         } else if (project) {
           parts.push('<span>' + (crid ? crid.iconSm : '') + esc(project) + '</span>');
         }
         if (data.branch) {
-          if (currentGithubOrigin) {
-            parts.push('<span>branch: <a href="https://github.com/' + esc(currentGithubOrigin) + '/tree/' + esc(data.branch) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
+          if (currentForgeOrigin) {
+            parts.push('<span>branch: <a href="' + esc(forgeBranchUrl(currentForgeOrigin, data.branch)) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
           } else {
             parts.push('<span>branch: ' + esc(data.branch) + '</span>');
           }
         }
         if (currentPR) {
-          parts.push('<span>PR: <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">#' + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
+          var prLabel = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? 'MR' : 'PR';
+          var prPrefix = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? '!' : '#';
+          parts.push('<span>' + prLabel + ': <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">' + prPrefix + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
         }
         if (data.message_count) parts.push('<span>' + data.message_count + ' messages</span>');
         var duration = formatDuration(data.first_timestamp, data.last_timestamp);
@@ -2049,40 +2053,64 @@ function loadConversation(id, pushHistory) {
         fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd) + '&branch=' + encodeURIComponent(data.branch || ''))
           .then(r => r.json())
           .then(gh => {
-            setGithubAutolink(gh);
+            setForgeAutolink(gh);
             render();
           })
-          .catch(() => { setGithubAutolink(null); render(); });
+          .catch(() => { setForgeAutolink(null); render(); });
       } else {
-        setGithubAutolink(null);
+        setForgeAutolink(null);
         render();
       }
     });
 }
 
-let currentGithubRepo = null;
-let currentGithubOrigin = null;
+let currentForgeRepo = null;
+let currentForgeOrigin = null;
 let currentPR = null;
 let currentCwd = null;
 
-function setGithubAutolink(gh) {
-  currentGithubRepo = (gh && gh.upstream) || (gh && gh.origin);
-  currentGithubOrigin = (gh && gh.origin) || (gh && gh.upstream);
+function forgeRepoUrl(f) { return f.base_url + '/' + f.repo; }
+function forgeBranchUrl(f, branch) {
+  if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/tree/' + encodeURIComponent(branch);
+  if (f.type === 'gitea') return forgeRepoUrl(f) + '/src/branch/' + encodeURIComponent(branch);
+  return forgeRepoUrl(f) + '/tree/' + encodeURIComponent(branch);
+}
+function forgeCommitUrl(f, sha) {
+  if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/commit/' + sha;
+  return forgeRepoUrl(f) + '/commit/' + sha;
+}
+function forgePrUrl(f, id) {
+  if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/merge_requests/' + id;
+  if (f.type === 'gitea') return forgeRepoUrl(f) + '/pulls/' + id;
+  return forgeRepoUrl(f) + '/pull/' + id;
+}
+function forgeName(f) {
+  if (f.type === 'gitlab') return 'GitLab';
+  if (f.type === 'gitea') return 'Gitea';
+  return 'GitHub';
+}
+
+function setForgeAutolink(gh) {
+  currentForgeRepo = (gh && gh.upstream) || (gh && gh.origin);
+  currentForgeOrigin = (gh && gh.origin) || (gh && gh.upstream);
   currentPR = gh && gh.pr;
 }
 
-function linkifyGithub(html) {
-  if (currentGithubRepo) {
+function linkifyForge(html) {
+  if (currentForgeRepo && currentForgeRepo.type !== 'gitlab') {
     html = html.replace(/(^|[>\s(])#(\d+)\b/g, function(match, before, id) {
-      var url = 'https://github.com/' + currentGithubRepo + '/pull/' + id;
-      return before + '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">#' + id + '</a>';
+      return before + '<a href="' + esc(forgePrUrl(currentForgeRepo, id)) + '" target="_blank" rel="noopener noreferrer">#' + id + '</a>';
+    });
+  }
+  if (currentForgeRepo && currentForgeRepo.type === 'gitlab') {
+    html = html.replace(/(^|[>\s(])!(\d+)\b/g, function(match, before, id) {
+      return before + '<a href="' + esc(forgePrUrl(currentForgeRepo, id)) + '" target="_blank" rel="noopener noreferrer">!' + id + '</a>';
     });
   }
   html = html.replace(/<code>([0-9a-f]{7})<\/code>/g, function(match, sha) {
     var link = '<code><a href="#" class="git-show-link" data-sha="' + sha + '">' + sha + '</a></code>';
-    if (currentGithubRepo) {
-      var url = 'https://github.com/' + currentGithubRepo + '/commit/' + sha;
-      link += '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" class="exticon" title="View on GitHub">&#x2197;</a>';
+    if (currentForgeRepo) {
+      link += '<a href="' + esc(forgeCommitUrl(currentForgeRepo, sha)) + '" target="_blank" rel="noopener noreferrer" class="exticon" title="View on ' + forgeName(currentForgeRepo) + '">&#x2197;</a>';
     }
     return link;
   });
@@ -2121,7 +2149,7 @@ document.addEventListener('click', function(e) {
 
 function renderMarkdown(text) {
   if (!text) return '';
-  var html = linkifyGithub(marked.parse(text));
+  var html = linkifyForge(marked.parse(text));
   html = html.replace(/<command-message>([^<]*)<\/command-message>\s*<command-name>\/?([^<]+)<\/command-name>/g, function(match, msg, name) {
     if (!/^[\w][\w.-]*$/.test(name)) return match;
     return '<a href="#" class="skill-link" data-skill="' + esc(name) + '" title="' + esc(msg) + '">/' + esc(name) + '</a>';

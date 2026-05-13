@@ -57,6 +57,11 @@ AUTOLINKS = [
     ),
 ]
 
+# Additional forge domain mappings for self-hosted instances.
+# Maps hostname to forge type: "github", "gitlab", or "gitea".
+# Example: {"gitlab.corp.com": "gitlab", "git.example.org": "gitea"}
+FORGE_DOMAINS = {}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGGING = {
@@ -82,3 +87,8 @@ CLAUDE_DIR = Path.home() / ".claude"
 # The prompt or --resume args are appended to this list.
 TERMINAL_CMD = ["rxvt-unicode", "-e"]
 TERMINAL_DISPLAY = ":0"
+
+try:
+    from contexts.settings_local import *  # noqa: F401, F403
+except ImportError:
+    pass

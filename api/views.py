@@ -13,8 +13,14 @@ from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
 
-_github_repo_cache = {}
-_github_remote_cache = {}
+_forge_repo_cache = {}
+_forge_remote_cache = {}
+
+_KNOWN_FORGE_DOMAINS = {
+    "github.com": "github",
+    "gitlab.com": "gitlab",
+    "codeberg.org": "gitea",
+}
 
 
 def _active_session_ids():
@@ -49,10 +55,15 @@ def autolinks(request):
     )
 
 
-def _parse_github_remote(path, remote):
+def _detect_forge_type(hostname):
+    custom = getattr(settings, "FORGE_DOMAINS", {})
+    return custom.get(hostname) or _KNOWN_FORGE_DOMAINS.get(hostname)
+
+
+def _parse_forge_remote(path, remote):
     cache_key = f"{path}:{remote}"
-    if cache_key in _github_remote_cache:
-        return _github_remote_cache[cache_key]
+    if cache_key in _forge_remote_cache:
+        return _forge_remote_cache[cache_key]
 
     result = None
     cmd = ["git", "-C", path, "remote", "get-url", remote]
@@ -63,25 +74,39 @@ def _parse_github_remote(path, remote):
             text=True,
         ).strip()
         logger.info("ran %s, exit 0", cmd)
-        m = re.match(r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url)
+
+        m = re.match(r"git@([^:]+):(.+?)(?:\.git)?$", url)
+        if not m:
+            m = re.match(r"https?://([^/]+)/(.+?)(?:\.git)?$", url)
         if m:
-            result = m.group(1)
+            hostname = m.group(1)
+            repo = m.group(2)
+            forge_type = _detect_forge_type(hostname)
+            if forge_type:
+                result = {
+                    "type": forge_type,
+                    "base_url": f"https://{hostname}",
+                    "repo": repo,
+                }
     except subprocess.CalledProcessError as e:
         logger.info("ran %s, exit %d", cmd, e.returncode)
     except FileNotFoundError:
         logger.info("ran %s, command not found", cmd)
 
-    _github_remote_cache[cache_key] = result
+    _forge_remote_cache[cache_key] = result
     return result
 
 
-def _find_pr_for_branch(repo, branch, path):
-    if not repo or not branch or branch in ("main", "master", "HEAD"):
+def _find_pr_for_branch(forge, branch, path):
+    if not forge or not branch or branch in ("main", "master", "HEAD"):
         return None
 
-    from api.models import GitHubPR
+    repo = forge["repo"]
+    forge_type = forge["type"]
 
-    cached = GitHubPR.objects.filter(repo=repo, branch=branch).first()
+    from api.models import ForgePR
+
+    cached = ForgePR.objects.filter(repo=repo, branch=branch).first()
     if cached:
         if cached.number is None:
             return None
@@ -94,11 +119,30 @@ def _find_pr_for_branch(repo, branch, path):
             text=True,
         ).strip()
         if not remote_branches:
-            logger.info("no remote-tracking branch for %s, skipping gh pr list", branch)
+            logger.info("no remote-tracking branch for %s, skipping PR lookup", branch)
             return None
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
+    pr = None
+    if forge_type == "github":
+        pr = _find_pr_github(repo, branch)
+    elif forge_type == "gitlab":
+        pr = _find_mr_gitlab(repo, branch, forge["base_url"])
+
+    if pr:
+        ForgePR.objects.create(
+            repo=repo,
+            branch=branch,
+            number=pr["number"],
+            url=pr["url"],
+            state=pr["state"],
+        )
+
+    return pr
+
+
+def _find_pr_github(repo, branch):
     cmd = [
         "gh",
         "pr",
@@ -112,7 +156,6 @@ def _find_pr_for_branch(repo, branch, path):
         "--limit",
         "1",
     ]
-    pr = None
     try:
         out = subprocess.check_output(
             cmd,
@@ -122,24 +165,50 @@ def _find_pr_for_branch(repo, branch, path):
         logger.info("ran %s, exit 0", cmd)
         prs = json.loads(out)
         if prs:
-            pr = prs[0]
+            return prs[0]
     except subprocess.CalledProcessError as e:
         logger.info("ran %s, exit %d", cmd, e.returncode)
     except FileNotFoundError:
         logger.info("ran %s, command not found", cmd)
     except json.JSONDecodeError:
         pass
+    return None
 
-    if pr:
-        GitHubPR.objects.create(
-            repo=repo,
-            branch=branch,
-            number=pr["number"],
-            url=pr["url"],
-            state=pr["state"],
-        )
 
-    return pr
+def _find_mr_gitlab(repo, branch, base_url):
+    cmd = [
+        "glab",
+        "mr",
+        "list",
+        "--repo",
+        repo,
+        "--source-branch",
+        branch,
+        "-F",
+        "json",
+    ]
+    try:
+        out = subprocess.check_output(
+            cmd,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        logger.info("ran %s, exit 0", cmd)
+        mrs = json.loads(out)
+        if mrs:
+            mr = mrs[0]
+            return {
+                "number": mr.get("iid", mr.get("number")),
+                "url": mr.get("web_url", mr.get("url", "")),
+                "state": mr.get("state", ""),
+            }
+    except subprocess.CalledProcessError as e:
+        logger.info("ran %s, exit %d", cmd, e.returncode)
+    except FileNotFoundError:
+        logger.info("ran %s, command not found", cmd)
+    except json.JSONDecodeError:
+        pass
+    return None
 
 
 @api_view(["GET"])
@@ -150,11 +219,11 @@ def github_repo(request):
         return Response({"upstream": None, "origin": None, "pr": None})
 
     cache_key = f"{path}:{branch}"
-    if cache_key in _github_repo_cache:
-        return Response(_github_repo_cache[cache_key])
+    if cache_key in _forge_repo_cache:
+        return Response(_forge_repo_cache[cache_key])
 
-    upstream = _parse_github_remote(path, "upstream")
-    origin = _parse_github_remote(path, "origin")
+    upstream = _parse_forge_remote(path, "upstream")
+    origin = _parse_forge_remote(path, "origin")
     pr = _find_pr_for_branch(upstream or origin, branch, path)
 
     result = {
@@ -163,7 +232,7 @@ def github_repo(request):
         "pr": pr,
     }
 
-    _github_repo_cache[cache_key] = result
+    _forge_repo_cache[cache_key] = result
     return Response(result)
 
 
