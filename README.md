@@ -1,6 +1,12 @@
 # context
 
-vibe-coded tool to show claude conversations in a web ui
+vibe-coded tool to show claude data in a web ui:
+* Conversations - searchable, markdown-rendered, expandable detail, with support for jira-style and github-style autolinks
+* Plans - links back to a conversation, has a big Execute button
+* Skills - editable global and known-repo skills, with a Run button with a repo chooser
+
+The main view allows starting new conversation in each detected repo, the conversation view allows forking and resuming conversations,
+all starting a new claude terminal in the right place with the right params.
 
 (DO NOT expect this to be safe, secure, or complete)
 
