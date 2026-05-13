@@ -62,6 +62,12 @@ AUTOLINKS = [
 # Example: {"gitlab.corp.com": "gitlab", "git.example.org": "gitea"}
 FORGE_DOMAINS = {}
 
+import os, re
+
+_localtime = os.readlink("/etc/localtime") if os.path.islink("/etc/localtime") else ""
+_match = re.search(r"zoneinfo/(.+)$", _localtime)
+TIME_ZONE = _match.group(1) if _match else "UTC"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGGING = {
