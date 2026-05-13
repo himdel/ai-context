@@ -192,16 +192,22 @@ def conversations(request):
     for r in results:
         r["active"] = r["id"] in active_ids
 
-    # Full-text search in cached conversation text
+    # Full-text search: each space-separated term must match in text or metadata
     search_query = request.query_params.get("q", "").strip()
     if search_query:
+        from django.db.models import Q
+
         from api.models import ConversationIndex
 
-        matching_ids = set(
-            ConversationIndex.objects.filter(
-                searchable_text__icontains=search_query
-            ).values_list("conversation_id", flat=True)
-        )
+        qs = ConversationIndex.objects.all()
+        for term in search_query.split():
+            qs = qs.filter(
+                Q(searchable_text__icontains=term)
+                | Q(project__icontains=term)
+                | Q(branch__icontains=term)
+                | Q(blurb__icontains=term)
+            )
+        matching_ids = set(qs.values_list("conversation_id", flat=True))
         results = [r for r in results if r["id"] in matching_ids]
 
     # Filter by repo (matches project/cwd path substring)
