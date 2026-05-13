@@ -28,6 +28,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid #ddd;
+  border-left: 3px solid #3b82f6;
   border-radius: 4px;
   background: #fff;
   display: block;
@@ -37,6 +38,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .conversation-item {
   padding: 12px 16px;
   border-bottom: 1px solid #eee;
+  border-left: 3px solid #3b82f6;
   cursor: pointer;
 }
 
@@ -139,7 +141,11 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  border-top: 3px solid transparent;
 }
+#main.view-conversation { border-top-color: #3b82f6; }
+#main.view-plan { border-top-color: #8b5cf6; }
+#main.view-skill { border-top-color: #0d9488; }
 
 #main .empty {
   color: #999;
@@ -570,6 +576,9 @@ details > summary {
   overflow: hidden;
 }
 .home-conv-item:hover { background: #e8e8e8; }
+.view-conversation .home-conv-item { border-left: 3px solid #3b82f6; }
+.view-plan .home-conv-item { border-left: 3px solid #8b5cf6; }
+.view-skill .home-conv-item { border-left: 3px solid #0d9488; }
 .home-conv-item .conv-meta {
   font-size: 11px;
   color: #888;
@@ -608,7 +617,10 @@ details > summary {
   border-bottom: 2px solid transparent;
 }
 .home-tab:hover { color: #555; }
-.home-tab.active { color: #333; border-bottom-color: #4338ca; }
+.home-tab.active { color: #333; }
+.home-tab[data-tab="conversations"].active { border-bottom-color: #3b82f6; }
+.home-tab[data-tab="plans"].active { border-bottom-color: #8b5cf6; }
+.home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
 
 .plan-detail-view { max-width: 800px; }
 .plan-detail-view .plan-actions {
@@ -639,6 +651,9 @@ details > summary {
   cursor: pointer;
   user-select: none;
 }
+#conv-section h2 { border-left: 3px solid #3b82f6; }
+#plans-section h2 { border-left: 3px solid #8b5cf6; }
+#skills-section h2 { border-left: 3px solid #0d9488; }
 #sidebar .sidebar-section h2 .toggle {
   font-size: 12px;
   color: #aaa;
@@ -652,6 +667,7 @@ details > summary {
 .plan-item {
   padding: 8px 16px;
   border-bottom: 1px solid #eee;
+  border-left: 3px solid #8b5cf6;
   cursor: pointer;
   font-size: 13px;
 }
@@ -675,6 +691,7 @@ details > summary {
 .skill-item {
   padding: 8px 16px;
   border-bottom: 1px solid #eee;
+  border-left: 3px solid #0d9488;
   cursor: pointer;
   font-size: 13px;
 }
@@ -826,6 +843,11 @@ const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
 let activeSkillId = null;
+
+function setViewType(type) {
+  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill');
+  if (type) mainEl.classList.add('view-' + type);
+}
 
 // Repo visual identity — deterministic icon + color per repo path
 var RepoIdentity = {
@@ -1041,7 +1063,9 @@ let homeTab = 'conversations';
 
 var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills'};
 
+var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill'};
 function showHomeScreen(pushHistory) {
+  setViewType(homeTabViewType[homeTab] || null);
   if (pushHistory !== false) {
     history.pushState(null, '', homeTabUrls[homeTab] || '/conversations');
   }
@@ -1244,6 +1268,7 @@ function showPlansHome() {
 
 function loadPlan(planId, pushHistory) {
   stopFollowing();
+  setViewType('plan');
   activeId = null;
   activePlanId = planId;
   if (pushHistory !== false) {
@@ -1624,6 +1649,7 @@ function showSkillsHome() {
 
 function loadSkill(skillId, pushHistory) {
   stopFollowing();
+  setViewType('skill');
   activeId = null;
   activePlanId = null;
   activeSkillId = skillId;
@@ -1661,6 +1687,8 @@ function loadSkill(skillId, pushHistory) {
 
         var header = document.createElement('div');
         header.className = 'conversation-header';
+        header.style.borderLeft = '3px solid #0d9488';
+        header.style.paddingLeft = '12px';
         var scopeLabel = data.scope === 'global' ? 'Global' : data.scope.replace(/^\/home\/[^/]+\//, '~/');
         header.innerHTML = '<span>/' + esc(data.name) + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
         mainEl.appendChild(header);
@@ -1984,6 +2012,7 @@ window.addEventListener('popstate', function(e) {
 
 function loadConversation(id, pushHistory) {
   stopFollowing();
+  setViewType('conversation');
   activeId = id;
   activePlanId = null;
   if (pushHistory !== false) {
