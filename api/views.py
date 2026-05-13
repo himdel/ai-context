@@ -963,6 +963,7 @@ def skill_detail(request, skill_id):
 
 
 def _parse_conversation(jsonl_file, conversation_id, project_name):
+    # If you change what gets extracted here, run `make reindex` to rebuild the cache.
     try:
         blurb = ""
         cwd = ""
@@ -993,7 +994,9 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
 
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
-                    cleaned = re.sub(r"</?[\w-]+>", "", content).strip()
+                    cleaned = re.sub(r"<([\w-]+)>[^<]*</\1>", "", content).strip()
+                    if not cleaned:
+                        continue
                     if not blurb and role == "user":
                         blurb = cleaned[:200]
                     text_parts.append(cleaned)
