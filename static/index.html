@@ -205,9 +205,10 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .block.text h2 { font-size: 1.15em; }
 .block.text h3 { font-size: 1em; }
 .block.text blockquote { border-left: 3px solid #ddd; padding-left: 12px; color: #666; margin: 0.5em 0; }
-.block.text table { border-collapse: collapse; margin: 0.5em 0; }
-.block.text th, .block.text td { border: 1px solid #ddd; padding: 4px 8px; }
-.block.text th { background: #f4f4f4; }
+.block.text table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
+.block.text th, .block.text td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+.block.text th { background: #f4f4f4; font-weight: 600; }
+.block.text tr:nth-child(even) { background: #f0f0f0; }
 
 .block.thinking {
   white-space: pre-wrap;
@@ -328,6 +329,7 @@ details > summary {
   font-size: 14px;
   line-height: 1.5;
   color: #222;
+  overflow-x: auto;
 }
 
 .block.plan-block .plan-content p { margin: 0.5em 0; }
@@ -342,6 +344,10 @@ details > summary {
 .block.plan-block .plan-content pre code { background: none; padding: 0; }
 .block.plan-block .plan-content strong { color: #4c1d95; }
 .block.plan-block .plan-content blockquote { border-left: 3px solid #d0c0f0; padding-left: 12px; color: #666; margin: 0.5em 0; }
+.block.plan-block .plan-content table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
+.block.plan-block .plan-content th, .block.plan-block .plan-content td { border: 1px solid #d0c0f0; padding: 6px 10px; text-align: left; }
+.block.plan-block .plan-content th { background: #ede9fe; font-weight: 600; color: #4c1d95; }
+.block.plan-block .plan-content tr:nth-child(even) { background: #e8e0f0; }
 
 .block.plan-block .plan-prompts {
   margin-top: 12px;
@@ -2163,6 +2169,22 @@ function renderMarkdown(text) {
   return html;
 }
 
+function formatJson(str) {
+  var trimmed = str.trim();
+  if (!(trimmed.charAt(0) === '{' || trimmed.charAt(0) === '[')) return null;
+  try {
+    var obj = JSON.parse(trimmed);
+    var pretty = JSON.stringify(obj, null, 2);
+    return pretty.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"([^"\\]*(\\.[^"\\]*)*)"(\s*:)/g, '<span style="color:#881280">"$1"</span>$3')
+      .replace(/:\s*"([^"\\]*(\\.[^"\\]*)*)"/g, ': <span style="color:#1a7f37">"$1"</span>')
+      .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color:#0550ae">$1</span>')
+      .replace(/:\s*(true|false|null)/g, ': <span style="color:#cf222e">$1</span>');
+  } catch (e) {
+    return null;
+  }
+}
+
 function renderToolInput(name, input) {
   var main = null;
   var skip = [];
@@ -2198,7 +2220,7 @@ function renderToolInput(name, input) {
   if (name === 'EnterPlanMode') {
     return '<em>Entering plan mode...</em>';
   }
-  if (main === null) return esc(JSON.stringify(input, null, 2));
+  if (main === null) return formatJson(JSON.stringify(input)) || esc(JSON.stringify(input, null, 2));
   var extra = {};
   var hasExtra = false;
   for (var k in input) { if (skip.indexOf(k) === -1) { extra[k] = input[k]; hasExtra = true; } }
@@ -2292,7 +2314,7 @@ function renderBlock(block) {
   if (block.type === 'tool_result') {
     var html = '<details class="block tool_result">' +
       '<summary class="tool-name">' + esc(block.name || 'Result') + ' output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
-      '<div class="tool-output">' + esc(block.output) + '</div>' +
+      '<div class="tool-output">' + (formatJson(block.output || '') || esc(block.output)) + '</div>' +
       '</details>';
     if (block.subagent) {
       html += renderSubagent(block.subagent);
