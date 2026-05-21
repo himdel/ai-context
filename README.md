@@ -65,6 +65,7 @@ and starting new sessions.
 ```
 git clone https://github.com/himdel/ai-context
 cd ai-context
+make migrate # local sqlite file
 make
 ```
 
