@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import re
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -61,8 +64,6 @@ AUTOLINKS = [
 # Maps hostname to forge type: "github", "gitlab", or "gitea".
 # Example: {"gitlab.corp.com": "gitlab", "git.example.org": "gitea"}
 FORGE_DOMAINS = {}
-
-import os, re
 
 _localtime = os.readlink("/etc/localtime") if os.path.islink("/etc/localtime") else ""
 _match = re.search(r"zoneinfo/(.+)$", _localtime)
