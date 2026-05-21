@@ -1094,7 +1094,7 @@ def _project_dir_to_cwd(project_dir):
 
 def _parse_memory_frontmatter(text):
     """Extract YAML frontmatter fields from a memory markdown file."""
-    result = {"name": "", "description": "", "type": ""}
+    result = {"name": "", "description": "", "type": "", "originSessionId": ""}
     if not text.startswith("---"):
         return result
     end = text.find("\n---", 3)
@@ -1102,7 +1102,7 @@ def _parse_memory_frontmatter(text):
         return result
     for line in text[3:end].splitlines():
         line = line.strip()
-        for key in ("name", "description", "type"):
+        for key in ("name", "description", "type", "originSessionId"):
             prefix = key + ":"
             if line.startswith(prefix):
                 result[key] = line[len(prefix) :].strip().strip("\"'")
@@ -1153,6 +1153,7 @@ def memories_list(request):
                     "name": fm["name"] or md_file.stem,
                     "type": fm["type"],
                     "description": fm["description"],
+                    "conversation_id": fm["originSessionId"],
                     "project": project_path or project_dir.name,
                     "path": str(md_file),
                     "modified": datetime.fromtimestamp(mtime).isoformat(),
@@ -1200,6 +1201,7 @@ def memory_detail(request, memory_id):
             "name": fm["name"] or path.stem,
             "type": fm["type"],
             "description": fm["description"],
+            "conversation_id": fm["originSessionId"],
             "project": project_path or project_dir.name,
             "content": text,
             "path": str(path),

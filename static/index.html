@@ -2128,6 +2128,7 @@ function loadMemory(memoryId, pushHistory) {
         '<span>' + esc(data.name) + '</span>' +
         (data.type ? '<span class="memory-type' + typeClass + '">' + esc(data.type) + '</span>' : '') +
         (project ? '<span>' + esc(project) + '</span>' : '') +
+        (data.conversation_id ? '<span>origin: <a href="/conversations/' + esc(data.conversation_id) + '" style="color:#4338ca">' + esc(data.conversation_id.substring(0, 8)) + '...</a></span>' : '') +
         '<span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
       mainEl.appendChild(header);
 
