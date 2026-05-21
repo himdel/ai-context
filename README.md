@@ -1,43 +1,66 @@
 # context
 
-vibe-coded tool to show claude data in a web ui:
-* Conversations - searchable, markdown-rendered, expandable detail, with support for jira-style and github-style autolinks
-* Plans - links back to a conversation, has a big Execute button
-* Skills - editable global and known-repo skills, with a Run button with a repo chooser
+Vibe-coded tool to browse Claude Code data in a web UI.
 
-The main view allows starting new conversation in each detected repo, the conversation view allows forking and resuming conversations,
-all starting a new claude terminal in the right place with the right params.
+Reads `~/.claude/` and exposes conversation history, plans, skills, and memory
+in a searchable, markdown-rendered interface with support for resuming, forking,
+and starting new sessions.
 
 (DO NOT expect this to be safe, secure, or complete)
 
-This reads `~/.claude/` and exposes conversation history in a nice markdown-rendered web UI,
-including plans, tool uses, subagents, thinking blocks, etc.
+## Features
 
-Home screen groups conversations by repo with active/recent sections, and has tabs for Conversations, Plans, and Skills.
-Each conversation gets a different visual fingerprint per repo (deterministic icon + color tint).
-Direct URL routing to conversations, plans, and skills (SPA with browser history support).
+### Conversations
+- Full-text search with SQLite-backed index
+- Markdown rendering with syntax highlighting
+- Tool use blocks with inline results, thinking blocks, subagent threads
+- Edit blocks rendered as diffs
+- Skill invocations collapsed under their prompt
+- Timestamps, copy-as-markdown, expand/collapse all
+- Resume, fork, or start new sessions from the UI
+- Active session indicator (green dot + favicon badge)
+- Auto-refresh on tab focus, live tailing for active conversations
 
-For any git repos used as a base dir for a conversation, it also extracts the list of git remotes,
-and enables autolinks when a github issue is mentioned. (upstream is preferred over origin, when both remotes are present)
-Also detects PRs for the current branch and shows the link + status in the conversation header.
-Commit SHAs in code spans are clickable - opens `git show` in a local terminal, with a GitHub link too.
-Custom autolinks are configurable for Jira-style ticket references beyond GitHub #123.
+### Plans
+- Grouped by repo, linked back to originating conversation
+- Full markdown rendering with Execute button to launch a new session
 
-Conversation header shows metadata - model, version, duration, message count, branch.
-Messages have timestamps, copy-as-markdown button, and new messages highlight with a green fade animation.
-Expand/collapse all button for thinking/tool blocks, scroll-to-bottom button in the toolbar.
+### Skills
+- Browse, create, edit, and delete global and repo-scoped skills
+- Run button with repo chooser for global skills
+- Recent invocations with links to originating conversations
 
-Each conversation can be resumed/forked, and new conversations can be started - will run a new terminal with claude in that repo.
+### Memory
+- Browse, edit, and delete persistent memory items
+- Type badges (user, feedback, project, reference)
+- Linked to originating conversation and project
 
-Indicators for active conversations, ability to tail -f a conversation,
-auto-refresh on tab focus (after 20s), shows the number of active conversations in the favicon.
+### Git & forge integration
+- GitHub, GitLab, and Gitea/Codeberg support
+- PR/MR detection for current branch (status shown in header)
+- Autolinks for GitHub issues (#123) and configurable Jira-style references
+- Clickable commit SHAs — opens `git show` locally, with forge link
+- Deterministic repo icon + color tint per repository
 
-Plans can be viewed and executed from the UI (launches a new session).
-Skills can be browsed, created, edited, and deleted.
+### Home screen
+- Conversations grouped by repo with active/recent sections
+- Tabs for Conversations, Plans, Skills, Memory
+- New session launcher per repo
+- SPA with direct URL routing and browser history
 
----
+## Screenshots
 
-Usage:
+![](./screenshots/conversation.png)
+
+| Home | Skill |
+|---|---|
+| ![](./screenshots/home.png) | ![](./screenshots/skill.png) |
+
+| Plan | Memory |
+|---|---|
+| ![](./screenshots/plan.png) | ![](./screenshots/memory.png) |
+
+## Usage
 
 ```
 git clone https://github.com/himdel/ai-context
@@ -50,7 +73,3 @@ open http://localhost:8042
 ```
 
 Tweak `contexts/settings.py` if your terminal is not `rxvt-unicode`, X display not `:0`, etc.
-
----
-
-![](./screenshot.png)
