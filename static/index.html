@@ -607,6 +607,9 @@ details > summary {
 .view-plan .home-conv-item { border-left: 3px solid #8b5cf6; }
 .view-skill .home-conv-item { border-left: 3px solid #0d9488; }
 .view-memory .home-conv-item { border-left: 3px solid #d97706; }
+.skill-invocations .home-conv-item { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.invoc-summary { font-size: 12px; color: #666; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.invoc-summary p { margin: 0; display: inline; }
 .home-conv-item .conv-meta {
   font-size: 11px;
   color: #888;
@@ -1955,9 +1958,10 @@ function loadSkill(skillId, pushHistory) {
                 '<span' + (rid ? ' style="color:' + rid.colorText + '"' : '') + '>' + esc(short) + '</span>' +
                 '<a href="/conversations/' + esc(inv.conversation_id) + '" style="color:#4338ca;margin-left:auto;flex-shrink:0">' + esc(inv.conversation_id.substring(0, 8)) + '...</a>' +
                 '</div>';
-              item.innerHTML = meta + repo;
+              var summary = inv.summary ? '<div class="invoc-summary">' + renderMarkdown(inv.summary) + '</div>' : '';
+              item.innerHTML = meta + repo + summary;
               item.onclick = function(e) {
-                e.preventDefault();
+                if (e.target.closest('a')) return;
                 loadConversation(inv.conversation_id);
               };
               list.appendChild(item);

@@ -1055,6 +1055,28 @@ def skill_detail(request, skill_id):
     )
 
 
+def _skill_summary(entries, start_idx):
+    """Find the last assistant text line after a Skill tool_use."""
+    last_text = ""
+    for j in range(start_idx + 1, len(entries)):
+        msg = entries[j].get("message", {})
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role == "user" and isinstance(content, str) and content.strip():
+            clean = re.sub(r"<[^>]+>[^<]*</[^>]+>", "", content).strip()
+            if clean:
+                break
+        if role == "assistant" and isinstance(content, list):
+            for bl in content:
+                if not isinstance(bl, dict):
+                    continue
+                if bl.get("type") == "tool_use" and bl.get("name") == "Skill":
+                    return last_text
+                if bl.get("type") == "text" and bl.get("text", "").strip():
+                    last_text = bl["text"].strip()
+    return last_text
+
+
 @api_view(["GET"])
 def skill_invocations(request, skill_id):
     path = _id_to_path(skill_id)
@@ -1074,32 +1096,36 @@ def skill_invocations(request, skill_id):
             conversation_id = jsonl_file.stem
             try:
                 with open(jsonl_file) as f:
-                    cwd = ""
-                    for line in f:
-                        data = json.loads(line)
-                        if not cwd:
-                            cwd = data.get("cwd", "")
-                        msg = data.get("message", {})
-                        content = msg.get("content", [])
-                        if not isinstance(content, list):
-                            continue
-                        for block in content:
-                            if (
-                                isinstance(block, dict)
-                                and block.get("type") == "tool_use"
-                                and block.get("name") == "Skill"
-                                and isinstance(block.get("input"), dict)
-                                and block["input"].get("skill") == skill_name
-                            ):
-                                invocations.append(
-                                    {
-                                        "timestamp": data.get("timestamp", ""),
-                                        "conversation_id": conversation_id,
-                                        "cwd": cwd,
-                                    }
-                                )
+                    entries = [json.loads(line) for line in f]
             except (json.JSONDecodeError, OSError):
                 continue
+
+            cwd = ""
+            for i, data in enumerate(entries):
+                if not cwd:
+                    cwd = data.get("cwd", "")
+                msg = data.get("message", {})
+                content = msg.get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "tool_use"
+                        and block.get("name") == "Skill"
+                        and isinstance(block.get("input"), dict)
+                        and block["input"].get("skill") == skill_name
+                    ):
+                        summary = _skill_summary(entries, i)
+                        last_line = summary.split("\n")[-1].strip() if summary else ""
+                        invocations.append(
+                            {
+                                "timestamp": data.get("timestamp", ""),
+                                "conversation_id": conversation_id,
+                                "cwd": cwd,
+                                "summary": last_line,
+                            }
+                        )
 
     invocations.sort(key=lambda x: x["timestamp"], reverse=True)
     return Response(invocations)
