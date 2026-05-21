@@ -146,6 +146,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 #main.view-conversation { border-top-color: #3b82f6; }
 #main.view-plan { border-top-color: #8b5cf6; }
 #main.view-skill { border-top-color: #0d9488; }
+#main.view-memory { border-top-color: #d97706; }
 
 #main .empty {
   color: #999;
@@ -579,6 +580,7 @@ details > summary {
 .view-conversation .home-conv-item { border-left: 3px solid #3b82f6; }
 .view-plan .home-conv-item { border-left: 3px solid #8b5cf6; }
 .view-skill .home-conv-item { border-left: 3px solid #0d9488; }
+.view-memory .home-conv-item { border-left: 3px solid #d97706; }
 .home-conv-item .conv-meta {
   font-size: 11px;
   color: #888;
@@ -621,6 +623,7 @@ details > summary {
 .home-tab[data-tab="conversations"].active { border-bottom-color: #3b82f6; }
 .home-tab[data-tab="plans"].active { border-bottom-color: #8b5cf6; }
 .home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
+.home-tab[data-tab="memory"].active { border-bottom-color: #d97706; }
 
 .plan-detail-view { max-width: 800px; }
 .plan-detail-view .plan-actions {
@@ -805,6 +808,37 @@ details > summary {
   color: #888;
 }
 
+.memory-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid #eee;
+  border-left: 3px solid #d97706;
+  cursor: pointer;
+  font-size: 13px;
+}
+.memory-item:hover { background: #e8e8e8; }
+.memory-item.active { background: #d0d8ff; }
+.memory-item .memory-name { color: #333; }
+.memory-item .memory-info {
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.memory-type {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.memory-type-user { background: #dbeafe; color: #1d4ed8; }
+.memory-type-feedback { background: #fef3c7; color: #b45309; }
+.memory-type-project { background: #dcfce7; color: #15803d; }
+.memory-type-reference { background: #ede9fe; color: #6d28d9; }
+
+#memories-section h2 { border-left: 3px solid #d97706; }
+
 /* Repo identity */
 .repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 </style>
@@ -830,6 +864,12 @@ details > summary {
     </h2>
     <div class="sidebar-list" id="skill-list"></div>
   </div>
+  <div class="sidebar-section collapsed" id="memories-section">
+    <h2><span class="toggle">&#x25BC;</span>Memory
+      <span id="reload-memories-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload memories">&#x21bb;</span>
+    </h2>
+    <div class="sidebar-list" id="memory-list"></div>
+  </div>
 </div>
 
 <div id="main" tabindex="-1" style="outline:none"></div>
@@ -838,14 +878,16 @@ details > summary {
 const listEl = document.getElementById('conversation-list');
 const planListEl = document.getElementById('plan-list');
 const skillListEl = document.getElementById('skill-list');
+const memoryListEl = document.getElementById('memory-list');
 const mainEl = document.getElementById('main');
 const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
 let activeSkillId = null;
+let activeMemoryId = null;
 
 function setViewType(type) {
-  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill');
+  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-memory');
   if (type) mainEl.classList.add('view-' + type);
 }
 
@@ -896,7 +938,7 @@ var RepoIdentity = {
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn')) return;
+    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-memories-btn')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
@@ -908,6 +950,10 @@ document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
       // Load skills on first expand
       if (section.id === 'skills-section' && !skillListEl.children.length) {
         loadSkillsSidebar();
+      }
+      // Load memories on first expand
+      if (section.id === 'memories-section' && !memoryListEl.children.length) {
+        loadMemoriesSidebar();
       }
     } else {
       section.classList.add('collapsed');
@@ -960,6 +1006,11 @@ reloadListBtn.onclick = function() {
 
 document.getElementById('reload-skills-btn').onclick = function() {
   loadSkillsSidebar();
+};
+
+document.getElementById('reload-memories-btn').onclick = function(e) {
+  e.stopPropagation();
+  loadMemoriesSidebar();
 };
 
 document.getElementById('new-session-btn').onclick = function() {
@@ -1061,9 +1112,9 @@ document.getElementById('new-skill-btn').onclick = function(e) {
 
 let homeTab = 'conversations';
 
-var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills'};
+var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', memory: '/memories'};
 
-var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill'};
+var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', memory: 'memory'};
 function showHomeScreen(pushHistory) {
   setViewType(homeTabViewType[homeTab] || null);
   if (pushHistory !== false) {
@@ -1075,6 +1126,7 @@ function showHomeScreen(pushHistory) {
         '<div class="home-tab' + (homeTab === 'conversations' ? ' active' : '') + '" data-tab="conversations">Conversations</div>' +
         '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
         '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
+        '<div class="home-tab' + (homeTab === 'memory' ? ' active' : '') + '" data-tab="memory">Memory</div>' +
       '</div>' +
       '<div class="home-columns" id="home-cols"></div>' +
     '</div>';
@@ -1090,6 +1142,8 @@ function showHomeScreen(pushHistory) {
     showPlansHome();
   } else if (homeTab === 'skills') {
     showSkillsHome();
+  } else if (homeTab === 'memory') {
+    showMemoriesHome();
   } else {
     showSessionsHome();
   }
@@ -1442,9 +1496,11 @@ function closeConversation(tab) {
   activeId = null;
   activePlanId = null;
   activeSkillId = null;
+  activeMemoryId = null;
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.memory-item').forEach(el => el.classList.remove('active'));
   document.getElementById('conv-section').classList.remove('collapsed');
   if (tab) homeTab = tab;
   showHomeScreen();
@@ -1934,10 +1990,231 @@ function showCreateSkillForm(pushHistory) {
     });
 }
 
+function loadMemoriesSidebar() {
+  fetch('/api/memories/')
+    .then(r => r.json())
+    .then(memoriesList => {
+      memoryListEl.innerHTML = '';
+      memoriesList.forEach(m => {
+        var div = document.createElement('div');
+        div.className = 'memory-item';
+        div.dataset.id = m.id;
+        if (m.id === activeMemoryId) div.classList.add('active');
+
+        var project = m.project ? m.project.replace(/^\/home\/[^/]+\//, '~/') : '';
+        var mrid = m.project ? RepoIdentity.get(m.project) : null;
+        var typeClass = m.type ? ' memory-type-' + m.type : '';
+        div.innerHTML =
+          '<div class="memory-info">' +
+            (m.type ? '<span class="memory-type' + typeClass + '">' + esc(m.type) + '</span>' : '') +
+            (project ? '<span>' + (mrid ? mrid.iconSm : '') + esc(project) + '</span>' : '') +
+          '</div>' +
+          '<div class="memory-name">' + esc(m.name) + '</div>';
+
+        div.onclick = function() { loadMemory(m.id); };
+        memoryListEl.appendChild(div);
+      });
+    });
+}
+
+function showMemoriesHome() {
+  fetch('/api/memories/')
+    .then(r => r.json())
+    .then(memoriesList => {
+      var groups = {};
+      var groupOrder = [];
+      memoriesList.forEach(m => {
+        var key = m.project || 'Other';
+        if (!groups[key]) {
+          groups[key] = [];
+          groupOrder.push(key);
+        }
+        groups[key].push(m);
+      });
+
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      groupOrder.forEach(function(project) {
+        var memories = groups[project];
+        var isOther = project === 'Other';
+        var short = isOther ? 'Other' : project.replace(/^\/home\/[^/]+\//, '~/');
+        var name = isOther ? 'Other' : short.split('/').pop();
+
+        var col = document.createElement('div');
+        col.className = 'home-column';
+        var mrid2 = !isOther ? RepoIdentity.get(project) : null;
+
+        var header = document.createElement('div');
+        header.className = 'home-column-header';
+        if (mrid2) {
+          header.style.background = mrid2.colorLight;
+          col.style.borderTop = '3px solid ' + mrid2.colorBorder;
+        }
+        var nameDiv = document.createElement('div');
+        nameDiv.innerHTML = (mrid2 ? mrid2.iconMd : '') + esc(name) + (!isOther ? '<span class="col-path">' + esc(short) + '</span>' : '');
+        if (!isOther) nameDiv.title = project;
+        header.appendChild(nameDiv);
+        col.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'home-conv-list';
+
+        memories.forEach(function(m) {
+          var item = document.createElement('div');
+          item.className = 'home-conv-item';
+          var typeClass = m.type ? ' memory-type-' + m.type : '';
+          var meta = '<div class="conv-meta">';
+          if (m.type) meta += '<span class="memory-type' + typeClass + '">' + esc(m.type) + '</span>';
+          meta += '</div>';
+          item.innerHTML = meta + '<div>' + esc(m.name) + '</div>' +
+            (m.description ? '<div style="font-size:11px;color:#888;margin-top:2px">' + esc(m.description) + '</div>' : '');
+          item.onclick = function() { loadMemory(m.id); };
+          list.appendChild(item);
+        });
+
+        col.appendChild(list);
+        container.appendChild(col);
+      });
+    });
+}
+
+function loadMemory(memoryId, pushHistory) {
+  stopFollowing();
+  setViewType('memory');
+  activeId = null;
+  activePlanId = null;
+  activeSkillId = null;
+  activeMemoryId = memoryId;
+  if (pushHistory !== false) {
+    history.pushState({memoryId: memoryId}, '', '/memories/' + memoryId);
+  }
+  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.memory-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === memoryId);
+  });
+  document.getElementById('memories-section').classList.remove('collapsed');
+  document.getElementById('conv-section').classList.add('collapsed');
+  document.getElementById('plans-section').classList.add('collapsed');
+  document.getElementById('skills-section').classList.add('collapsed');
+  if (!memoryListEl.children.length) loadMemoriesSidebar();
+  mainEl.innerHTML = '<div class="empty">Loading...</div>';
+
+  fetch('/api/memories/' + memoryId + '/')
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        mainEl.innerHTML = '<div class="empty">' + esc(data.error) + '</div>';
+        return;
+      }
+
+      mainEl.innerHTML = '';
+
+      var toolbar = document.createElement('div');
+      toolbar.className = 'conversation-toolbar';
+      toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
+      toolbar.querySelector('.close-conv').onclick = function() { closeConversation('memory'); };
+      mainEl.appendChild(toolbar);
+
+      var header = document.createElement('div');
+      header.className = 'conversation-header';
+      header.style.borderLeft = '3px solid #d97706';
+      header.style.paddingLeft = '12px';
+      var project = data.project ? data.project.replace(/^\/home\/[^/]+\//, '~/') : '';
+      var typeClass = data.type ? ' memory-type-' + data.type : '';
+      header.innerHTML =
+        '<span>' + esc(data.name) + '</span>' +
+        (data.type ? '<span class="memory-type' + typeClass + '">' + esc(data.type) + '</span>' : '') +
+        (project ? '<span>' + esc(project) + '</span>' : '') +
+        '<span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
+      mainEl.appendChild(header);
+
+      var view = document.createElement('div');
+      view.className = 'skill-detail-view';
+
+      var actions = document.createElement('div');
+      actions.className = 'skill-actions';
+
+      var contentBlock = document.createElement('div');
+      contentBlock.className = 'block text';
+
+      var renderContent = function() {
+        // Strip frontmatter for display
+        var displayText = data.content;
+        if (displayText.startsWith('---')) {
+          var end = displayText.indexOf('\n---', 3);
+          if (end !== -1) displayText = displayText.substring(end + 4).trim();
+        }
+        contentBlock.innerHTML = renderMarkdown(displayText);
+      };
+      renderContent();
+
+      var editBtn = document.createElement('button');
+      editBtn.textContent = 'Edit';
+      editBtn.onclick = function() {
+        contentBlock.innerHTML = '';
+        var textarea = document.createElement('textarea');
+        textarea.className = 'skill-edit-area';
+        textarea.value = data.content;
+        contentBlock.appendChild(textarea);
+
+        actions.innerHTML = '';
+        var saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save';
+        saveBtn.onclick = function() {
+          saveBtn.textContent = '...';
+          fetch('/api/memories/' + memoryId + '/', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content: textarea.value})
+          })
+          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+          .then(function(resp) {
+            if (resp.ok) {
+              loadMemory(memoryId, false);
+            } else {
+              saveBtn.textContent = 'Error';
+              setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+            }
+          });
+        };
+        actions.appendChild(saveBtn);
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.onclick = function() { loadMemory(memoryId, false); };
+        actions.appendChild(cancelBtn);
+      };
+      actions.appendChild(editBtn);
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.style.color = '#dc2626';
+      deleteBtn.style.borderColor = '#fca5a5';
+      deleteBtn.onclick = function() {
+        if (!confirm('Delete memory "' + data.name + '"?')) return;
+        fetch('/api/memories/' + memoryId + '/', {method: 'DELETE'})
+          .then(function() {
+            loadMemoriesSidebar();
+            closeConversation('memory');
+          });
+      };
+      actions.appendChild(deleteBtn);
+
+      view.appendChild(actions);
+      view.appendChild(contentBlock);
+      mainEl.appendChild(view);
+      mainEl.scrollTop = 0;
+      mainEl.focus();
+    });
+}
+
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
-    if (!activeId && !activePlanId && !activeSkillId) showHomeScreen(false);
+    if (!activeId && !activePlanId && !activeSkillId && !activeMemoryId) showHomeScreen(false);
   }
 }
 
@@ -1986,6 +2263,7 @@ function routeUrl(pathname, pushHistory) {
   var planMatch = pathname.match(/^\/plans\/([^/]+)/);
   var skillNew = /^\/skills\/new\/?$/.test(pathname);
   var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
+  var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
   if (convMatch) {
     loadConversation(convMatch[1], pushHistory);
   } else if (planMatch) {
@@ -1994,6 +2272,10 @@ function routeUrl(pathname, pushHistory) {
     showCreateSkillForm(pushHistory);
   } else if (skillMatch) {
     loadSkillByUrl(decodeURIComponent(skillMatch[1]), decodeURIComponent(skillMatch[2]), pushHistory);
+  } else if (memoryMatch) {
+    loadMemory(memoryMatch[1], pushHistory);
+  } else if (/^\/memories\b/.test(pathname)) {
+    homeTab = 'memory'; showHomeScreen(pushHistory);
   } else if (/^\/skills\b/.test(pathname)) {
     homeTab = 'skills'; showHomeScreen(pushHistory);
   } else if (/^\/plans\b/.test(pathname)) {

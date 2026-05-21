@@ -875,14 +875,14 @@ def plan_execute(request, plan_id):
     return _spawn_in_terminal(["claude", prompt], cwd)
 
 
-def _skill_id(path):
+def _path_id(path):
     """Encode a filesystem path as a URL-safe base64 identifier."""
     return base64.urlsafe_b64encode(str(path).encode()).decode().rstrip("=")
 
 
-def _skill_path(skill_id):
-    """Decode a skill ID back to a filesystem path."""
-    padded = skill_id + "=" * (-len(skill_id) % 4)
+def _id_to_path(encoded_id):
+    """Decode a base64 ID back to a filesystem path."""
+    padded = encoded_id + "=" * (-len(encoded_id) % 4)
     return Path(base64.urlsafe_b64decode(padded).decode())
 
 
@@ -955,7 +955,7 @@ def skills_list(request):
             return Response({"error": "skill already exists"}, status=409)
 
         skill_file.write_text(content)
-        sid = _skill_id(skill_file)
+        sid = _path_id(skill_file)
         return Response(
             {
                 "id": sid,
@@ -983,7 +983,7 @@ def skills_list(request):
                 continue
             results.append(
                 {
-                    "id": _skill_id(md_file),
+                    "id": _path_id(md_file),
                     "name": md_file.stem,
                     "path": str(md_file),
                     "scope": scope,
@@ -1005,7 +1005,7 @@ def skills_list(request):
 
 @api_view(["GET", "PUT", "DELETE"])
 def skill_detail(request, skill_id):
-    path = _skill_path(skill_id)
+    path = _id_to_path(skill_id)
     if not _is_valid_skill_path(path) or not path.is_file():
         return Response({"error": "not found"}, status=404)
 
@@ -1050,6 +1050,159 @@ def skill_detail(request, skill_id):
             "path": str(path),
             "scope": scope,
             "content": content,
+            "modified": datetime.fromtimestamp(mtime).isoformat(),
+        }
+    )
+
+
+_project_dir_cwd_cache = {}
+
+
+def _project_dir_to_cwd(project_dir):
+    """Resolve a project dir name to its real filesystem path via JSONL cwd."""
+    name = project_dir.name
+    if name in _project_dir_cwd_cache:
+        return _project_dir_cwd_cache[name]
+
+    from api.models import ConversationIndex
+
+    ci = (
+        ConversationIndex.objects.filter(
+            conversation_id__in=[f.stem for f in project_dir.glob("*.jsonl")]
+        )
+        .exclude(project="")
+        .first()
+    )
+    if ci:
+        _project_dir_cwd_cache[name] = ci.project
+        return ci.project
+
+    for jsonl_file in project_dir.glob("*.jsonl"):
+        try:
+            with open(jsonl_file) as f:
+                for line in f:
+                    cwd = json.loads(line).get("cwd", "")
+                    if cwd:
+                        _project_dir_cwd_cache[name] = cwd
+                        return cwd
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    _project_dir_cwd_cache[name] = ""
+    return ""
+
+
+def _parse_memory_frontmatter(text):
+    """Extract YAML frontmatter fields from a memory markdown file."""
+    result = {"name": "", "description": "", "type": ""}
+    if not text.startswith("---"):
+        return result
+    end = text.find("\n---", 3)
+    if end == -1:
+        return result
+    for line in text[3:end].splitlines():
+        line = line.strip()
+        for key in ("name", "description", "type"):
+            prefix = key + ":"
+            if line.startswith(prefix):
+                result[key] = line[len(prefix) :].strip().strip("\"'")
+    return result
+
+
+def _is_valid_memory_path(path):
+    """Ensure path is under a memory/ dir within CLAUDE_DIR/projects/."""
+    try:
+        resolved = path.resolve()
+    except (OSError, ValueError):
+        return False
+    projects = (settings.CLAUDE_DIR / "projects").resolve()
+    if not str(resolved).startswith(str(projects) + "/"):
+        return False
+    return "/memory/" in str(resolved)
+
+
+@api_view(["GET"])
+def memories_list(request):
+    projects_dir = settings.CLAUDE_DIR / "projects"
+    if not projects_dir.is_dir():
+        return Response([])
+
+    results = []
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        memory_dir = project_dir / "memory"
+        if not memory_dir.is_dir():
+            continue
+
+        project_path = _project_dir_to_cwd(project_dir)
+
+        for md_file in sorted(memory_dir.glob("*.md")):
+            if md_file.name == "MEMORY.md":
+                continue
+            try:
+                text = md_file.read_text()
+                mtime = md_file.stat().st_mtime
+            except OSError:
+                continue
+
+            fm = _parse_memory_frontmatter(text)
+            results.append(
+                {
+                    "id": _path_id(md_file),
+                    "name": fm["name"] or md_file.stem,
+                    "type": fm["type"],
+                    "description": fm["description"],
+                    "project": project_path or project_dir.name,
+                    "path": str(md_file),
+                    "modified": datetime.fromtimestamp(mtime).isoformat(),
+                }
+            )
+
+    results.sort(key=lambda x: x["modified"], reverse=True)
+    return Response(results)
+
+
+@api_view(["GET", "PUT", "DELETE"])
+def memory_detail(request, memory_id):
+    path = _id_to_path(memory_id)
+    if not _is_valid_memory_path(path) or not path.is_file():
+        return Response({"error": "not found"}, status=404)
+
+    if request.method == "DELETE":
+        try:
+            path.unlink()
+        except OSError:
+            return Response({"error": "failed to delete"}, status=500)
+        return Response({"status": "deleted"})
+
+    if request.method == "PUT":
+        content = request.data.get("content", "")
+        try:
+            path.write_text(content)
+        except OSError:
+            return Response({"error": "failed to write"}, status=500)
+
+    try:
+        text = path.read_text()
+        mtime = path.stat().st_mtime
+    except OSError:
+        return Response({"error": "failed to read"}, status=500)
+
+    fm = _parse_memory_frontmatter(text)
+
+    project_dir = path.parent.parent
+    project_path = _project_dir_to_cwd(project_dir)
+
+    return Response(
+        {
+            "id": memory_id,
+            "name": fm["name"] or path.stem,
+            "type": fm["type"],
+            "description": fm["description"],
+            "project": project_path or project_dir.name,
+            "content": text,
+            "path": str(path),
             "modified": datetime.fromtimestamp(mtime).isoformat(),
         }
     )
