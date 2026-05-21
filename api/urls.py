@@ -15,6 +15,8 @@ urlpatterns = [
     path("plans/<str:plan_id>/execute", views.plan_execute),
     path("skills/", views.skills_list),
     path("skills", views.skills_list),
+    path("skills/<str:skill_id>/invocations/", views.skill_invocations),
+    path("skills/<str:skill_id>/invocations", views.skill_invocations),
     path("skills/<str:skill_id>/", views.skill_detail),
     path("skills/<str:skill_id>", views.skill_detail),
     path("memories/", views.memories_list),

@@ -1055,6 +1055,56 @@ def skill_detail(request, skill_id):
     )
 
 
+@api_view(["GET"])
+def skill_invocations(request, skill_id):
+    path = _id_to_path(skill_id)
+    if not _is_valid_skill_path(path) or not path.is_file():
+        return Response({"error": "not found"}, status=404)
+
+    skill_name = path.stem
+    projects_dir = settings.CLAUDE_DIR / "projects"
+    if not projects_dir.is_dir():
+        return Response([])
+
+    invocations = []
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        for jsonl_file in project_dir.glob("*.jsonl"):
+            conversation_id = jsonl_file.stem
+            try:
+                with open(jsonl_file) as f:
+                    cwd = ""
+                    for line in f:
+                        data = json.loads(line)
+                        if not cwd:
+                            cwd = data.get("cwd", "")
+                        msg = data.get("message", {})
+                        content = msg.get("content", [])
+                        if not isinstance(content, list):
+                            continue
+                        for block in content:
+                            if (
+                                isinstance(block, dict)
+                                and block.get("type") == "tool_use"
+                                and block.get("name") == "Skill"
+                                and isinstance(block.get("input"), dict)
+                                and block["input"].get("skill") == skill_name
+                            ):
+                                invocations.append(
+                                    {
+                                        "timestamp": data.get("timestamp", ""),
+                                        "conversation_id": conversation_id,
+                                        "cwd": cwd,
+                                    }
+                                )
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    invocations.sort(key=lambda x: x["timestamp"], reverse=True)
+    return Response(invocations)
+
+
 _project_dir_cwd_cache = {}
 
 

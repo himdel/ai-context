@@ -1925,6 +1925,46 @@ function loadSkill(skillId, pushHistory) {
         contentBlock.innerHTML = renderMarkdown(data.content);
         view.appendChild(contentBlock);
 
+        var invocSection = document.createElement('div');
+        invocSection.className = 'skill-invocations';
+        invocSection.innerHTML = '<h3 style="margin:24px 0 8px;font-size:14px;color:#888">Recent invocations</h3><div style="font-size:13px;color:#888">Loading...</div>';
+        view.appendChild(invocSection);
+
+        fetch('/api/skills/' + skillId + '/invocations/')
+          .then(r => r.json())
+          .then(function(invocations) {
+            invocSection.innerHTML = '<h3 style="margin:24px 0 8px;font-size:14px;color:#888">Recent invocations</h3>';
+            if (!invocations.length) {
+              invocSection.innerHTML += '<div style="font-size:13px;color:#888">No invocations found.</div>';
+              return;
+            }
+            var list = document.createElement('div');
+            list.className = 'home-conv-list';
+            invocations.forEach(function(inv) {
+              var item = document.createElement('div');
+              item.className = 'home-conv-item';
+              item.style.cursor = 'pointer';
+              var rid = inv.cwd ? RepoIdentity.get(inv.cwd) : null;
+              var short = inv.cwd ? inv.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
+              var ago = timeAgo(inv.timestamp);
+              var meta = '<div class="conv-meta">' +
+                '<span>' + esc(formatDate(inv.timestamp)) + (ago ? ' (' + esc(ago) + ')' : '') + '</span>' +
+                '</div>';
+              var repo = '<div style="display:flex;align-items:center;gap:6px">' +
+                (rid ? rid.iconSm : '') +
+                '<span' + (rid ? ' style="color:' + rid.colorText + '"' : '') + '>' + esc(short) + '</span>' +
+                '<a href="/conversations/' + esc(inv.conversation_id) + '" style="color:#4338ca;margin-left:auto;flex-shrink:0">' + esc(inv.conversation_id.substring(0, 8)) + '...</a>' +
+                '</div>';
+              item.innerHTML = meta + repo;
+              item.onclick = function(e) {
+                e.preventDefault();
+                loadConversation(inv.conversation_id);
+              };
+              list.appendChild(item);
+            });
+            invocSection.appendChild(list);
+          });
+
         mainEl.appendChild(view);
         mainEl.scrollTop = 0;
         mainEl.focus();
@@ -2893,6 +2933,22 @@ function renderSubagent(sub) {
   });
   html += '</div></details>';
   return html;
+}
+
+function timeAgo(iso) {
+  try {
+    var ms = Date.now() - new Date(iso).getTime();
+    if (ms < 0 || isNaN(ms)) return '';
+    var secs = Math.floor(ms / 1000);
+    if (secs < 60) return 'just now';
+    var mins = Math.floor(secs / 60);
+    if (mins < 60) return mins + 'm ago';
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    if (days < 30) return days + 'd ago';
+    return Math.floor(days / 30) + 'mo ago';
+  } catch(e) { return ''; }
 }
 
 function formatDuration(startIso, endIso) {
