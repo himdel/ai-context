@@ -379,6 +379,32 @@ details > summary {
   margin-left: 6px;
 }
 
+.skill-prompt-details {
+  margin: 8px 0;
+  border: 1px solid #d0d8e8;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+.skill-prompt-details > summary {
+  font-size: 12px;
+  color: #666;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.skill-prompt-details .skill-prompt-body {
+  padding: 8px 12px 8px 16px;
+  border-top: 1px solid #e0e8f0;
+  font-size: 13px;
+  color: #444;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.skill-prompt-details .skill-prompt-body ul,
+.skill-prompt-details .skill-prompt-body ol {
+  padding-left: 1.5em;
+}
+
 .block.plan-block {
   background: #f5f0ff;
   border: 1px solid #d0c0f0;
@@ -1469,7 +1495,14 @@ function pollForUpdates() {
       if (data.messages && data.messages.length > renderedMsgCount) {
         var wasNear = isNearBottom(mainEl);
         var newMessages = data.messages.slice(renderedMsgCount);
-        newMessages.forEach(function(m) {
+        newMessages.forEach(function(m, idx) {
+          var prevMsg = idx === 0 ? data.messages[renderedMsgCount - 1] : newMessages[idx - 1];
+          if (isSkillPrompt(m, prevMsg)) {
+            var msgDivs = mainEl.querySelectorAll('.message');
+            var prevDiv = msgDivs[msgDivs.length - 1];
+            if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
+            return;
+          }
           var div = document.createElement('div');
           div.className = 'message new-msg ' + m.role;
           div._messageData = m;
@@ -2416,7 +2449,13 @@ function loadConversation(id, pushHistory) {
           });
         });
 
-        data.messages.forEach(m => {
+        data.messages.forEach((m, idx) => {
+          if (isSkillPrompt(m, data.messages[idx - 1])) {
+            var msgDivs = mainEl.querySelectorAll('.message');
+            var prevDiv = msgDivs[msgDivs.length - 1];
+            if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
+            return;
+          }
           const div = document.createElement('div');
           div.className = 'message ' + m.role;
           div._messageData = m;
@@ -2779,6 +2818,27 @@ function renderToolResult(block) {
     html += renderSubagent(block.subagent);
   }
   return html;
+}
+
+function isSkillTrigger(m) {
+  if (!m) return false;
+  // Pattern 1: user typed /command - text contains <command-name>
+  if (m.role === 'user' && m.content.some(b => b.type === 'text' && /<command-name>/.test(b.text))) return true;
+  // Pattern 2: assistant invoked Skill tool (tool_results get merged, so skill prompt follows directly)
+  if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use' && b.name === 'Skill')) return true;
+  return false;
+}
+
+function isSkillPrompt(m, prev) {
+  if (!m || m.role !== 'user') return false;
+  if (!m.content.every(b => b.type === 'text')) return false;
+  return isSkillTrigger(prev);
+}
+
+function renderSkillPrompt(m) {
+  var body = m.content.map(b => renderMarkdown(b.text)).join('');
+  return '<details class="skill-prompt-details"><summary>Skill prompt</summary>' +
+    '<div class="skill-prompt-body">' + body + '</div></details>';
 }
 
 function renderBlock(block) {
