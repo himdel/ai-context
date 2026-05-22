@@ -291,7 +291,7 @@ def conversations(request):
     elif active_filter == "false":
         results = [r for r in results if not r["active"]]
 
-    results.sort(key=lambda x: x["date"], reverse=True)
+    results.sort(key=lambda x: x["last_timestamp"], reverse=True)
     return Response(results)
 
 

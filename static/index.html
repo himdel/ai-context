@@ -993,8 +993,9 @@ let followInterval = null;
 let followConvId = null;
 let renderedMsgCount = 0;
 
-// Make all marked-generated links open in new tab
+// Treat newlines as <br>, make all links open in new tab
 marked.use({
+  breaks: true,
   hooks: {
     postprocess: function(html) {
       return html.replace(/<a href="/g, '<a target="_blank" rel="noopener noreferrer" href="');
