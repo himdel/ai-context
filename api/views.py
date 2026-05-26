@@ -377,6 +377,7 @@ def _load_subagents(subagents_dir):
                     "agent_type": meta.get("agentType", ""),
                     "description": meta.get("description", ""),
                     "timestamp": first_ts,
+                    "tool_use_id": meta.get("toolUseId", ""),
                     "messages": messages,
                 }
             )
@@ -406,6 +407,22 @@ def _find_closest_subagent(subagents, target_ts):
     return best
 
 
+_TASK_NOTIFICATION_RE = re.compile(
+    r"<task-notification>.*?"
+    r"<tool-use-id>(.*?)</tool-use-id>.*?"
+    r"<result>(.*?)</result>.*?"
+    r"</task-notification>",
+    re.DOTALL,
+)
+
+
+def _parse_task_notification(text):
+    m = _TASK_NOTIFICATION_RE.search(text)
+    if m:
+        return m.group(1), m.group(2).strip()
+    return None, None
+
+
 @api_view(["GET"])
 def conversation_detail(request, conversation_id):
     jsonl_file = _find_conversation(conversation_id)
@@ -420,6 +437,7 @@ def conversation_detail(request, conversation_id):
     first_ts = None
     last_ts = None
     tool_use_ids = {}  # id -> name, for labeling tool_results
+    task_notifications = {}  # tool_use_id -> result text from async agents
     try:
         with open(jsonl_file) as f:
             for line in f:
@@ -446,6 +464,10 @@ def conversation_detail(request, conversation_id):
                 timestamp = data.get("timestamp", "")
 
                 if role == "user" and isinstance(content, str) and content.strip():
+                    tuid, result = _parse_task_notification(content)
+                    if tuid:
+                        task_notifications[tuid] = result
+                        continue
                     messages.append(
                         {
                             "role": "user",
@@ -501,29 +523,47 @@ def conversation_detail(request, conversation_id):
     except (json.JSONDecodeError, OSError):
         return Response({"error": "failed to read conversation"}, status=500)
 
+    # Replace async agent boilerplate with actual completion results
+    if task_notifications:
+        for m in messages:
+            for block in m.get("content", []):
+                if (
+                    block.get("type") == "tool_result"
+                    and block.get("name") == "Agent"
+                    and block.get("output", "").startswith("Async agent launched")
+                ):
+                    tuid = block.get("_tool_use_id", "")
+                    if tuid in task_notifications:
+                        block["output"] = task_notifications[tuid]
+
     # Load subagents
     subagents = _load_subagents(jsonl_file.parent / conversation_id / "subagents")
 
-    # Match subagents to Agent tool_use blocks by timestamp proximity
-    agent_tool_uses = {}  # tool_use_id -> timestamp
+    # Match subagents to Agent tool_use blocks by toolUseId, falling back
+    # to timestamp proximity for older conversations
+    subagent_by_tuid = {s["tool_use_id"]: s for s in subagents if s.get("tool_use_id")}
+    unmatched_subagents = [s for s in subagents if not s.get("tool_use_id")]
+
+    agent_tool_uses = {}  # tool_use_id -> timestamp (for fallback matching)
     for m in messages:
         for block in m.get("content", []):
             if block.get("type") == "tool_use" and block.get("name") == "Agent":
                 agent_tool_uses[block.get("_id")] = m.get("timestamp", "")
 
-    # For each tool_result of an Agent call, find the closest subagent by timestamp
     for m in messages:
         for block in m.get("content", []):
-            if (
-                block.get("type") == "tool_result"
-                and block.get("name") == "Agent"
-                and subagents
-            ):
-                tool_ts = agent_tool_uses.get(block.get("_tool_use_id"), "")
-                best = _find_closest_subagent(subagents, tool_ts)
+            if block.get("type") == "tool_result" and block.get("name") == "Agent":
+                tuid = block.get("_tool_use_id", "")
+                best = subagent_by_tuid.pop(tuid, None)
+                if not best and unmatched_subagents:
+                    tool_ts = agent_tool_uses.get(tuid, "")
+                    best = _find_closest_subagent(unmatched_subagents, tool_ts)
+                    if best:
+                        unmatched_subagents = [
+                            s for s in unmatched_subagents if s is not best
+                        ]
                 if best:
                     block["subagent"] = best
-                    subagents = [s for s in subagents if s is not best]
 
     # Merge tool_result into corresponding tool_use blocks
     tool_use_map = {}
@@ -1318,6 +1358,8 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
 
                 content = msg.get("content", "")
                 if isinstance(content, str) and content.strip():
+                    if "<task-notification>" in content:
+                        continue
                     cleaned = re.sub(r"<([\w-]+)>[^<]*</\1>", "", content).strip()
                     if not cleaned:
                         continue
