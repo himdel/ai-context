@@ -218,6 +218,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 #main.view-plan { border-top-color: #8b5cf6; }
 #main.view-skill { border-top-color: #0d9488; }
 #main.view-memory { border-top-color: #d97706; }
+#main.view-activity { border-top-color: #16a34a; }
 
 #main .empty {
   color: #999;
@@ -678,6 +679,7 @@ details > summary {
 .view-plan .home-conv-item { border-left: 3px solid #8b5cf6; }
 .view-skill .home-conv-item { border-left: 3px solid #0d9488; }
 .view-memory .home-conv-item { border-left: 3px solid #d97706; }
+.view-activity .home-conv-item { border-left: 3px solid #16a34a; }
 .skill-invocations .home-conv-item { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .invoc-summary { font-size: 12px; color: #666; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoc-summary p { margin: 0; display: inline; }
@@ -724,6 +726,79 @@ details > summary {
 .home-tab[data-tab="plans"].active { border-bottom-color: #8b5cf6; }
 .home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
 .home-tab[data-tab="memory"].active { border-bottom-color: #d97706; }
+.home-tab[data-tab="activity"].active { border-bottom-color: #16a34a; }
+
+.activity-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.activity-controls select {
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+.heatmap-wrapper {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.heatmap {
+  display: inline-grid;
+  gap: 2px;
+  font-size: 10px;
+}
+.heatmap-day-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+  color: #888;
+  font-size: 10px;
+}
+.heatmap-cell {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  background: #ebedf0;
+}
+.heatmap-cell[data-level="1"] { background: #9be9a8; }
+.heatmap-cell[data-level="2"] { background: #40c463; }
+.heatmap-cell[data-level="3"] { background: #30a14e; }
+.heatmap-cell[data-level="4"] { background: #216e39; }
+.heatmap-cell[data-date]:hover { outline: 1px solid #333; outline-offset: -1px; }
+.heatmap-tooltip {
+  position: fixed;
+  background: #24292f;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 100;
+}
+.heatmap-months {
+  display: inline-grid;
+  gap: 2px;
+  font-size: 10px;
+  color: #888;
+  margin-bottom: 4px;
+}
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+}
+.heatmap-legend .heatmap-cell {
+  width: 12px;
+  height: 12px;
+}
 
 .plan-detail-view { max-width: 800px; }
 .plan-detail-view .plan-actions {
@@ -991,7 +1066,7 @@ let activeMemoryId = null;
 let currentMessages = null;
 
 function setViewType(type) {
-  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-memory');
+  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-memory', 'view-activity');
   if (type) mainEl.classList.add('view-' + type);
 }
 
@@ -1217,9 +1292,9 @@ document.getElementById('new-skill-btn').onclick = function(e) {
 
 let homeTab = 'conversations';
 
-var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', memory: '/memories'};
+var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', memory: '/memories', activity: '/activity'};
 
-var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', memory: 'memory'};
+var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', memory: 'memory', activity: 'activity'};
 function showHomeScreen(pushHistory) {
   setViewType(homeTabViewType[homeTab] || null);
   if (pushHistory !== false) {
@@ -1232,6 +1307,7 @@ function showHomeScreen(pushHistory) {
         '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
         '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
         '<div class="home-tab' + (homeTab === 'memory' ? ' active' : '') + '" data-tab="memory">Memory</div>' +
+        '<div class="home-tab' + (homeTab === 'activity' ? ' active' : '') + '" data-tab="activity">Activity</div>' +
       '</div>' +
       '<div class="home-columns" id="home-cols"></div>' +
     '</div>';
@@ -1249,6 +1325,8 @@ function showHomeScreen(pushHistory) {
     showSkillsHome();
   } else if (homeTab === 'memory') {
     showMemoriesHome();
+  } else if (homeTab === 'activity') {
+    showActivityHome();
   } else {
     showSessionsHome();
   }
@@ -2235,6 +2313,157 @@ function showMemoriesHome() {
     });
 }
 
+function showActivityHome() {
+  fetch('/api/stats/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      var controls = document.createElement('div');
+      controls.className = 'activity-controls';
+      var select = document.createElement('select');
+      var allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = 'All repos';
+      select.appendChild(allOpt);
+      data.projects.forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p.replace(/^\/home\/[^/]+\//, '~/');
+        select.appendChild(opt);
+      });
+      select.onchange = function() {
+        var url = '/api/stats/';
+        if (select.value) url += '?repo=' + encodeURIComponent(select.value);
+        fetch(url)
+          .then(function(r) { return r.json(); })
+          .then(function(newData) {
+            renderHeatmap(container, newData.days);
+          });
+      };
+      controls.appendChild(select);
+      container.appendChild(controls);
+
+      renderHeatmap(container, data.days);
+    });
+}
+
+function renderHeatmap(container, days) {
+  var existing = container.querySelector('.heatmap-wrapper');
+  if (existing) existing.remove();
+
+  var countMap = {};
+  days.forEach(function(d) {
+    countMap[d.date] = d.count;
+  });
+
+  var counts = days.map(function(d) { return d.count; }).filter(function(c) { return c > 0; }).sort(function(a, b) { return a - b; });
+  var q1 = counts[Math.floor(counts.length * 0.25)] || 1;
+  var q2 = counts[Math.floor(counts.length * 0.5)] || q1;
+  var q3 = counts[Math.floor(counts.length * 0.75)] || q2;
+
+  function getLevel(count) {
+    if (!count) return 0;
+    if (count <= q1) return 1;
+    if (count <= q2) return 2;
+    if (count <= q3) return 3;
+    return 4;
+  }
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 52 * 7);
+  var startDow = (startDate.getDay() + 6) % 7;
+  startDate.setDate(startDate.getDate() - startDow);
+
+  var weeks = [];
+  var d = new Date(startDate);
+  while (d <= today) {
+    var dayIdx = (d.getDay() + 6) % 7;
+    if (dayIdx === 0 || weeks.length === 0) {
+      weeks.push([]);
+    }
+    var ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    weeks[weeks.length - 1][dayIdx] = { dateStr: ds, count: countMap[ds] || 0 };
+    d.setDate(d.getDate() + 1);
+  }
+
+  var numWeeks = weeks.length;
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  var monthsHtml = '<div class="heatmap-months" style="grid-template-columns: 30px repeat(' + numWeeks + ', 14px);">';
+  monthsHtml += '<span></span>';
+  var lastMonth = -1;
+  for (var w = 0; w < numWeeks; w++) {
+    var firstDay = weeks[w][0];
+    if (firstDay) {
+      var m = parseInt(firstDay.dateStr.slice(5, 7), 10) - 1;
+      if (m !== lastMonth) {
+        monthsHtml += '<span>' + monthNames[m] + '</span>';
+        lastMonth = m;
+      } else {
+        monthsHtml += '<span></span>';
+      }
+    } else {
+      monthsHtml += '<span></span>';
+    }
+  }
+  monthsHtml += '</div>';
+
+  var dayLabels = ['Mon','','Wed','','Fri','','Sun'];
+  var gridHtml = '<div class="heatmap" style="grid-template-columns: 30px repeat(' + numWeeks + ', 14px); grid-template-rows: repeat(7, 14px);">';
+
+  for (var row = 0; row < 7; row++) {
+    gridHtml += '<div class="heatmap-day-label">' + dayLabels[row] + '</div>';
+    for (var col = 0; col < numWeeks; col++) {
+      var cell = weeks[col] && weeks[col][row];
+      if (cell) {
+        var level = getLevel(cell.count);
+        gridHtml += '<div class="heatmap-cell" data-date="' + cell.dateStr + '" data-count="' + cell.count + '"' + (level ? ' data-level="' + level + '"' : '') + '></div>';
+      } else {
+        gridHtml += '<div class="heatmap-cell" style="visibility:hidden"></div>';
+      }
+    }
+  }
+  gridHtml += '</div>';
+
+  var legendHtml = '<div class="heatmap-legend">Less <div class="heatmap-cell"></div><div class="heatmap-cell" data-level="1"></div><div class="heatmap-cell" data-level="2"></div><div class="heatmap-cell" data-level="3"></div><div class="heatmap-cell" data-level="4"></div> More</div>';
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'heatmap-wrapper';
+  wrapper.innerHTML = monthsHtml + gridHtml + legendHtml;
+  container.appendChild(wrapper);
+
+  var tooltip = null;
+  wrapper.addEventListener('mouseover', function(e) {
+    var cell = e.target.closest('.heatmap-cell[data-date]');
+    if (!cell) return;
+    if (!tooltip) {
+      tooltip = document.createElement('div');
+      tooltip.className = 'heatmap-tooltip';
+      document.body.appendChild(tooltip);
+    }
+    var count = cell.dataset.count;
+    var date = cell.dataset.date;
+    tooltip.textContent = count + ' message' + (count === '1' ? '' : 's') + ' on ' + date;
+    tooltip.style.display = 'block';
+    var rect = cell.getBoundingClientRect();
+    tooltip.style.left = rect.left + rect.width / 2 - tooltip.offsetWidth / 2 + 'px';
+    tooltip.style.top = rect.top - tooltip.offsetHeight - 6 + 'px';
+  });
+  wrapper.addEventListener('mouseout', function(e) {
+    if (tooltip && !e.target.closest('.heatmap-cell[data-date]')) {
+      tooltip.style.display = 'none';
+    }
+  });
+  wrapper.addEventListener('mouseleave', function() {
+    if (tooltip) tooltip.style.display = 'none';
+  });
+}
+
 function loadMemory(memoryId, pushHistory) {
   stopFollowing();
   setViewType('memory');
@@ -2437,6 +2666,8 @@ function routeUrl(pathname, pushHistory) {
     homeTab = 'skills'; showHomeScreen(pushHistory);
   } else if (/^\/plans\b/.test(pathname)) {
     homeTab = 'plans'; showHomeScreen(pushHistory);
+  } else if (/^\/activity\b/.test(pathname)) {
+    homeTab = 'activity'; showHomeScreen(pushHistory);
   } else {
     homeTab = 'conversations'; showHomeScreen(pushHistory);
   }

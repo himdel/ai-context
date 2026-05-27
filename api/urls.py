@@ -23,6 +23,8 @@ urlpatterns = [
     path("memories", views.memories_list),
     path("memories/<str:memory_id>/", views.memory_detail),
     path("memories/<str:memory_id>", views.memory_detail),
+    path("stats/", views.stats),
+    path("stats", views.stats),
     path("conversations/", views.conversations),
     path("conversations", views.conversations),
     path("conversations/<str:conversation_id>/", views.conversation_detail),

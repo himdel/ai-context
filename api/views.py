@@ -1332,6 +1332,40 @@ def memory_detail(request, memory_id):
     )
 
 
+@api_view(["GET"])
+def stats(request):
+    from django.db.models import Sum
+    from django.db.models.functions import Substr
+
+    from api.models import ConversationIndex
+
+    qs = ConversationIndex.objects.exclude(first_timestamp="")
+
+    repo = request.query_params.get("repo", "")
+    if repo:
+        qs = qs.filter(project=repo)
+
+    rows = (
+        qs.annotate(date=Substr("first_timestamp", 1, 10))
+        .values("date")
+        .annotate(count=Sum("message_count"))
+        .order_by("date")
+    )
+
+    projects = sorted(
+        ConversationIndex.objects.exclude(project="")
+        .values_list("project", flat=True)
+        .distinct()
+    )
+
+    return Response(
+        {
+            "days": [{"date": r["date"], "count": r["count"]} for r in rows],
+            "projects": projects,
+        }
+    )
+
+
 def _parse_conversation(jsonl_file, conversation_id, project_name):
     # If you change what gets extracted here, run `make reindex` to rebuild the cache.
     try:
