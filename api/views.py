@@ -552,18 +552,24 @@ def conversation_detail(request, conversation_id):
 
     for m in messages:
         for block in m.get("content", []):
-            if block.get("type") == "tool_result" and block.get("name") == "Agent":
-                tuid = block.get("_tool_use_id", "")
-                best = subagent_by_tuid.pop(tuid, None)
-                if not best and unmatched_subagents:
-                    tool_ts = agent_tool_uses.get(tuid, "")
-                    best = _find_closest_subagent(unmatched_subagents, tool_ts)
-                    if best:
-                        unmatched_subagents = [
-                            s for s in unmatched_subagents if s is not best
-                        ]
+            if block.get("type") != "tool_result":
+                continue
+            if (
+                block.get("name") != "Agent"
+                and block.get("_tool_use_id", "") not in subagent_by_tuid
+            ):
+                continue
+            tuid = block.get("_tool_use_id", "")
+            best = subagent_by_tuid.pop(tuid, None)
+            if not best and unmatched_subagents:
+                tool_ts = agent_tool_uses.get(tuid, "")
+                best = _find_closest_subagent(unmatched_subagents, tool_ts)
                 if best:
-                    block["subagent"] = best
+                    unmatched_subagents = [
+                        s for s in unmatched_subagents if s is not best
+                    ]
+            if best:
+                block["subagent"] = best
 
     # Merge tool_result into corresponding tool_use blocks
     tool_use_map = {}

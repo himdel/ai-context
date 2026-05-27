@@ -2770,7 +2770,7 @@ function extractRunningAgents(messages) {
   messages.forEach(function(m) {
     m.content.forEach(function(block) {
       if (block.type === 'tool_use' && block.name === 'Agent') {
-        if (block.result == null || (typeof block.result === 'string' && block.result.indexOf('Async agent launched') === 0)) {
+        if (!block.subagent && (block.result == null || (typeof block.result === 'string' && block.result.indexOf('Async agent launched') === 0))) {
           running.push({
             description: block.input ? block.input.description || '' : '',
             type: block.input ? block.input.subagent_type || '' : ''
