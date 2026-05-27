@@ -128,6 +128,70 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 @keyframes fade-highlight { 0% { background: #e8f5e9; } 100% { background: transparent; } }
 .exticon { margin-left: 2px; }
 
+.conversation-status-bar {
+  border-top: 1px solid #e0e0e0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #555;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.status-bar-label {
+  font-weight: 600;
+  color: #888;
+  flex-shrink: 0;
+}
+.status-bar-tasks, .status-bar-agents {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.status-bar-task {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-bar-task:hover { filter: brightness(0.92); }
+.status-bar-task.completed { background: #dcfce7; color: #15803d; }
+.status-bar-task.in_progress { background: #fef3c7; color: #b45309; }
+.status-bar-task.pending { background: #f0f0f0; color: #555; }
+.status-bar-agent {
+  font-size: 11px;
+  color: #6d28d9;
+  background: #ede9fe;
+  padding: 1px 6px;
+  border-radius: 3px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.status-bar-agent:hover { filter: brightness(0.92); }
+.status-bar-agent::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6d28d9;
+  margin-right: 4px;
+}
+.status-bar-separator {
+  width: 1px;
+  height: 14px;
+  background: #ddd;
+  align-self: center;
+}
+
 .conversation-item .blurb {
   font-size: 13px;
   color: #333;
@@ -137,11 +201,18 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   overflow: hidden;
 }
 
+#main-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 #main {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
   border-top: 3px solid transparent;
+  min-height: 0;
 }
 #main.view-conversation { border-top-color: #3b82f6; }
 #main.view-plan { border-top-color: #8b5cf6; }
@@ -901,7 +972,9 @@ details > summary {
   </div>
 </div>
 
+<div id="main-wrap">
 <div id="main" tabindex="-1" style="outline:none"></div>
+</div>
 
 <script>
 const listEl = document.getElementById('conversation-list');
@@ -909,11 +982,13 @@ const planListEl = document.getElementById('plan-list');
 const skillListEl = document.getElementById('skill-list');
 const memoryListEl = document.getElementById('memory-list');
 const mainEl = document.getElementById('main');
+const mainWrapEl = document.getElementById('main-wrap');
 const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
 let activeSkillId = null;
 let activeMemoryId = null;
+let currentMessages = null;
 
 function setViewType(type) {
   mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-memory');
@@ -1519,6 +1594,8 @@ function pollForUpdates() {
         renderedMsgCount = data.messages.length;
         if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
       }
+      currentMessages = data.messages;
+      updateStatusBar(currentMessages);
       if (!data.active) {
         stopFollowing();
         var indicator = mainEl.querySelector('.follow-indicator');
@@ -1530,6 +1607,7 @@ function pollForUpdates() {
 
 function closeConversation(tab) {
   stopFollowing();
+  currentMessages = null;
   activeId = null;
   activePlanId = null;
   activeSkillId = null;
@@ -2512,6 +2590,8 @@ function loadConversation(id, pushHistory) {
 
           mainEl.appendChild(div);
         });
+        currentMessages = data.messages;
+        updateStatusBar(currentMessages);
         mainEl.scrollTop = 0;
         mainEl.focus();
 
@@ -2655,6 +2735,131 @@ function formatJson(str) {
 }
 
 var taskSubjects = {};
+
+function extractTaskStates(messages) {
+  var tasks = {};
+  messages.forEach(function(m) {
+    m.content.forEach(function(block) {
+      if (block.type !== 'tool_use') return;
+      if (block.name === 'TaskCreate' && block.result) {
+        var tm = block.result.match(/Task #(\d+) created successfully: (.+)/);
+        if (tm) {
+          tasks[tm[1]] = { id: tm[1], subject: block.input.subject || tm[2], status: 'pending' };
+        }
+      }
+      if (block.name === 'TaskUpdate' && block.input && block.input.taskId) {
+        var t = tasks[block.input.taskId];
+        if (t) {
+          if (block.input.status) t.status = block.input.status;
+          if (block.input.subject) t.subject = block.input.subject;
+        }
+      }
+    });
+  });
+  var counts = { pending: 0, in_progress: 0, completed: 0, total: 0 };
+  for (var id in tasks) {
+    if (tasks[id].status === 'deleted') continue;
+    counts.total++;
+    if (counts[tasks[id].status] !== undefined) counts[tasks[id].status]++;
+  }
+  return { tasks: tasks, counts: counts };
+}
+
+function extractRunningAgents(messages) {
+  var running = [];
+  messages.forEach(function(m) {
+    m.content.forEach(function(block) {
+      if (block.type === 'tool_use' && block.name === 'Agent') {
+        if (block.result == null || (typeof block.result === 'string' && block.result.indexOf('Async agent launched') === 0)) {
+          running.push({
+            description: block.input ? block.input.description || '' : '',
+            type: block.input ? block.input.subagent_type || '' : ''
+          });
+        }
+      }
+    });
+  });
+  return running;
+}
+
+function scrollToBlock(selector) {
+  var els = mainEl.querySelectorAll(selector);
+  var el = els.length ? els[els.length - 1] : null;
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.outline = '2px solid #4338ca';
+    setTimeout(function() { el.style.outline = ''; }, 2000);
+  }
+}
+
+function buildStatusBar(messages) {
+  var taskState = extractTaskStates(messages);
+  var agents = extractRunningAgents(messages);
+  if (taskState.counts.total === 0 && agents.length === 0) return null;
+
+  var bar = document.createElement('div');
+  bar.className = 'conversation-status-bar';
+
+  if (taskState.counts.total > 0) {
+    var tasksEl = document.createElement('div');
+    tasksEl.className = 'status-bar-tasks';
+    var label = document.createElement('span');
+    label.className = 'status-bar-label';
+    label.textContent = 'Tasks:';
+    tasksEl.appendChild(label);
+    var taskIds = Object.keys(taskState.tasks).sort(function(a, b) { return a - b; });
+    taskIds.forEach(function(id) {
+      var t = taskState.tasks[id];
+      if (t.status === 'deleted') return;
+      var item = document.createElement('span');
+      item.className = 'status-bar-task ' + t.status;
+      item.textContent = '#' + id + ' ' + t.subject;
+      item.title = '#' + id + ' [' + t.status.replace('_', ' ') + '] ' + t.subject;
+      item.onclick = function() {
+        scrollToBlock('[data-task-id="' + id + '"]');
+      };
+      tasksEl.appendChild(item);
+    });
+    bar.appendChild(tasksEl);
+  }
+
+  if (taskState.counts.total > 0 && agents.length > 0) {
+    var sep = document.createElement('span');
+    sep.className = 'status-bar-separator';
+    bar.appendChild(sep);
+  }
+
+  if (agents.length > 0) {
+    var agentsEl = document.createElement('div');
+    agentsEl.className = 'status-bar-agents';
+    var alabel = document.createElement('span');
+    alabel.className = 'status-bar-label';
+    alabel.textContent = 'Agents:';
+    agentsEl.appendChild(alabel);
+    agents.forEach(function(a) {
+      var pill = document.createElement('span');
+      pill.className = 'status-bar-agent';
+      var desc = a.description || a.type || 'Agent';
+      pill.textContent = desc;
+      pill.title = (a.type ? a.type + ': ' : '') + (a.description || '');
+      pill.onclick = function() {
+        scrollToBlock('[data-agent-desc="' + CSS.escape(desc) + '"]');
+      };
+      agentsEl.appendChild(pill);
+    });
+    bar.appendChild(agentsEl);
+  }
+
+  return bar;
+}
+
+function updateStatusBar(messages) {
+  var existing = mainWrapEl.querySelector('.conversation-status-bar');
+  if (existing) existing.remove();
+  if (!messages) return;
+  var bar = buildStatusBar(messages);
+  if (bar) mainWrapEl.appendChild(bar);
+}
 
 function renderToolInput(name, input) {
   var main = null;
@@ -2916,7 +3121,17 @@ function renderBlock(block) {
           (hasExtra ? '\n' + esc(JSON.stringify(extra, null, 2)) : '') +
         '</div>' + result + '</div>';
     }
-    return '<div class="block tool_use">' +
+    var attrs = '';
+    if (block.name === 'TaskCreate' && block.input && block.input.subject) {
+      attrs = ' data-task-subject="' + esc(block.input.subject) + '"';
+    }
+    if (block.name === 'TaskUpdate' && block.input && block.input.taskId) {
+      attrs = ' data-task-id="' + esc(block.input.taskId) + '"';
+    }
+    if (block.name === 'Agent' && block.input) {
+      attrs = ' data-agent-desc="' + esc(block.input.description || block.input.subagent_type || 'Agent') + '"';
+    }
+    return '<div class="block tool_use"' + attrs + '>' +
       '<div class="tool-name">' + esc(block.name) + '</div>' +
       '<div class="tool-input">' + renderToolInput(block.name, block.input) + '</div>' +
       result + '</div>';
