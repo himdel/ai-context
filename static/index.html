@@ -1986,6 +1986,13 @@ function loadSkill(skillId, pushHistory) {
         };
         actions.appendChild(editBtn);
 
+        var editorBtn = document.createElement('button');
+        editorBtn.textContent = '$EDITOR';
+        editorBtn.onclick = function() {
+          openInEditor(data.path);
+        };
+        actions.appendChild(editorBtn);
+
         var deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Delete';
         deleteBtn.style.color = '#dc2626';
@@ -2574,6 +2581,13 @@ function loadMemory(memoryId, pushHistory) {
         actions.appendChild(cancelBtn);
       };
       actions.appendChild(editBtn);
+
+      var editorBtn = document.createElement('button');
+      editorBtn.textContent = '$EDITOR';
+      editorBtn.onclick = function() {
+        openInEditor(data.path);
+      };
+      actions.appendChild(editorBtn);
 
       var deleteBtn = document.createElement('button');
       deleteBtn.textContent = 'Delete';
@@ -3442,6 +3456,15 @@ mainEl.addEventListener('click', function(e) {
 
   e.target.closest('summary').scrollIntoView({ block: 'nearest' });
 });
+
+function openInEditor(filePath) {
+  var dir = filePath.replace(/\/[^/]+$/, '');
+  fetch('/api/terminal/run/', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cmd: ['sh', '-c', '"${EDITOR:-vi}" "$1"', '--', filePath], cwd: dir})
+  });
+}
 
 function esc(s) {
   const d = document.createElement('div');
