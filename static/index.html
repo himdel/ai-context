@@ -276,13 +276,16 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .block.text p:first-child { margin-top: 0; }
 .block.text p:last-child { margin-bottom: 0; }
 .block.text pre { background: #f4f4f4; padding: 8px 12px; border-radius: 4px; overflow-x: auto; }
-.mermaid-container { border: 1px solid #e0e0e0; border-radius: 4px; margin: 0.5em 0; overflow: hidden; }
-.mermaid-toolbar { display: flex; justify-content: flex-end; padding: 2px 4px; background: #f4f4f4; border-bottom: 1px solid #e0e0e0; }
-.mermaid-toggle { font-size: 12px; padding: 1px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; color: #555; }
-.mermaid-toggle:hover { background: #eee; }
-.mermaid-rendered { text-align: center; padding: 12px; overflow-x: auto; }
-.mermaid-rendered svg { max-width: 100%; height: auto; }
-.mermaid-source { margin: 0 !important; border-radius: 0 !important; }
+.rich-container { border: 1px solid #e0e0e0; border-radius: 4px; margin: 0.5em 0; overflow: hidden; }
+.rich-toolbar { display: flex; justify-content: flex-end; padding: 2px 4px; background: #f4f4f4; border-bottom: 1px solid #e0e0e0; }
+.rich-toggle { font-size: 12px; padding: 1px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; color: #555; }
+.rich-toggle:hover { background: #eee; }
+.rich-rendered { text-align: center; padding: 12px; overflow-x: auto; }
+.rich-rendered svg { max-width: 100%; height: auto; }
+.rich-rendered img { max-width: 100%; height: auto; }
+.rich-source { margin: 0 !important; border-radius: 0 !important; }
+.rich-rendered .rich-map { height: 300px; width: 100%; }
+.rich-rendered .abcjs-container { text-align: left; }
 .block.text code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
 .block.text pre code { background: none; padding: 0; }
 .block.text ul, .block.text ol { margin: 0.5em 0; padding-left: 1.5em; }
@@ -1026,6 +1029,19 @@ details > summary {
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3/lib/viz-standalone.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6/dist/abcjs-basic-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
 </head>
 <body>
 
@@ -1162,36 +1178,150 @@ marked.use({
 });
 
 mermaid.initialize({ startOnLoad: false, theme: 'default' });
-var mermaidIdCounter = 0;
+var richBlockCounter = 0;
+var richLangs = ['mermaid', 'math', 'dot', 'graphviz', 'vega-lite', 'geojson', 'abc', 'markmap', 'plantuml'];
 
 marked.use({
   renderer: {
     code: function(token) {
-      if (token.lang === 'mermaid') {
-        var id = 'mermaid-' + (mermaidIdCounter++);
-        var escaped = token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return '<div class="mermaid-container">' +
-          '<div class="mermaid-toolbar"><button class="mermaid-toggle" title="Toggle source">Source</button></div>' +
-          '<div class="mermaid-rendered" data-mermaid-id="' + id + '" data-mermaid-src="' + encodeURIComponent(token.text) + '"></div>' +
-          '<pre class="mermaid-source" style="display:none"><code>' + escaped + '</code></pre>' +
-          '</div>';
-      }
-      return false;
+      var lang = (token.lang || '').toLowerCase();
+      if (richLangs.indexOf(lang) === -1) return false;
+      var id = 'rich-' + (richBlockCounter++);
+      var escaped = token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<div class="rich-container">' +
+        '<div class="rich-toolbar"><button class="rich-toggle" title="Toggle source">Source</button></div>' +
+        '<div class="rich-rendered" data-rich-id="' + id + '" data-rich-lang="' + lang + '" data-rich-src="' + encodeURIComponent(token.text) + '"></div>' +
+        '<pre class="rich-source" style="display:none"><code>' + escaped + '</code></pre>' +
+        '</div>';
     }
   }
 });
 
-function renderMermaidDiagrams() {
-  document.querySelectorAll('.mermaid-rendered[data-mermaid-src]:not(.mermaid-done)').forEach(function(el) {
-    el.classList.add('mermaid-done');
-    var src = decodeURIComponent(el.getAttribute('data-mermaid-src'));
-    var id = el.getAttribute('data-mermaid-id');
-    mermaid.render(id, src).then(function(result) {
-      el.innerHTML = result.svg;
-    }).catch(function() {
-      el.innerHTML = '<em style="color:#999">Failed to render diagram</em>';
-    });
+function renderRichBlocks() {
+  document.querySelectorAll('.rich-rendered[data-rich-src]:not(.rich-done)').forEach(function(el) {
+    el.classList.add('rich-done');
+    var src = decodeURIComponent(el.getAttribute('data-rich-src'));
+    var id = el.getAttribute('data-rich-id');
+    var lang = el.getAttribute('data-rich-lang');
+
+    if (lang === 'mermaid') {
+      mermaid.render(id, src).then(function(result) {
+        el.innerHTML = result.svg;
+      }).catch(function() {
+        el.innerHTML = '<em style="color:#999">Failed to render diagram</em>';
+      });
+
+    } else if (lang === 'math') {
+      try {
+        katex.render(src.trim(), el, { displayMode: true, throwOnError: false });
+      } catch(e) {
+        el.innerHTML = '<em style="color:#999">Failed to render math</em>';
+      }
+
+    } else if (lang === 'dot' || lang === 'graphviz') {
+      Viz.instance().then(function(viz) {
+        try {
+          el.innerHTML = viz.renderSVGElement(src).outerHTML;
+        } catch(e) {
+          el.innerHTML = '<em style="color:#999">Failed to render graph</em>';
+        }
+      }).catch(function() {
+        el.innerHTML = '<em style="color:#999">Failed to render graph</em>';
+      });
+
+    } else if (lang === 'vega-lite') {
+      try {
+        var spec = JSON.parse(src);
+        vegaEmbed(el, spec, { actions: false }).catch(function() {
+          el.innerHTML = '<em style="color:#999">Failed to render chart</em>';
+        });
+      } catch(e) {
+        el.innerHTML = '<em style="color:#999">Invalid Vega-Lite JSON</em>';
+      }
+
+    } else if (lang === 'geojson') {
+      try {
+        var geojson = JSON.parse(src);
+        var mapDiv = document.createElement('div');
+        mapDiv.className = 'rich-map';
+        el.appendChild(mapDiv);
+        var map = L.map(mapDiv);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        var layer = L.geoJSON(geojson).addTo(map);
+        map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+      } catch(e) {
+        el.innerHTML = '<em style="color:#999">Failed to render map</em>';
+      }
+
+    } else if (lang === 'abc') {
+      var abcDiv = document.createElement('div');
+      abcDiv.className = 'abcjs-container';
+      el.appendChild(abcDiv);
+      try {
+        ABCJS.renderAbc(abcDiv, src);
+      } catch(e) {
+        el.innerHTML = '<em style="color:#999">Failed to render notation</em>';
+      }
+
+    } else if (lang === 'markmap') {
+      try {
+        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('style', 'width:100%;height:300px');
+        el.appendChild(svg);
+        var transformer = new markmap.Transformer();
+        var parsed = transformer.transform(src);
+        markmap.Markmap.create(svg, null, parsed.root);
+      } catch(e) {
+        el.innerHTML = '<em style="color:#999">Failed to render mind map</em>';
+      }
+
+    } else if (lang === 'plantuml') {
+      var encoded = plantumlEncode(src);
+      var img = document.createElement('img');
+      img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+      img.alt = 'PlantUML diagram';
+      img.onerror = function() {
+        el.innerHTML = '<em style="color:#999">Failed to render PlantUML diagram</em>';
+      };
+      el.appendChild(img);
+    }
   });
+}
+
+function plantumlEncode(text) {
+  function encode6bit(b) {
+    if (b < 10) return String.fromCharCode(48 + b);
+    b -= 10;
+    if (b < 26) return String.fromCharCode(65 + b);
+    b -= 26;
+    if (b < 26) return String.fromCharCode(97 + b);
+    b -= 26;
+    if (b === 0) return '-';
+    if (b === 1) return '_';
+    return '?';
+  }
+  function append3bytes(b1, b2, b3) {
+    var c1 = b1 >> 2;
+    var c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+    var c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
+    var c4 = b3 & 0x3F;
+    return encode6bit(c1 & 0x3F) + encode6bit(c2 & 0x3F) + encode6bit(c3 & 0x3F) + encode6bit(c4 & 0x3F);
+  }
+  var data = new TextEncoder().encode(text);
+  var deflated = new Uint8Array(pako.deflateRaw(data));
+  var r = '';
+  for (var i = 0; i < deflated.length; i += 3) {
+    if (i + 2 === deflated.length) {
+      r += append3bytes(deflated[i], deflated[i + 1], 0);
+    } else if (i + 1 === deflated.length) {
+      r += append3bytes(deflated[i], 0, 0);
+    } else {
+      r += append3bytes(deflated[i], deflated[i + 1], deflated[i + 2]);
+    }
+  }
+  return r;
 }
 
 // Load autolink patterns and register as a marked extension
@@ -1644,7 +1774,7 @@ function loadPlan(planId, pushHistory) {
         view.appendChild(planBlock);
 
         mainEl.appendChild(view);
-        renderMermaidDiagrams();
+        renderRichBlocks();
         mainEl.scrollTop = 0;
         mainEl.focus();
       };
@@ -1712,7 +1842,7 @@ function pollForUpdates() {
           mainEl.appendChild(div);
         });
         renderedMsgCount = data.messages.length;
-        renderMermaidDiagrams();
+        renderRichBlocks();
         if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
       }
       currentMessages = data.messages;
@@ -2177,7 +2307,7 @@ function loadSkill(skillId, pushHistory) {
           });
 
         mainEl.appendChild(view);
-        renderMermaidDiagrams();
+        renderRichBlocks();
         mainEl.scrollTop = 0;
         mainEl.focus();
       };
@@ -2650,7 +2780,7 @@ function loadMemory(memoryId, pushHistory) {
       view.appendChild(actions);
       view.appendChild(contentBlock);
       mainEl.appendChild(view);
-      renderMermaidDiagrams();
+      renderRichBlocks();
       mainEl.scrollTop = 0;
       mainEl.focus();
     });
@@ -2882,7 +3012,7 @@ function loadConversation(id, pushHistory) {
         });
         currentMessages = data.messages;
         updateStatusBar(currentMessages);
-        renderMermaidDiagrams();
+        renderRichBlocks();
         mainEl.scrollTop = 0;
         mainEl.focus();
 
@@ -3504,11 +3634,11 @@ mainEl.addEventListener('click', function(e) {
 });
 
 mainEl.addEventListener('click', function(e) {
-  var btn = e.target.closest('.mermaid-toggle');
+  var btn = e.target.closest('.rich-toggle');
   if (!btn) return;
-  var container = btn.closest('.mermaid-container');
-  var rendered = container.querySelector('.mermaid-rendered');
-  var source = container.querySelector('.mermaid-source');
+  var container = btn.closest('.rich-container');
+  var rendered = container.querySelector('.rich-rendered');
+  var source = container.querySelector('.rich-source');
   var showingSource = source.style.display !== 'none';
   rendered.style.display = showingSource ? '' : 'none';
   source.style.display = showingSource ? 'none' : '';
