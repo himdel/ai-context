@@ -4,12 +4,15 @@ import logging
 import os
 import re
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from django.conf import settings
+from croniter import croniter
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
+from api.models import CronJob, CronJobRun
 
 logger = logging.getLogger(__name__)
 
@@ -740,6 +743,175 @@ def session_fork(request):
     return _spawn_in_terminal(
         ["claude", "--resume", conversation_id, "--fork-session"], cwd
     )
+
+
+# --- Cronjobs ---
+
+
+def _cron_summary(expr):
+    parts = expr.split()
+    if len(parts) != 5:
+        return expr
+    minute, hour, dom, month, dow = parts
+    day_names = {
+        "0": "Sun",
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat",
+        "7": "Sun",
+    }
+    if dom == "*" and month == "*" and dow == "*":
+        if hour == "*":
+            return f"Every hour at :{minute.zfill(2)}"
+        return f"Daily at {hour}:{minute.zfill(2)}"
+    if dom == "*" and month == "*" and dow != "*":
+        if "-" in dow:
+            start, end = dow.split("-", 1)
+            days = f"{day_names.get(start, start)}-{day_names.get(end, end)}"
+        else:
+            days = ", ".join(day_names.get(d, d) for d in dow.split(","))
+        return f"{days} at {hour}:{minute.zfill(2)}"
+    return expr
+
+
+def _resolve_run_conversations(runs):
+    sessions_dir = settings.CLAUDE_DIR / "sessions"
+    if not sessions_dir.is_dir():
+        return
+    unresolved = [r for r in runs if r.pid and not r.conversation_id]
+    if not unresolved:
+        return
+    pid_to_session = {}
+    for f in sessions_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            pid_to_session[data.get("pid")] = data.get("sessionId", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+    for run in unresolved:
+        session_id = pid_to_session.get(run.pid, "")
+        if session_id:
+            run.conversation_id = session_id
+            run.save(update_fields=["conversation_id"])
+
+
+def _serialize_cronjob(cj):
+    return {
+        "id": cj.id,
+        "skill_name": cj.skill_name,
+        "repo": cj.repo,
+        "cron_expression": cj.cron_expression,
+        "params": cj.params,
+        "enabled": cj.enabled,
+        "last_run_at": cj.last_run_at.isoformat() if cj.last_run_at else None,
+        "created_at": cj.created_at.isoformat(),
+        "schedule_summary": _cron_summary(cj.cron_expression),
+    }
+
+
+def _execute_cronjob(cj, trigger_type="scheduled"):
+    prompt = "/" + cj.skill_name
+    if cj.params.strip():
+        prompt += " " + cj.params
+
+    if not Path(cj.repo).is_dir():
+        return Response({"error": "repo directory not found"}, status=400)
+
+    result = _spawn_in_terminal(["claude", prompt], cj.repo)
+
+    pid = result.data.get("pid") if result.status_code == 200 else None
+    CronJobRun.objects.create(cronjob=cj, trigger_type=trigger_type, pid=pid)
+    cj.last_run_at = datetime.now(timezone.utc)
+    cj.save(update_fields=["last_run_at"])
+
+    return result
+
+
+@api_view(["GET", "POST"])
+def cronjobs_list(request):
+    if request.method == "POST":
+        skill_name = request.data.get("skill_name", "").strip()
+        repo = request.data.get("repo", "").strip()
+        cron_expression = request.data.get("cron_expression", "").strip()
+        params = request.data.get("params", "")
+
+        if not skill_name or not repo or not cron_expression:
+            return Response(
+                {"error": "skill_name, repo, and cron_expression are required"},
+                status=400,
+            )
+        if not Path(repo).is_dir():
+            return Response({"error": "repo is not a valid directory"}, status=400)
+        if not croniter.is_valid(cron_expression):
+            return Response({"error": "invalid cron expression"}, status=400)
+
+        cj = CronJob.objects.create(
+            skill_name=skill_name,
+            repo=repo,
+            cron_expression=cron_expression,
+            params=params,
+        )
+        return Response(_serialize_cronjob(cj), status=201)
+
+    cronjobs = CronJob.objects.all().order_by("-created_at")
+    return Response([_serialize_cronjob(cj) for cj in cronjobs])
+
+
+@api_view(["GET", "PUT", "DELETE"])
+def cronjob_detail(request, cronjob_id):
+    try:
+        cj = CronJob.objects.get(id=cronjob_id)
+    except CronJob.DoesNotExist:
+        return Response({"error": "not found"}, status=404)
+
+    if request.method == "DELETE":
+        cj.delete()
+        return Response({"status": "deleted"})
+
+    if request.method == "PUT":
+        for field in ("skill_name", "repo", "cron_expression", "params"):
+            if field in request.data:
+                setattr(cj, field, request.data[field])
+        if "enabled" in request.data:
+            cj.enabled = request.data["enabled"]
+        if cj.cron_expression and not croniter.is_valid(cj.cron_expression):
+            return Response({"error": "invalid cron expression"}, status=400)
+        if cj.repo and not Path(cj.repo).is_dir():
+            return Response({"error": "repo is not a valid directory"}, status=400)
+        cj.save()
+
+    runs = list(CronJobRun.objects.filter(cronjob=cj).order_by("-triggered_at")[:20])
+    _resolve_run_conversations(runs)
+
+    data = _serialize_cronjob(cj)
+    data["runs"] = [
+        {
+            "id": r.id,
+            "conversation_id": r.conversation_id,
+            "triggered_at": r.triggered_at.isoformat(),
+            "trigger_type": r.trigger_type,
+            "pid": r.pid,
+        }
+        for r in runs
+    ]
+    return Response(data)
+
+
+@api_view(["POST"])
+def cronjob_run(request, cronjob_id):
+    try:
+        cj = CronJob.objects.get(id=cronjob_id)
+    except CronJob.DoesNotExist:
+        return Response({"error": "not found"}, status=404)
+    return _execute_cronjob(cj, trigger_type="manual")
+
+
+@api_view(["GET"])
+def repos_list(request):
+    return Response(_discover_repos())
 
 
 def _build_plan_conversation_map():

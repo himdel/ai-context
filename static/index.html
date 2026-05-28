@@ -238,6 +238,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 #main.view-skill { border-top-color: #0d9488; }
 #main.view-memory { border-top-color: #d97706; }
 #main.view-activity { border-top-color: #16a34a; }
+#main.view-cronjob { border-top-color: #d97706; }
 
 #main .empty {
   color: #999;
@@ -712,6 +713,7 @@ details > summary {
 .view-skill .home-conv-item { border-left: 3px solid #0d9488; }
 .view-memory .home-conv-item { border-left: 3px solid #d97706; }
 .view-activity .home-conv-item { border-left: 3px solid #16a34a; }
+.view-cronjob .home-conv-item { border-left: 3px solid #d97706; }
 .skill-invocations .home-conv-item { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .invoc-summary { font-size: 12px; color: #666; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoc-summary p { margin: 0; display: inline; }
@@ -757,6 +759,7 @@ details > summary {
 .home-tab[data-tab="conversations"].active { border-bottom-color: #3b82f6; }
 .home-tab[data-tab="plans"].active { border-bottom-color: #8b5cf6; }
 .home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
+.home-tab[data-tab="cronjobs"].active { border-bottom-color: #d97706; }
 .home-tab[data-tab="memory"].active { border-bottom-color: #d97706; }
 .home-tab[data-tab="activity"].active { border-bottom-color: #16a34a; }
 
@@ -1048,6 +1051,92 @@ details > summary {
   cursor: pointer;
 }
 .create-skill-form button:hover { background: #e8e8e8; }
+
+.cronjob-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid #eee;
+  border-left: 3px solid #d97706;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cronjob-item:hover { background: #e8e8e8; }
+.cronjob-item.active { background: #d0d8ff; }
+.cronjob-item .cronjob-name { color: #333; }
+.cronjob-item .cronjob-schedule { font-size: 11px; color: #888; }
+.cronjob-item .cronjob-repo { font-size: 11px; color: #888; }
+#cronjobs-section h2 { border-left: 3px solid #d97706; }
+.cronjob-detail-view { max-width: 800px; }
+.cronjob-detail-view .cronjob-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.cronjob-detail-view .cronjob-actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #92400e;
+  cursor: pointer;
+  font-weight: 600;
+}
+.cronjob-detail-view .cronjob-actions button:hover { background: #fef3c7; }
+.cronjob-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 600px;
+}
+.cronjob-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+.cronjob-form input, .cronjob-form select, .cronjob-form textarea {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: monospace;
+}
+.cronjob-form .schedule-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.cronjob-form .schedule-presets button {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #f8f8f8;
+  cursor: pointer;
+}
+.cronjob-form .schedule-presets button:hover { background: #e8e8e8; }
+.cronjob-form .hint { font-size: 11px; color: #999; font-weight: normal; }
+.cronjob-runs { margin-top: 24px; }
+.cronjob-runs h4 { margin: 0 0 8px; color: #555; font-size: 14px; }
+.cronjob-run-item {
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.cronjob-run-item .badge {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.badge-scheduled { background: #dcfce7; color: #15803d; }
+.badge-manual { background: #fef3c7; color: #b45309; }
+
 .create-skill-form .form-status {
   display: inline-block;
   margin-left: 8px;
@@ -1111,6 +1200,12 @@ details > summary {
     </h2>
     <div class="sidebar-list" id="skill-list"></div>
   </div>
+  <div class="sidebar-section collapsed" id="cronjobs-section">
+    <h2><span class="toggle">&#x25BC;</span>Cronjobs
+      <span id="reload-cronjobs-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload cronjobs">&#x21bb;</span><span id="new-cronjob-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New cronjob">+</span>
+    </h2>
+    <div class="sidebar-list" id="cronjob-list"></div>
+  </div>
   <div class="sidebar-section collapsed" id="memories-section">
     <h2><span class="toggle">&#x25BC;</span>Memory
       <span id="reload-memories-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload memories">&#x21bb;</span>
@@ -1127,6 +1222,7 @@ details > summary {
 const listEl = document.getElementById('conversation-list');
 const planListEl = document.getElementById('plan-list');
 const skillListEl = document.getElementById('skill-list');
+const cronjobListEl = document.getElementById('cronjob-list');
 const memoryListEl = document.getElementById('memory-list');
 const mainEl = document.getElementById('main');
 const mainWrapEl = document.getElementById('main-wrap');
@@ -1134,11 +1230,12 @@ const reloadListBtn = document.getElementById('reload-list-btn');
 let activeId = null;
 let activePlanId = null;
 let activeSkillId = null;
+let activeCronjobId = null;
 let activeMemoryId = null;
 let currentMessages = null;
 
 function setViewType(type) {
-  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-memory', 'view-activity');
+  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-cronjob', 'view-memory', 'view-activity');
   if (type) mainEl.classList.add('view-' + type);
 }
 
@@ -1189,7 +1286,7 @@ var RepoIdentity = {
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-memories-btn')) return;
+    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-cronjobs-btn') || e.target.closest('#new-cronjob-btn') || e.target.closest('#reload-memories-btn')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
@@ -1201,6 +1298,10 @@ document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
       // Load skills on first expand
       if (section.id === 'skills-section' && !skillListEl.children.length) {
         loadSkillsSidebar();
+      }
+      // Load cronjobs on first expand
+      if (section.id === 'cronjobs-section' && !cronjobListEl.children.length) {
+        loadCronjobsSidebar();
       }
       // Load memories on first expand
       if (section.id === 'memories-section' && !memoryListEl.children.length) {
@@ -1505,6 +1606,16 @@ document.getElementById('reload-skills-btn').onclick = function() {
   loadSkillsSidebar();
 };
 
+document.getElementById('reload-cronjobs-btn').onclick = function(e) {
+  e.stopPropagation();
+  loadCronjobsSidebar();
+};
+
+document.getElementById('new-cronjob-btn').onclick = function(e) {
+  e.stopPropagation();
+  showCreateCronjobForm();
+};
+
 document.getElementById('reload-memories-btn').onclick = function(e) {
   e.stopPropagation();
   loadMemoriesSidebar();
@@ -1609,9 +1720,9 @@ document.getElementById('new-skill-btn').onclick = function(e) {
 
 let homeTab = 'conversations';
 
-var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', memory: '/memories', activity: '/activity'};
+var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', cronjobs: '/cronjobs', memory: '/memories', activity: '/activity'};
 
-var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', memory: 'memory', activity: 'activity'};
+var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', cronjobs: 'cronjob', memory: 'memory', activity: 'activity'};
 function showHomeScreen(pushHistory) {
   setViewType(homeTabViewType[homeTab] || null);
   if (pushHistory !== false) {
@@ -1623,6 +1734,7 @@ function showHomeScreen(pushHistory) {
         '<div class="home-tab' + (homeTab === 'conversations' ? ' active' : '') + '" data-tab="conversations">Conversations</div>' +
         '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
         '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
+        '<div class="home-tab' + (homeTab === 'cronjobs' ? ' active' : '') + '" data-tab="cronjobs">Cronjobs</div>' +
         '<div class="home-tab' + (homeTab === 'memory' ? ' active' : '') + '" data-tab="memory">Memory</div>' +
         '<div class="home-tab' + (homeTab === 'activity' ? ' active' : '') + '" data-tab="activity">Activity</div>' +
       '</div>' +
@@ -1640,6 +1752,8 @@ function showHomeScreen(pushHistory) {
     showPlansHome();
   } else if (homeTab === 'skills') {
     showSkillsHome();
+  } else if (homeTab === 'cronjobs') {
+    showCronjobsHome();
   } else if (homeTab === 'memory') {
     showMemoriesHome();
   } else if (homeTab === 'activity') {
@@ -1825,10 +1939,12 @@ function loadPlan(planId, pushHistory) {
   setViewType('plan');
   activeId = null;
   activePlanId = planId;
+  activeCronjobId = null;
   if (pushHistory !== false) {
     history.pushState({planId: planId}, '', '/plans/' + planId);
   }
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === planId);
   });
@@ -2008,10 +2124,12 @@ function closeConversation(tab) {
   activeId = null;
   activePlanId = null;
   activeSkillId = null;
+  activeCronjobId = null;
   activeMemoryId = null;
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.memory-item').forEach(el => el.classList.remove('active'));
   document.getElementById('conv-section').classList.remove('collapsed');
   if (tab) homeTab = tab;
@@ -2232,8 +2350,10 @@ function loadSkill(skillId, pushHistory) {
   activeId = null;
   activePlanId = null;
   activeSkillId = skillId;
+  activeCronjobId = null;
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === skillId);
   });
@@ -2415,6 +2535,14 @@ function loadSkill(skillId, pushHistory) {
           runWrap.appendChild(runBtn);
         }
         actions.appendChild(runWrap);
+
+        var cronBtn = document.createElement('button');
+        cronBtn.textContent = 'Cron';
+        cronBtn.style.cssText = 'border-color:#fbbf24;background:#fffbeb;color:#92400e';
+        cronBtn.onclick = function() {
+          showCreateCronjobForm(data.name);
+        };
+        actions.appendChild(cronBtn);
 
         view.appendChild(actions);
 
@@ -2848,6 +2976,7 @@ function loadMemory(memoryId, pushHistory) {
   activeId = null;
   activePlanId = null;
   activeSkillId = null;
+  activeCronjobId = null;
   activeMemoryId = memoryId;
   if (pushHistory !== false) {
     history.pushState({memoryId: memoryId}, '', '/memories/' + memoryId);
@@ -2855,6 +2984,7 @@ function loadMemory(memoryId, pushHistory) {
   document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.memory-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === memoryId);
   });
@@ -3030,12 +3160,512 @@ function navigateToSkillByName(name) {
     });
 }
 
+// --- Cronjobs ---
+
+function loadCronjobsSidebar() {
+  fetch('/api/cronjobs/')
+    .then(function(r) { return r.json(); })
+    .then(function(cronjobs) {
+      cronjobListEl.innerHTML = '';
+      cronjobs.forEach(function(cj) {
+        var div = document.createElement('div');
+        div.className = 'cronjob-item';
+        div.dataset.id = cj.id;
+        if (cj.id == activeCronjobId) div.classList.add('active');
+
+        var repoShort = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
+        var rid = RepoIdentity.get(cj.repo);
+        div.innerHTML =
+          '<div class="cronjob-schedule">' + esc(cj.schedule_summary) + (cj.enabled ? '' : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
+          '<div class="cronjob-name">/' + esc(cj.skill_name) + '</div>' +
+          '<div class="cronjob-repo">' + (rid ? rid.iconSm : '') + esc(repoShort) + '</div>';
+
+        div.onclick = function() { loadCronjob(cj.id); };
+        cronjobListEl.appendChild(div);
+      });
+    });
+}
+
+function showCronjobsHome() {
+  fetch('/api/cronjobs/')
+    .then(function(r) { return r.json(); })
+    .then(function(cronjobs) {
+      var colsEl = document.getElementById('home-cols');
+      if (!cronjobs.length) {
+        colsEl.innerHTML = '<div style="color:#888;padding:24px">No cronjobs yet. Create one from a skill detail view or click + in the sidebar.</div>';
+        return;
+      }
+      var repos = {};
+      var repoOrder = [];
+      cronjobs.forEach(function(cj) {
+        var key = cj.repo || 'other';
+        if (!repos[key]) { repos[key] = []; repoOrder.push(key); }
+        repos[key].push(cj);
+      });
+      colsEl.innerHTML = '';
+      repoOrder.forEach(function(repo) {
+        var col = document.createElement('div');
+        col.className = 'home-column';
+        var rid = RepoIdentity.get(repo);
+        var short = repo.replace(/^\/home\/[^/]+\//, '~/');
+        if (rid) {
+          col.style.borderColor = rid.colorBorder;
+          col.style.background = rid.colorLight;
+        }
+        col.innerHTML = '<div class="home-column-header">' + (rid ? rid.iconMd : '') + '<strong>' + esc(short) + '</strong></div>';
+        repos[repo].forEach(function(cj) {
+          var item = document.createElement('div');
+          item.className = 'home-conv-item';
+          item.innerHTML =
+            '<div style="font-size:11px;color:#888">' + esc(cj.schedule_summary) + (cj.enabled ? '' : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
+            '<div>/' + esc(cj.skill_name) + '</div>';
+          item.onclick = function() { loadCronjob(cj.id); };
+          col.appendChild(item);
+        });
+        colsEl.appendChild(col);
+      });
+    });
+}
+
+function loadCronjob(cronjobId, pushHistory) {
+  stopFollowing();
+  setViewType('cronjob');
+  activeCronjobId = cronjobId;
+  activeId = null;
+  activePlanId = null;
+  activeSkillId = null;
+  activeMemoryId = null;
+  if (pushHistory !== false) {
+    history.pushState(null, '', '/cronjobs/' + cronjobId);
+  }
+  document.querySelectorAll('.cronjob-item').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.id == cronjobId);
+  });
+  document.querySelectorAll('.conversation-item').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.plan-item').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.skill-item').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.memory-item').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('cronjobs-section').classList.remove('collapsed');
+  if (!cronjobListEl.children.length) loadCronjobsSidebar();
+
+  mainEl.innerHTML = '<div class="empty">Loading...</div>';
+  fetch('/api/cronjobs/' + cronjobId + '/')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (activeCronjobId !== cronjobId) return;
+      mainEl.innerHTML = '';
+
+      var toolbar = document.createElement('div');
+      toolbar.className = 'conversation-toolbar';
+      var closeBtn = document.createElement('button');
+      closeBtn.className = 'close-conv';
+      closeBtn.innerHTML = '&#x2715;';
+      closeBtn.title = 'Close';
+      closeBtn.onclick = function() { closeConversation('cronjobs'); };
+      toolbar.appendChild(closeBtn);
+      mainEl.appendChild(toolbar);
+
+      var header = document.createElement('div');
+      header.className = 'conversation-header';
+      var repoShort = data.repo.replace(/^\/home\/[^/]+\//, '~/');
+      header.innerHTML = '<span style="font-size:18px;font-weight:700">/' + esc(data.skill_name) + '</span>' +
+        '<span style="font-size:13px;color:#888">' + esc(data.schedule_summary) + '</span>' +
+        '<span style="font-size:13px;color:#888">' + esc(repoShort) + '</span>';
+      mainEl.appendChild(header);
+
+      var view = document.createElement('div');
+      view.className = 'cronjob-detail-view';
+
+      var form = document.createElement('div');
+      form.className = 'cronjob-form';
+
+      // Skill dropdown
+      var skillLabel = document.createElement('label');
+      skillLabel.textContent = 'Skill';
+      var skillSelect = document.createElement('select');
+      skillSelect.innerHTML = '<option value="">Loading...</option>';
+      fetch('/api/skills/')
+        .then(function(r) { return r.json(); })
+        .then(function(skills) {
+          skillSelect.innerHTML = '';
+          skills.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.name;
+            opt.textContent = '/' + s.name + ' (' + (s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/')) + ')';
+            if (s.name === data.skill_name) opt.selected = true;
+            skillSelect.appendChild(opt);
+          });
+        });
+      skillLabel.appendChild(skillSelect);
+
+      var skillLink = document.createElement('a');
+      skillLink.href = '#';
+      skillLink.textContent = 'View skill';
+      skillLink.style.cssText = 'font-size:11px;color:#4338ca;font-weight:normal';
+      skillLink.onclick = function(e) {
+        e.preventDefault();
+        navigateToSkillByName(data.skill_name);
+      };
+      skillLabel.appendChild(skillLink);
+      form.appendChild(skillLabel);
+
+      // Repo dropdown
+      var repoLabel = document.createElement('label');
+      repoLabel.textContent = 'Repository';
+      var repoSelect = document.createElement('select');
+      repoSelect.innerHTML = '<option value="">Loading...</option>';
+      fetch('/api/repos/')
+        .then(function(r) { return r.json(); })
+        .then(function(repos) {
+          repoSelect.innerHTML = '';
+          repos.forEach(function(repo) {
+            var opt = document.createElement('option');
+            opt.value = repo;
+            opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');
+            if (repo === data.repo) opt.selected = true;
+            repoSelect.appendChild(opt);
+          });
+          if (!repos.includes(data.repo)) {
+            var opt = document.createElement('option');
+            opt.value = data.repo;
+            opt.textContent = data.repo.replace(/^\/home\/[^/]+\//, '~/');
+            opt.selected = true;
+            repoSelect.prepend(opt);
+          }
+        });
+      repoLabel.appendChild(repoSelect);
+      form.appendChild(repoLabel);
+
+      // Params
+      var paramsLabel = document.createElement('label');
+      paramsLabel.textContent = 'Params';
+      var paramsInput = document.createElement('input');
+      paramsInput.type = 'text';
+      paramsInput.value = data.params;
+      paramsInput.placeholder = 'optional arguments';
+      paramsLabel.appendChild(paramsInput);
+      form.appendChild(paramsLabel);
+
+      // Schedule
+      var schedLabel = document.createElement('label');
+      schedLabel.textContent = 'Schedule (cron expression)';
+      var cronInput = document.createElement('input');
+      cronInput.type = 'text';
+      cronInput.value = data.cron_expression;
+      cronInput.placeholder = '0 18 * * *';
+      schedLabel.appendChild(cronInput);
+
+      var presets = document.createElement('div');
+      presets.className = 'schedule-presets';
+      var presetDefs = [
+        {label: 'Daily 9am', value: '0 9 * * *'},
+        {label: 'Daily 6pm', value: '0 18 * * *'},
+        {label: 'Weekdays 9am', value: '0 9 * * 1-5'},
+        {label: 'Mon 9am', value: '0 9 * * 1'},
+        {label: 'Every hour', value: '0 * * * *'},
+      ];
+      presetDefs.forEach(function(p) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = p.label;
+        btn.onclick = function() { cronInput.value = p.value; };
+        presets.appendChild(btn);
+      });
+      schedLabel.appendChild(presets);
+      form.appendChild(schedLabel);
+
+      // Enabled
+      var enabledLabel = document.createElement('label');
+      enabledLabel.style.flexDirection = 'row';
+      enabledLabel.style.alignItems = 'center';
+      enabledLabel.style.gap = '8px';
+      var enabledCheck = document.createElement('input');
+      enabledCheck.type = 'checkbox';
+      enabledCheck.checked = data.enabled;
+      enabledLabel.appendChild(enabledCheck);
+      enabledLabel.appendChild(document.createTextNode('Enabled'));
+      form.appendChild(enabledLabel);
+
+      view.appendChild(form);
+
+      // Actions
+      var actions = document.createElement('div');
+      actions.className = 'cronjob-actions';
+      actions.style.marginTop = '16px';
+
+      var saveBtn = document.createElement('button');
+      saveBtn.textContent = 'Save';
+      saveBtn.onclick = function() {
+        saveBtn.textContent = '...';
+        fetch('/api/cronjobs/' + cronjobId + '/', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            skill_name: skillSelect.value || data.skill_name,
+            repo: repoSelect.value || data.repo,
+            params: paramsInput.value,
+            cron_expression: cronInput.value,
+            enabled: enabledCheck.checked,
+          })
+        })
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(resp) {
+          if (resp.ok) {
+            saveBtn.textContent = 'Saved';
+            loadCronjobsSidebar();
+            setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+          } else {
+            saveBtn.textContent = resp.data.error || 'Error';
+            setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+          }
+        });
+      };
+      actions.appendChild(saveBtn);
+
+      var runNowBtn = document.createElement('button');
+      runNowBtn.textContent = 'Run Now';
+      runNowBtn.onclick = function() {
+        runNowBtn.textContent = '...';
+        fetch('/api/cronjobs/' + cronjobId + '/run/', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        })
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(resp) {
+          runNowBtn.textContent = resp.ok ? 'Launched' : 'Error';
+          setTimeout(function() { runNowBtn.textContent = 'Run Now'; }, 2000);
+        });
+      };
+      actions.appendChild(runNowBtn);
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.style.cssText = 'color:#dc2626;border-color:#fca5a5';
+      deleteBtn.onclick = function() {
+        if (!confirm('Delete this cronjob?')) return;
+        fetch('/api/cronjobs/' + cronjobId + '/', {method: 'DELETE'})
+          .then(function() {
+            loadCronjobsSidebar();
+            closeConversation('cronjobs');
+          });
+      };
+      actions.appendChild(deleteBtn);
+
+      view.appendChild(actions);
+
+      // Previous runs
+      var runsSection = document.createElement('div');
+      runsSection.className = 'cronjob-runs';
+      runsSection.innerHTML = '<h4>Previous runs</h4>';
+
+      if (!data.runs || !data.runs.length) {
+        runsSection.innerHTML += '<div style="color:#888;font-size:13px">No runs yet</div>';
+      } else {
+        data.runs.forEach(function(run) {
+          var item = document.createElement('div');
+          item.className = 'cronjob-run-item';
+          var badgeClass = run.trigger_type === 'manual' ? 'badge-manual' : 'badge-scheduled';
+          var convLink = run.conversation_id
+            ? '<a href="/conversations/' + esc(run.conversation_id) + '" style="color:#4338ca;font-size:12px">' + esc(run.conversation_id.substring(0, 8)) + '...</a>'
+            : '<span style="color:#aaa;font-size:12px">no conversation linked</span>';
+          item.innerHTML =
+            '<span>' + esc(formatDate(run.triggered_at)) + '</span>' +
+            '<span class="badge ' + badgeClass + '">' + esc(run.trigger_type) + '</span>' +
+            '<span>' + convLink + '</span>';
+          if (run.conversation_id) {
+            item.style.cursor = 'pointer';
+            item.onclick = function(e) {
+              if (e.target.tagName === 'A') { e.preventDefault(); }
+              loadConversation(run.conversation_id);
+            };
+          }
+          runsSection.appendChild(item);
+        });
+      }
+      view.appendChild(runsSection);
+
+      mainEl.appendChild(view);
+      mainEl.scrollTop = 0;
+      mainEl.focus();
+    });
+}
+
+function showCreateCronjobForm(prefilledName, pushHistory) {
+  stopFollowing();
+  setViewType('cronjob');
+  activeId = null;
+  activePlanId = null;
+  activeSkillId = null;
+  activeCronjobId = null;
+  activeMemoryId = null;
+  if (pushHistory !== false) {
+    history.pushState(null, '', '/cronjobs/new');
+  }
+  document.querySelectorAll('.cronjob-item').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('cronjobs-section').classList.remove('collapsed');
+
+  mainEl.innerHTML = '';
+
+  var toolbar = document.createElement('div');
+  toolbar.className = 'conversation-toolbar';
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'close-conv';
+  closeBtn.innerHTML = '&#x2715;';
+  closeBtn.title = 'Close';
+  closeBtn.onclick = function() { closeConversation('cronjobs'); };
+  toolbar.appendChild(closeBtn);
+  mainEl.appendChild(toolbar);
+
+  var header = document.createElement('div');
+  header.className = 'conversation-header';
+  header.innerHTML = '<span style="font-size:18px;font-weight:700">New Cronjob</span>';
+  mainEl.appendChild(header);
+
+  var view = document.createElement('div');
+  view.className = 'cronjob-detail-view';
+  var form = document.createElement('div');
+  form.className = 'cronjob-form';
+
+  // Skill dropdown
+  var skillLabel = document.createElement('label');
+  skillLabel.textContent = 'Skill';
+  var skillSelect = document.createElement('select');
+  skillSelect.innerHTML = '<option value="">Loading...</option>';
+  fetch('/api/skills/')
+    .then(function(r) { return r.json(); })
+    .then(function(skills) {
+      skillSelect.innerHTML = '';
+      skills.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = '/' + s.name + ' (' + (s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/')) + ')';
+        if (prefilledName && s.name === prefilledName) opt.selected = true;
+        skillSelect.appendChild(opt);
+      });
+    });
+  skillLabel.appendChild(skillSelect);
+  form.appendChild(skillLabel);
+
+  // Repo dropdown
+  var repoLabel = document.createElement('label');
+  repoLabel.textContent = 'Repository';
+  var repoSelect = document.createElement('select');
+  repoSelect.innerHTML = '<option value="">Loading...</option>';
+  fetch('/api/repos/')
+    .then(function(r) { return r.json(); })
+    .then(function(repos) {
+      repoSelect.innerHTML = '';
+      repos.forEach(function(repo) {
+        var opt = document.createElement('option');
+        opt.value = repo;
+        opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');
+        repoSelect.appendChild(opt);
+      });
+    });
+  repoLabel.appendChild(repoSelect);
+  form.appendChild(repoLabel);
+
+  // Params
+  var paramsLabel = document.createElement('label');
+  paramsLabel.textContent = 'Params';
+  var paramsInput = document.createElement('input');
+  paramsInput.type = 'text';
+  paramsInput.placeholder = 'optional arguments';
+  paramsLabel.appendChild(paramsInput);
+  form.appendChild(paramsLabel);
+
+  // Schedule
+  var schedLabel = document.createElement('label');
+  schedLabel.textContent = 'Schedule (cron expression)';
+  var cronInput = document.createElement('input');
+  cronInput.type = 'text';
+  cronInput.value = '0 9 * * *';
+  cronInput.placeholder = '0 18 * * *';
+  schedLabel.appendChild(cronInput);
+
+  var presets = document.createElement('div');
+  presets.className = 'schedule-presets';
+  var presetDefs = [
+    {label: 'Daily 9am', value: '0 9 * * *'},
+    {label: 'Daily 6pm', value: '0 18 * * *'},
+    {label: 'Weekdays 9am', value: '0 9 * * 1-5'},
+    {label: 'Mon 9am', value: '0 9 * * 1'},
+    {label: 'Every hour', value: '0 * * * *'},
+  ];
+  presetDefs.forEach(function(p) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = p.label;
+    btn.onclick = function() { cronInput.value = p.value; };
+    presets.appendChild(btn);
+  });
+  schedLabel.appendChild(presets);
+  form.appendChild(schedLabel);
+
+  view.appendChild(form);
+
+  // Actions
+  var actions = document.createElement('div');
+  actions.className = 'cronjob-actions';
+  actions.style.marginTop = '16px';
+
+  var statusSpan = document.createElement('span');
+  statusSpan.style.cssText = 'font-size:13px;color:#888;align-self:center';
+
+  var createBtn = document.createElement('button');
+  createBtn.textContent = 'Create';
+  createBtn.onclick = function() {
+    if (!skillSelect.value || !repoSelect.value || !cronInput.value) {
+      statusSpan.textContent = 'Fill in all required fields';
+      setTimeout(function() { statusSpan.textContent = ''; }, 2000);
+      return;
+    }
+    createBtn.textContent = '...';
+    fetch('/api/cronjobs/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        skill_name: skillSelect.value,
+        repo: repoSelect.value,
+        params: paramsInput.value,
+        cron_expression: cronInput.value,
+      })
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(resp) {
+      if (resp.ok) {
+        loadCronjobsSidebar();
+        loadCronjob(resp.data.id);
+      } else {
+        createBtn.textContent = 'Create';
+        statusSpan.textContent = resp.data.error || 'Error';
+        setTimeout(function() { statusSpan.textContent = ''; }, 2000);
+      }
+    });
+  };
+  actions.appendChild(createBtn);
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { closeConversation('cronjobs'); };
+  actions.appendChild(cancelBtn);
+
+  actions.appendChild(statusSpan);
+  view.appendChild(actions);
+
+  mainEl.appendChild(view);
+  mainEl.scrollTop = 0;
+  mainEl.focus();
+}
+
 function routeUrl(pathname, pushHistory) {
   var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
   var planMatch = pathname.match(/^\/plans\/([^/]+)/);
   var skillNew = /^\/skills\/new\/?$/.test(pathname);
   var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
   var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
+  var cronjobNew = /^\/cronjobs\/new\/?$/.test(pathname);
+  var cronjobMatch = pathname.match(/^\/cronjobs\/(\d+)/);
   if (convMatch) {
     loadConversation(convMatch[1], pushHistory);
   } else if (planMatch) {
@@ -3044,8 +3674,14 @@ function routeUrl(pathname, pushHistory) {
     showCreateSkillForm(pushHistory);
   } else if (skillMatch) {
     loadSkillByUrl(decodeURIComponent(skillMatch[1]), decodeURIComponent(skillMatch[2]), pushHistory);
+  } else if (cronjobNew) {
+    showCreateCronjobForm(null, pushHistory);
+  } else if (cronjobMatch) {
+    loadCronjob(parseInt(cronjobMatch[1]), pushHistory);
   } else if (memoryMatch) {
     loadMemory(memoryMatch[1], pushHistory);
+  } else if (/^\/cronjobs\b/.test(pathname)) {
+    homeTab = 'cronjobs'; showHomeScreen(pushHistory);
   } else if (/^\/memories\b/.test(pathname)) {
     homeTab = 'memory'; showHomeScreen(pushHistory);
   } else if (/^\/skills\b/.test(pathname)) {
@@ -3071,6 +3707,7 @@ function loadConversation(id, pushHistory) {
   setViewType('conversation');
   activeId = id;
   activePlanId = null;
+  activeCronjobId = null;
   if (pushHistory !== false) {
     history.pushState({id: id}, '', '/conversations/' + id);
   }
@@ -3078,6 +3715,7 @@ function loadConversation(id, pushHistory) {
     el.classList.toggle('active', el.dataset.id === id);
   });
   document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   // Expand conversations section, collapse plans
   document.getElementById('conv-section').classList.remove('collapsed');
   document.getElementById('plans-section').classList.add('collapsed');

@@ -37,4 +37,12 @@ urlpatterns = [
     path("sessions/resume", views.session_resume),
     path("sessions/fork/", views.session_fork),
     path("sessions/fork", views.session_fork),
+    path("cronjobs/", views.cronjobs_list),
+    path("cronjobs", views.cronjobs_list),
+    path("cronjobs/<int:cronjob_id>/", views.cronjob_detail),
+    path("cronjobs/<int:cronjob_id>", views.cronjob_detail),
+    path("cronjobs/<int:cronjob_id>/run/", views.cronjob_run),
+    path("cronjobs/<int:cronjob_id>/run", views.cronjob_run),
+    path("repos/", views.repos_list),
+    path("repos", views.repos_list),
 ]
