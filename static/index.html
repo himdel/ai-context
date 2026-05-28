@@ -285,6 +285,8 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .rich-rendered img { max-width: 100%; height: auto; }
 .rich-source { margin: 0 !important; border-radius: 0 !important; }
 .rich-rendered .rich-map { height: 300px; width: 100%; }
+.leaflet-control-zoom-reset { display: block; width: 30px; height: 30px; line-height: 30px; text-align: center; text-decoration: none; color: #333; font-size: 16px; background: #fff; border: 2px solid rgba(0,0,0,.2); border-radius: 4px; margin-top: 5px; cursor: pointer; }
+.leaflet-control-zoom-reset:hover { background: #f4f4f4; }
 .rich-rendered .abcjs-container { text-align: left; }
 .rich-rendered .abcjs-audio { margin-top: 4px; }
 .block.text code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
@@ -1252,7 +1254,25 @@ function renderRichBlocks() {
           attribution: '&copy; OpenStreetMap'
         }).addTo(map);
         var layer = L.geoJSON(geojson).addTo(map);
-        map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+        var bounds = layer.getBounds();
+        map.fitBounds(bounds, { padding: [20, 20] });
+        var ResetControl = L.Control.extend({
+          options: { position: 'topleft' },
+          onAdd: function() {
+            var btn = L.DomUtil.create('a', 'leaflet-control-zoom-reset');
+            btn.innerHTML = '&#x21ba;';
+            btn.title = 'Reset view';
+            btn.href = '#';
+            btn.setAttribute('role', 'button');
+            L.DomEvent.disableClickPropagation(btn);
+            L.DomEvent.on(btn, 'click', function(e) {
+              L.DomEvent.preventDefault(e);
+              map.fitBounds(bounds, { padding: [20, 20] });
+            });
+            return btn;
+          },
+        });
+        map.addControl(new ResetControl());
       } catch(e) {
         el.innerHTML = '<em style="color:#999">Failed to render map</em>';
       }
