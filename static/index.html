@@ -22,18 +22,37 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   border-bottom: 1px solid #ddd;
 }
 
-#conv-search {
-  width: calc(100% - 24px);
+.search-wrap {
+  position: relative;
   margin: 8px 12px;
-  padding: 6px 8px;
+}
+#conv-search {
+  width: 100%;
+  padding: 6px 24px 6px 8px;
   font-size: 13px;
   border: 1px solid #ddd;
   border-left: 3px solid #3b82f6;
   border-radius: 4px;
   background: #fff;
   display: block;
+  box-sizing: border-box;
 }
 #conv-search:focus { outline: none; border-color: #99f; }
+#search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #888;
+  padding: 2px 4px;
+  line-height: 1;
+  display: none;
+}
+#search-clear:hover { color: #333; }
 
 .conversation-item {
   padding: 12px 16px;
@@ -1054,7 +1073,7 @@ details > summary {
 <div id="sidebar">
   <div class="sidebar-section" id="conv-section">
     <h2><span class="toggle">&#x25BC;</span>Conversations <span id="reload-list-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload list">&#x21bb;</span><span id="new-session-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New session">+</span></h2>
-    <input type="text" id="conv-search" placeholder="Search conversations...">
+    <div class="search-wrap"><input type="text" id="conv-search" placeholder="Search conversations..."><button id="search-clear" title="Clear search">&times;</button></div>
     <div class="sidebar-list" id="conversation-list"></div>
   </div>
   <div class="sidebar-section collapsed" id="plans-section">
@@ -2010,12 +2029,21 @@ let searchQuery = '';
 let searchTimer = null;
 
 const searchInput = document.getElementById('conv-search');
+const searchClear = document.getElementById('search-clear');
 searchInput.addEventListener('input', () => {
   clearTimeout(searchTimer);
+  searchClear.style.display = searchInput.value ? 'block' : 'none';
   searchTimer = setTimeout(() => {
     searchQuery = searchInput.value.trim();
     loadSidebar();
   }, 300);
+});
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchClear.style.display = 'none';
+  searchQuery = '';
+  loadSidebar();
+  searchInput.focus();
 });
 
 function loadSidebar() {
