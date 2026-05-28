@@ -12,13 +12,14 @@ and starting new sessions.
 
 ### Conversations
 - Full-text search with SQLite-backed index
-- Markdown rendering with syntax highlighting
+- Markdown rendering with syntax highlighting and Mermaid diagram rendering
 - Tool use blocks with inline results, thinking blocks, subagent threads
 - Edit blocks rendered as diffs
 - Skill invocations collapsed under their prompt
 - Timestamps, copy-as-markdown, expand/collapse all
 - Resume, fork, or start new sessions from the UI
 - Active session indicator (green dot + favicon badge)
+- Status bar showing running tasks and agents
 - Auto-refresh on tab focus, live tailing for active conversations
 
 ### Plans
@@ -27,11 +28,11 @@ and starting new sessions.
 
 ### Skills
 - Browse, create, edit, and delete global and repo-scoped skills
-- Run button with repo chooser for global skills
+- Open in $EDITOR, run button with repo chooser for global skills
 - Recent invocations with links to originating conversations
 
 ### Memory
-- Browse, edit, and delete persistent memory items
+- Browse, edit, and delete persistent memory items (with $EDITOR support)
 - Type badges (user, feedback, project, reference)
 - Linked to originating conversation and project
 
@@ -44,7 +45,8 @@ and starting new sessions.
 
 ### Home screen
 - Conversations grouped by repo with active/recent sections
-- Tabs for Conversations, Plans, Skills, Memory
+- Tabs for Conversations, Plans, Skills, Memory, Activity
+- Activity heatmap showing conversation frequency over time
 - New session launcher per repo
 - SPA with direct URL routing and browser history
 
