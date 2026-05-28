@@ -276,6 +276,13 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .block.text p:first-child { margin-top: 0; }
 .block.text p:last-child { margin-bottom: 0; }
 .block.text pre { background: #f4f4f4; padding: 8px 12px; border-radius: 4px; overflow-x: auto; }
+.mermaid-container { border: 1px solid #e0e0e0; border-radius: 4px; margin: 0.5em 0; overflow: hidden; }
+.mermaid-toolbar { display: flex; justify-content: flex-end; padding: 2px 4px; background: #f4f4f4; border-bottom: 1px solid #e0e0e0; }
+.mermaid-toggle { font-size: 12px; padding: 1px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer; color: #555; }
+.mermaid-toggle:hover { background: #eee; }
+.mermaid-rendered { text-align: center; padding: 12px; overflow-x: auto; }
+.mermaid-rendered svg { max-width: 100%; height: auto; }
+.mermaid-source { margin: 0 !important; border-radius: 0 !important; }
 .block.text code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
 .block.text pre code { background: none; padding: 0; }
 .block.text ul, .block.text ol { margin: 0.5em 0; padding-left: 1.5em; }
@@ -1018,6 +1025,7 @@ details > summary {
 .repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
 
@@ -1152,6 +1160,39 @@ marked.use({
     },
   },
 });
+
+mermaid.initialize({ startOnLoad: false, theme: 'default' });
+var mermaidIdCounter = 0;
+
+marked.use({
+  renderer: {
+    code: function(token) {
+      if (token.lang === 'mermaid') {
+        var id = 'mermaid-' + (mermaidIdCounter++);
+        var escaped = token.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return '<div class="mermaid-container">' +
+          '<div class="mermaid-toolbar"><button class="mermaid-toggle" title="Toggle source">Source</button></div>' +
+          '<div class="mermaid-rendered" data-mermaid-id="' + id + '" data-mermaid-src="' + encodeURIComponent(token.text) + '"></div>' +
+          '<pre class="mermaid-source" style="display:none"><code>' + escaped + '</code></pre>' +
+          '</div>';
+      }
+      return false;
+    }
+  }
+});
+
+function renderMermaidDiagrams() {
+  document.querySelectorAll('.mermaid-rendered[data-mermaid-src]:not(.mermaid-done)').forEach(function(el) {
+    el.classList.add('mermaid-done');
+    var src = decodeURIComponent(el.getAttribute('data-mermaid-src'));
+    var id = el.getAttribute('data-mermaid-id');
+    mermaid.render(id, src).then(function(result) {
+      el.innerHTML = result.svg;
+    }).catch(function() {
+      el.innerHTML = '<em style="color:#999">Failed to render diagram</em>';
+    });
+  });
+}
 
 // Load autolink patterns and register as a marked extension
 fetch('/api/autolinks/')
@@ -1603,6 +1644,7 @@ function loadPlan(planId, pushHistory) {
         view.appendChild(planBlock);
 
         mainEl.appendChild(view);
+        renderMermaidDiagrams();
         mainEl.scrollTop = 0;
         mainEl.focus();
       };
@@ -1670,6 +1712,7 @@ function pollForUpdates() {
           mainEl.appendChild(div);
         });
         renderedMsgCount = data.messages.length;
+        renderMermaidDiagrams();
         if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
       }
       currentMessages = data.messages;
@@ -2134,6 +2177,7 @@ function loadSkill(skillId, pushHistory) {
           });
 
         mainEl.appendChild(view);
+        renderMermaidDiagrams();
         mainEl.scrollTop = 0;
         mainEl.focus();
       };
@@ -2606,6 +2650,7 @@ function loadMemory(memoryId, pushHistory) {
       view.appendChild(actions);
       view.appendChild(contentBlock);
       mainEl.appendChild(view);
+      renderMermaidDiagrams();
       mainEl.scrollTop = 0;
       mainEl.focus();
     });
@@ -2837,6 +2882,7 @@ function loadConversation(id, pushHistory) {
         });
         currentMessages = data.messages;
         updateStatusBar(currentMessages);
+        renderMermaidDiagrams();
         mainEl.scrollTop = 0;
         mainEl.focus();
 
@@ -3455,6 +3501,18 @@ mainEl.addEventListener('click', function(e) {
   mainEl.querySelectorAll('details').forEach(d => { d.open = willOpen; });
 
   e.target.closest('summary').scrollIntoView({ block: 'nearest' });
+});
+
+mainEl.addEventListener('click', function(e) {
+  var btn = e.target.closest('.mermaid-toggle');
+  if (!btn) return;
+  var container = btn.closest('.mermaid-container');
+  var rendered = container.querySelector('.mermaid-rendered');
+  var source = container.querySelector('.mermaid-source');
+  var showingSource = source.style.display !== 'none';
+  rendered.style.display = showingSource ? '' : 'none';
+  source.style.display = showingSource ? 'none' : '';
+  btn.textContent = showingSource ? 'Source' : 'Diagram';
 });
 
 function openInEditor(filePath) {
