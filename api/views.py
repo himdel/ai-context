@@ -935,14 +935,15 @@ def _id_to_path(encoded_id):
 def _is_valid_skill_path(path):
     """Ensure path is under ~/.claude/{commands,skills}/ or <repo>/.claude/{commands,skills}/."""
     try:
-        resolved = path.resolve()
+        path.resolve()
     except (OSError, ValueError):
         return False
+    # Use unresolved path so symlinks (e.g. .claude/skills -> ../.agents/skills) still match
+    parts = path.parts
     for subdir in ("commands", "skills"):
-        global_dir = (settings.CLAUDE_DIR / subdir).resolve()
-        if str(resolved).startswith(str(global_dir) + "/"):
+        global_dir = settings.CLAUDE_DIR / subdir
+        if str(path).startswith(str(global_dir) + "/"):
             return True
-    parts = resolved.parts
     for i, part in enumerate(parts):
         if (
             part == ".claude"
@@ -1112,18 +1113,17 @@ def skill_detail(request, skill_id):
     except OSError:
         return Response({"error": "failed to read"}, status=500)
 
-    # Determine scope and kind
-    resolved = path.resolve()
+    # Determine scope and kind (use unresolved path for symlink compat)
     scope = "global"
     kind = "command"
     for subdir in ("commands", "skills"):
-        global_dir = (settings.CLAUDE_DIR / subdir).resolve()
-        if str(resolved).startswith(str(global_dir) + "/"):
+        global_dir = settings.CLAUDE_DIR / subdir
+        if str(path).startswith(str(global_dir) + "/"):
             kind = "skill" if subdir == "skills" else "command"
             scope = "global"
             break
     else:
-        parts = resolved.parts
+        parts = path.parts
         for i, part in enumerate(parts):
             if (
                 part == ".claude"
