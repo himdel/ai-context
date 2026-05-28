@@ -1079,7 +1079,7 @@ def skills_list(request):
         _scan_commands_dir(Path(repo) / ".claude" / "commands", repo)
         _scan_skills_dir(Path(repo) / ".claude" / "skills", repo)
 
-    results.sort(key=lambda x: x["modified"], reverse=True)
+    results.sort(key=lambda x: x["name"])
     return Response(results)
 
 

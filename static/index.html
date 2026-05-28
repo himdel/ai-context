@@ -927,6 +927,29 @@ details > summary {
   color: #065f46;
 }
 
+.skill-frontmatter {
+  background: #f8f9fb;
+  border: 1px solid #e2e5ea;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+}
+.skill-frontmatter dt {
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-top: 2px;
+}
+.skill-frontmatter dd {
+  margin: 0;
+  color: #333;
+  padding-top: 2px;
+}
 .skill-detail-view { max-width: 800px; }
 .skill-detail-view .skill-actions {
   display: flex;
@@ -2395,9 +2418,41 @@ function loadSkill(skillId, pushHistory) {
 
         view.appendChild(actions);
 
+        var body = data.content;
+        var fmMatch = body.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+        if (fmMatch) {
+          var fmBlock = document.createElement('dl');
+          fmBlock.className = 'skill-frontmatter';
+          var fmLines = fmMatch[1].split('\n');
+          var currentKey = '';
+          var currentVal = '';
+          var flush = function() {
+            if (!currentKey) return;
+            var dt = document.createElement('dt');
+            dt.textContent = currentKey;
+            var dd = document.createElement('dd');
+            dd.textContent = currentVal.trim();
+            fmBlock.appendChild(dt);
+            fmBlock.appendChild(dd);
+          };
+          fmLines.forEach(function(line) {
+            var kv = line.match(/^([a-zA-Z_-]+)\s*:\s*(.*)$/);
+            if (kv && !line.match(/^\s/)) {
+              flush();
+              currentKey = kv[1];
+              currentVal = kv[2].replace(/^>-?\s*$/, '');
+            } else {
+              currentVal += ' ' + line.trim();
+            }
+          });
+          flush();
+          view.appendChild(fmBlock);
+          body = fmMatch[2];
+        }
+
         var contentBlock = document.createElement('div');
         contentBlock.className = 'block text';
-        contentBlock.innerHTML = renderMarkdown(data.content);
+        contentBlock.innerHTML = renderMarkdown(body);
         view.appendChild(contentBlock);
 
         var invocSection = document.createElement('div');
