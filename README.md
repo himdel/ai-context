@@ -11,8 +11,9 @@ and starting new sessions.
 ## Features
 
 ### Conversations
-- Full-text search with SQLite-backed index
+- Full-text search with SQLite-backed index (with clear button)
 - Markdown rendering with syntax highlighting and Mermaid diagram rendering
+- Rich code blocks: LaTeX math, Graphviz, Vega-Lite charts, GeoJSON maps, ABC music notation (with audio playback), Markmap mind maps, PlantUML diagrams
 - Tool use blocks with inline results, thinking blocks, subagent threads
 - Edit blocks rendered as diffs
 - Skill invocations collapsed under their prompt
@@ -27,7 +28,9 @@ and starting new sessions.
 - Full markdown rendering with Execute button to launch a new session
 
 ### Skills
-- Browse, create, edit, and delete global and repo-scoped skills
+- Browse both commands (.claude/commands/) and skills (.claude/skills/) with kind badges
+- Create, edit, and delete with type picker (command vs skill format)
+- Frontmatter rendered as structured metadata above skill body
 - Open in $EDITOR, run button with repo chooser for global skills
 - Recent invocations with links to originating conversations
 
