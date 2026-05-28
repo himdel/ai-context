@@ -971,6 +971,9 @@ details > summary {
 }
 .skill-detail-view .skill-actions button:hover { background: #e0e8ff; }
 .skill-detail-view .skill-actions button.has-dropdown::after { content: ' \25BE'; }
+.skill-detail-view .skill-actions button.has-plus::after { content: ' +'; }
+@keyframes cron-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+.skill-detail-view .skill-actions button.loading::after { content: ' \25CF'; animation: cron-pulse 1s ease-in-out infinite; }
 .skill-detail-view .run-dropdown { position: relative; }
 .skill-detail-view .run-dropdown-panel {
   display: none;
@@ -2541,41 +2544,47 @@ function loadSkill(skillId, pushHistory) {
         var cronBtn = document.createElement('button');
         cronBtn.textContent = 'Cron';
         cronBtn.style.cssText = 'border-color:#fbbf24;background:#fffbeb;color:#92400e';
-        cronBtn.classList.add('has-dropdown');
         var cronPanel = document.createElement('div');
         cronPanel.className = 'run-dropdown-panel';
-        cronBtn.onclick = function() {
-          if (cronPanel.classList.contains('open')) {
-            cronPanel.classList.remove('open');
-            return;
-          }
-          cronPanel.innerHTML = '<button disabled style="color:#aaa">Loading...</button>';
-          cronPanel.classList.add('open');
-          fetch('/api/cronjobs/')
-            .then(function(r) { return r.json(); })
-            .then(function(cronjobs) {
-              var matches = cronjobs.filter(function(cj) { return cj.skill_name === data.name; });
-              cronPanel.innerHTML = '';
-              matches.forEach(function(cj) {
-                var btn = document.createElement('button');
-                var short = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
-                btn.textContent = cj.schedule_summary + ' in ' + short;
-                btn.onclick = function() {
+        cronBtn.classList.add('loading');
+        fetch('/api/cronjobs/')
+          .then(function(r) { return r.json(); })
+          .then(function(cronjobs) {
+            cronBtn.classList.remove('loading');
+            var matches = cronjobs.filter(function(cj) { return cj.skill_name === data.name; });
+            if (matches.length === 0) {
+              cronBtn.classList.add('has-plus');
+              cronBtn.onclick = function() { showCreateCronjobForm(data.name); };
+            } else {
+              cronBtn.classList.add('has-dropdown');
+              cronBtn.onclick = function() {
+                if (cronPanel.classList.contains('open')) {
                   cronPanel.classList.remove('open');
-                  loadCronjob(cj.id);
+                  return;
+                }
+                cronPanel.innerHTML = '';
+                matches.forEach(function(cj) {
+                  var btn = document.createElement('button');
+                  var short = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
+                  btn.textContent = cj.schedule_summary + ' in ' + short;
+                  btn.onclick = function() {
+                    cronPanel.classList.remove('open');
+                    loadCronjob(cj.id);
+                  };
+                  cronPanel.appendChild(btn);
+                });
+                var newBtn = document.createElement('button');
+                newBtn.textContent = '+ New cronjob';
+                newBtn.style.cssText = 'color:#92400e;font-weight:600';
+                newBtn.onclick = function() {
+                  cronPanel.classList.remove('open');
+                  showCreateCronjobForm(data.name);
                 };
-                cronPanel.appendChild(btn);
-              });
-              var newBtn = document.createElement('button');
-              newBtn.textContent = '+ New cronjob';
-              newBtn.style.cssText = 'color:#92400e;font-weight:600';
-              newBtn.onclick = function() {
-                cronPanel.classList.remove('open');
-                showCreateCronjobForm(data.name);
+                cronPanel.appendChild(newBtn);
+                cronPanel.classList.add('open');
               };
-              cronPanel.appendChild(newBtn);
-            });
-        };
+            }
+          });
         cronWrap.appendChild(cronBtn);
         cronWrap.appendChild(cronPanel);
         document.addEventListener('click', function(e) {
