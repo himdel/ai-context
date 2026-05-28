@@ -933,18 +933,22 @@ def _id_to_path(encoded_id):
 
 
 def _is_valid_skill_path(path):
-    """Ensure path is under ~/.claude/commands/ or <repo>/.claude/commands/."""
+    """Ensure path is under ~/.claude/{commands,skills}/ or <repo>/.claude/{commands,skills}/."""
     try:
         resolved = path.resolve()
     except (OSError, ValueError):
         return False
-    global_commands = (settings.CLAUDE_DIR / "commands").resolve()
-    if str(resolved).startswith(str(global_commands) + "/"):
-        return True
-    # Allow any <dir>/.claude/commands/ path
+    for subdir in ("commands", "skills"):
+        global_dir = (settings.CLAUDE_DIR / subdir).resolve()
+        if str(resolved).startswith(str(global_dir) + "/"):
+            return True
     parts = resolved.parts
     for i, part in enumerate(parts):
-        if part == ".claude" and i + 1 < len(parts) and parts[i + 1] == "commands":
+        if (
+            part == ".claude"
+            and i + 1 < len(parts)
+            and parts[i + 1] in ("commands", "skills")
+        ):
             return True
     return False
 
@@ -980,6 +984,7 @@ def skills_list(request):
     if request.method == "POST":
         name = request.data.get("name", "").strip()
         scope = request.data.get("scope", "global")
+        kind = request.data.get("kind", "command")
         content = request.data.get("content", "")
 
         if not name or not re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", name):
@@ -988,15 +993,22 @@ def skills_list(request):
             )
 
         if scope == "global":
-            commands_dir = settings.CLAUDE_DIR / "commands"
+            base_dir = settings.CLAUDE_DIR
         else:
             repo_path = Path(scope)
             if not repo_path.is_dir():
                 return Response({"error": "invalid repo path"}, status=400)
-            commands_dir = repo_path / ".claude" / "commands"
+            base_dir = repo_path / ".claude"
 
-        commands_dir.mkdir(parents=True, exist_ok=True)
-        skill_file = commands_dir / f"{name}.md"
+        if kind == "skill":
+            skill_dir = base_dir / "skills" / name
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_dir / "SKILL.md"
+        else:
+            commands_dir = base_dir / "commands"
+            commands_dir.mkdir(parents=True, exist_ok=True)
+            skill_file = commands_dir / f"{name}.md"
+
         if skill_file.exists():
             return Response({"error": "skill already exists"}, status=409)
 
@@ -1008,6 +1020,7 @@ def skills_list(request):
                 "name": name,
                 "path": str(skill_file),
                 "scope": "global" if scope == "global" else scope,
+                "kind": kind,
                 "content": content,
                 "modified": datetime.fromtimestamp(
                     skill_file.stat().st_mtime
@@ -1033,17 +1046,38 @@ def skills_list(request):
                     "name": md_file.stem,
                     "path": str(md_file),
                     "scope": scope,
+                    "kind": "command",
                     "modified": datetime.fromtimestamp(mtime).isoformat(),
                 }
             )
 
-    # Global skills
-    _scan_commands_dir(settings.CLAUDE_DIR / "commands", "global")
+    def _scan_skills_dir(skills_dir, scope):
+        if not skills_dir.is_dir():
+            return
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            try:
+                mtime = skill_md.stat().st_mtime
+            except OSError:
+                continue
+            results.append(
+                {
+                    "id": _path_id(skill_md),
+                    "name": skill_md.parent.name,
+                    "path": str(skill_md),
+                    "scope": scope,
+                    "kind": "skill",
+                    "modified": datetime.fromtimestamp(mtime).isoformat(),
+                }
+            )
 
-    # Per-repo skills
+    # Global
+    _scan_commands_dir(settings.CLAUDE_DIR / "commands", "global")
+    _scan_skills_dir(settings.CLAUDE_DIR / "skills", "global")
+
+    # Per-repo
     for repo in _discover_repos():
-        repo_commands = Path(repo) / ".claude" / "commands"
-        _scan_commands_dir(repo_commands, repo)
+        _scan_commands_dir(Path(repo) / ".claude" / "commands", repo)
+        _scan_skills_dir(Path(repo) / ".claude" / "skills", repo)
 
     results.sort(key=lambda x: x["modified"], reverse=True)
     return Response(results)
@@ -1058,6 +1092,9 @@ def skill_detail(request, skill_id):
     if request.method == "DELETE":
         try:
             path.unlink()
+            # Clean up empty skill directory for skills-type entries
+            if path.name == "SKILL.md" and not any(path.parent.iterdir()):
+                path.parent.rmdir()
         except OSError:
             return Response({"error": "failed to delete"}, status=500)
         return Response({"status": "deleted"})
@@ -1075,26 +1112,37 @@ def skill_detail(request, skill_id):
     except OSError:
         return Response({"error": "failed to read"}, status=500)
 
-    # Determine scope
-    global_commands = (settings.CLAUDE_DIR / "commands").resolve()
+    # Determine scope and kind
     resolved = path.resolve()
-    if str(resolved).startswith(str(global_commands) + "/"):
-        scope = "global"
+    scope = "global"
+    kind = "command"
+    for subdir in ("commands", "skills"):
+        global_dir = (settings.CLAUDE_DIR / subdir).resolve()
+        if str(resolved).startswith(str(global_dir) + "/"):
+            kind = "skill" if subdir == "skills" else "command"
+            scope = "global"
+            break
     else:
-        # Find the repo root (parent of .claude/commands/)
         parts = resolved.parts
-        scope = ""
         for i, part in enumerate(parts):
-            if part == ".claude" and i + 1 < len(parts) and parts[i + 1] == "commands":
+            if (
+                part == ".claude"
+                and i + 1 < len(parts)
+                and parts[i + 1] in ("commands", "skills")
+            ):
                 scope = str(Path(*parts[:i]))
+                kind = "skill" if parts[i + 1] == "skills" else "command"
                 break
+
+    name = path.parent.name if kind == "skill" else path.stem
 
     return Response(
         {
             "id": skill_id,
-            "name": path.stem,
+            "name": name,
             "path": str(path),
             "scope": scope,
+            "kind": kind,
             "content": content,
             "modified": datetime.fromtimestamp(mtime).isoformat(),
         }

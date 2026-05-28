@@ -893,6 +893,20 @@ details > summary {
   font-size: 11px;
   color: #888;
 }
+.skill-kind-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #e0e8ff;
+  color: #4338ca;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.skill-kind-badge.kind-skill {
+  background: #d1fae5;
+  color: #065f46;
+}
 
 .skill-detail-view { max-width: 800px; }
 .skill-detail-view .skill-actions {
@@ -980,6 +994,9 @@ details > summary {
   cursor: pointer;
 }
 .create-skill-form .scope-options { margin-bottom: 8px; }
+.create-skill-form .kind-options { margin-bottom: 8px; }
+.create-skill-form .kind-options label { display: block; margin-bottom: 4px; }
+.create-skill-form .kind-desc { font-size: 11px; color: #888; margin-left: 18px; }
 .create-skill-form button {
   padding: 6px 16px;
   font-size: 14px;
@@ -1031,21 +1048,6 @@ details > summary {
 .repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@viz-js/viz@3/lib/viz-standalone.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css">
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/abcjs@6/dist/abcjs-basic-min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/abcjs@6/abcjs-audio.css">
-<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.iife.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"></script>
 </head>
 <body>
 
@@ -1181,7 +1183,71 @@ marked.use({
   },
 });
 
-mermaid.initialize({ startOnLoad: false, theme: 'default' });
+var _loadCache = {};
+function loadScript(url) {
+  if (!_loadCache[url]) {
+    _loadCache[url] = new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  return _loadCache[url];
+}
+function loadCSS(url) {
+  if (!_loadCache[url]) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    document.head.appendChild(link);
+    _loadCache[url] = Promise.resolve();
+  }
+  return _loadCache[url];
+}
+
+var _depsCache = {};
+function loadRichDeps(lang) {
+  var key = (lang === 'graphviz') ? 'dot' : lang;
+  if (!_depsCache[key]) {
+    if (key === 'mermaid') {
+      _depsCache[key] = loadScript('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js')
+        .then(function() { mermaid.initialize({ startOnLoad: false, theme: 'default' }); });
+    } else if (key === 'math') {
+      _depsCache[key] = Promise.all([
+        loadCSS('https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css'),
+        loadScript('https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js'),
+      ]);
+    } else if (key === 'dot') {
+      _depsCache[key] = loadScript('https://cdn.jsdelivr.net/npm/@viz-js/viz@3/lib/viz-standalone.js');
+    } else if (key === 'vega-lite') {
+      _depsCache[key] = loadScript('https://cdn.jsdelivr.net/npm/vega@5')
+        .then(function() { return loadScript('https://cdn.jsdelivr.net/npm/vega-lite@5'); })
+        .then(function() { return loadScript('https://cdn.jsdelivr.net/npm/vega-embed@6'); });
+    } else if (key === 'geojson') {
+      _depsCache[key] = Promise.all([
+        loadCSS('https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css'),
+        loadScript('https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js'),
+      ]);
+    } else if (key === 'abc') {
+      _depsCache[key] = Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/abcjs@6/dist/abcjs-basic-min.js'),
+        loadCSS('https://cdn.jsdelivr.net/npm/abcjs@6/abcjs-audio.css'),
+      ]);
+    } else if (key === 'markmap') {
+      _depsCache[key] = loadScript('https://cdn.jsdelivr.net/npm/d3@7')
+        .then(function() { return loadScript('https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.iife.js'); })
+        .then(function() { return loadScript('https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js'); });
+    } else if (key === 'plantuml') {
+      _depsCache[key] = loadScript('https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js');
+    } else {
+      _depsCache[key] = Promise.resolve();
+    }
+  }
+  return _depsCache[key];
+}
+
 var richBlockCounter = 0;
 var richLangs = ['mermaid', 'math', 'dot', 'graphviz', 'vega-lite', 'geojson', 'abc', 'markmap', 'plantuml'];
 
@@ -1208,119 +1274,123 @@ function renderRichBlocks() {
     var id = el.getAttribute('data-rich-id');
     var lang = el.getAttribute('data-rich-lang');
 
-    if (lang === 'mermaid') {
-      mermaid.render(id, src).then(function(result) {
-        el.innerHTML = result.svg;
-      }).catch(function() {
-        el.innerHTML = '<em style="color:#999">Failed to render diagram</em>';
-      });
+    loadRichDeps(lang).then(function() {
+      if (lang === 'mermaid') {
+        mermaid.render(id, src).then(function(result) {
+          el.innerHTML = result.svg;
+        }).catch(function() {
+          el.innerHTML = '<em style="color:#999">Failed to render diagram</em>';
+        });
 
-    } else if (lang === 'math') {
-      try {
-        katex.render(src.trim(), el, { displayMode: true, throwOnError: false });
-      } catch(e) {
-        el.innerHTML = '<em style="color:#999">Failed to render math</em>';
-      }
-
-    } else if (lang === 'dot' || lang === 'graphviz') {
-      Viz.instance().then(function(viz) {
+      } else if (lang === 'math') {
         try {
-          el.innerHTML = viz.renderSVGElement(src).outerHTML;
+          katex.render(src.trim(), el, { displayMode: true, throwOnError: false });
         } catch(e) {
+          el.innerHTML = '<em style="color:#999">Failed to render math</em>';
+        }
+
+      } else if (lang === 'dot' || lang === 'graphviz') {
+        Viz.instance().then(function(viz) {
+          try {
+            el.innerHTML = viz.renderSVGElement(src).outerHTML;
+          } catch(e) {
+            el.innerHTML = '<em style="color:#999">Failed to render graph</em>';
+          }
+        }).catch(function() {
           el.innerHTML = '<em style="color:#999">Failed to render graph</em>';
-        }
-      }).catch(function() {
-        el.innerHTML = '<em style="color:#999">Failed to render graph</em>';
-      });
-
-    } else if (lang === 'vega-lite') {
-      try {
-        var spec = JSON.parse(src);
-        vegaEmbed(el, spec, { actions: false }).catch(function() {
-          el.innerHTML = '<em style="color:#999">Failed to render chart</em>';
         });
-      } catch(e) {
-        el.innerHTML = '<em style="color:#999">Invalid Vega-Lite JSON</em>';
-      }
 
-    } else if (lang === 'geojson') {
-      try {
-        var geojson = JSON.parse(src);
-        var mapDiv = document.createElement('div');
-        mapDiv.className = 'rich-map';
-        el.appendChild(mapDiv);
-        var map = L.map(mapDiv);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-        var layer = L.geoJSON(geojson).addTo(map);
-        var bounds = layer.getBounds();
-        map.fitBounds(bounds, { padding: [20, 20] });
-        var ResetControl = L.Control.extend({
-          options: { position: 'topleft' },
-          onAdd: function() {
-            var btn = L.DomUtil.create('a', 'leaflet-control-zoom-reset');
-            btn.innerHTML = '&#x21ba;';
-            btn.title = 'Reset view';
-            btn.href = '#';
-            btn.setAttribute('role', 'button');
-            L.DomEvent.disableClickPropagation(btn);
-            L.DomEvent.on(btn, 'click', function(e) {
-              L.DomEvent.preventDefault(e);
-              map.fitBounds(bounds, { padding: [20, 20] });
-            });
-            return btn;
-          },
-        });
-        map.addControl(new ResetControl());
-      } catch(e) {
-        el.innerHTML = '<em style="color:#999">Failed to render map</em>';
-      }
-
-    } else if (lang === 'abc') {
-      var abcDiv = document.createElement('div');
-      abcDiv.className = 'abcjs-container';
-      el.appendChild(abcDiv);
-      var audioDiv = document.createElement('div');
-      audioDiv.className = 'abcjs-audio';
-      el.appendChild(audioDiv);
-      try {
-        var visualObj = ABCJS.renderAbc(abcDiv, src);
-        if (ABCJS.synth && ABCJS.synth.supportsAudio()) {
-          var synthControl = new ABCJS.synth.SynthController();
-          synthControl.load(audioDiv, null, {
-            displayPlay: true,
-            displayProgress: true,
-            displayRestart: true,
+      } else if (lang === 'vega-lite') {
+        try {
+          var spec = JSON.parse(src);
+          vegaEmbed(el, spec, { actions: false }).catch(function() {
+            el.innerHTML = '<em style="color:#999">Failed to render chart</em>';
           });
-          synthControl.setTune(visualObj[0], false);
+        } catch(e) {
+          el.innerHTML = '<em style="color:#999">Invalid Vega-Lite JSON</em>';
         }
-      } catch(e) {
-        el.innerHTML = '<em style="color:#999">Failed to render notation</em>';
-      }
 
-    } else if (lang === 'markmap') {
-      try {
-        var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('style', 'width:100%;height:300px');
-        el.appendChild(svg);
-        var transformer = new markmap.Transformer();
-        var parsed = transformer.transform(src);
-        markmap.Markmap.create(svg, null, parsed.root);
-      } catch(e) {
-        el.innerHTML = '<em style="color:#999">Failed to render mind map</em>';
-      }
+      } else if (lang === 'geojson') {
+        try {
+          var geojson = JSON.parse(src);
+          var mapDiv = document.createElement('div');
+          mapDiv.className = 'rich-map';
+          el.appendChild(mapDiv);
+          var map = L.map(mapDiv);
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+          }).addTo(map);
+          var layer = L.geoJSON(geojson).addTo(map);
+          var bounds = layer.getBounds();
+          map.fitBounds(bounds, { padding: [20, 20] });
+          var ResetControl = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function() {
+              var btn = L.DomUtil.create('a', 'leaflet-control-zoom-reset');
+              btn.innerHTML = '&#x21ba;';
+              btn.title = 'Reset view';
+              btn.href = '#';
+              btn.setAttribute('role', 'button');
+              L.DomEvent.disableClickPropagation(btn);
+              L.DomEvent.on(btn, 'click', function(e) {
+                L.DomEvent.preventDefault(e);
+                map.fitBounds(bounds, { padding: [20, 20] });
+              });
+              return btn;
+            },
+          });
+          map.addControl(new ResetControl());
+        } catch(e) {
+          el.innerHTML = '<em style="color:#999">Failed to render map</em>';
+        }
 
-    } else if (lang === 'plantuml') {
-      var encoded = plantumlEncode(src);
-      var img = document.createElement('img');
-      img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-      img.alt = 'PlantUML diagram';
-      img.onerror = function() {
-        el.innerHTML = '<em style="color:#999">Failed to render PlantUML diagram</em>';
-      };
-      el.appendChild(img);
-    }
+      } else if (lang === 'abc') {
+        var abcDiv = document.createElement('div');
+        abcDiv.className = 'abcjs-container';
+        el.appendChild(abcDiv);
+        var audioDiv = document.createElement('div');
+        audioDiv.className = 'abcjs-audio';
+        el.appendChild(audioDiv);
+        try {
+          var visualObj = ABCJS.renderAbc(abcDiv, src);
+          if (ABCJS.synth && ABCJS.synth.supportsAudio()) {
+            var synthControl = new ABCJS.synth.SynthController();
+            synthControl.load(audioDiv, null, {
+              displayPlay: true,
+              displayProgress: true,
+              displayRestart: true,
+            });
+            synthControl.setTune(visualObj[0], false);
+          }
+        } catch(e) {
+          el.innerHTML = '<em style="color:#999">Failed to render notation</em>';
+        }
+
+      } else if (lang === 'markmap') {
+        try {
+          var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('style', 'width:100%;height:300px');
+          el.appendChild(svg);
+          var transformer = new markmap.Transformer();
+          var parsed = transformer.transform(src);
+          markmap.Markmap.create(svg, null, parsed.root);
+        } catch(e) {
+          el.innerHTML = '<em style="color:#999">Failed to render mind map</em>';
+        }
+
+      } else if (lang === 'plantuml') {
+        var encoded = plantumlEncode(src);
+        var img = document.createElement('img');
+        img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
+        img.alt = 'PlantUML diagram';
+        img.onerror = function() {
+          el.innerHTML = '<em style="color:#999">Failed to render PlantUML diagram</em>';
+        };
+        el.appendChild(img);
+      }
+    }).catch(function() {
+      el.innerHTML = '<em style="color:#999">Failed to load rendering library</em>';
+    });
   });
 }
 
@@ -2026,9 +2096,10 @@ function loadSkillsSidebar() {
 
         var scopeLabel = s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/');
         var skrid = s.scope !== 'global' ? RepoIdentity.get(s.scope) : null;
+        var kindBadge = s.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
         div.innerHTML =
           '<div class="skill-scope">' + (skrid ? skrid.iconSm : '') + esc(scopeLabel) + '</div>' +
-          '<div class="skill-name">/' + esc(s.name) + '</div>';
+          '<div class="skill-name">/' + esc(s.name) + kindBadge + '</div>';
 
         div.onclick = function() { loadSkill(s.id); };
         skillListEl.appendChild(div);
@@ -2092,7 +2163,8 @@ function showSkillsHome() {
           var meta = '<div class="conv-meta">';
           if (s.modified) meta += '<span>' + esc(formatDate(s.modified)) + '</span>';
           meta += '</div>';
-          item.innerHTML = meta + '<div>/' + esc(s.name) + '</div>';
+          var homeKindBadge = s.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
+          item.innerHTML = meta + '<div>/' + esc(s.name) + homeKindBadge + '</div>';
           item.onclick = function() { loadSkill(s.id); };
           list.appendChild(item);
         });
@@ -2146,7 +2218,8 @@ function loadSkill(skillId, pushHistory) {
         header.style.borderLeft = '3px solid #0d9488';
         header.style.paddingLeft = '12px';
         var scopeLabel = data.scope === 'global' ? 'Global' : data.scope.replace(/^\/home\/[^/]+\//, '~/');
-        header.innerHTML = '<span>/' + esc(data.name) + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
+        var detailKindBadge = data.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
+        header.innerHTML = '<span>/' + esc(data.name) + detailKindBadge + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
         mainEl.appendChild(header);
 
         var view = document.createElement('div');
@@ -2387,6 +2460,12 @@ function showCreateSkillForm(pushHistory) {
       form.className = 'create-skill-form';
       form.innerHTML =
         '<h3 style="margin-bottom:12px">New skill</h3>' +
+        '<div class="kind-options" id="cs-kind">' +
+          '<label><input type="radio" name="cs-kind" value="command" checked> Command' +
+            '<div class="kind-desc">.claude/commands/name.md — single markdown file</div></label>' +
+          '<label><input type="radio" name="cs-kind" value="skill"> Skill' +
+            '<div class="kind-desc">.claude/skills/name/SKILL.md — directory with SKILL.md</div></label>' +
+        '</div>' +
         '<input type="text" id="cs-name" placeholder="skill-name (kebab-case)">' +
         '<div class="scope-options" id="cs-scopes"></div>' +
         '<textarea id="cs-content" placeholder="Skill content (markdown)..."></textarea>' +
@@ -2413,6 +2492,7 @@ function showCreateSkillForm(pushHistory) {
         var name = document.getElementById('cs-name').value.trim();
         var content = document.getElementById('cs-content').value;
         var scope = document.querySelector('input[name="cs-scope"]:checked').value;
+        var kind = document.querySelector('input[name="cs-kind"]:checked').value;
         var statusEl = document.getElementById('cs-status');
 
         if (!name || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
@@ -2424,7 +2504,7 @@ function showCreateSkillForm(pushHistory) {
         fetch('/api/skills/', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({name: name, scope: scope, content: content})
+          body: JSON.stringify({name: name, scope: scope, kind: kind, content: content})
         })
         .then(r => r.json().then(d => ({ok: r.ok, data: d})))
         .then(function(resp) {
