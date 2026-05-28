@@ -39,6 +39,14 @@ and starting new sessions.
 - Type badges (user, feedback, project, reference)
 - Linked to originating conversation and project
 
+### Cronjobs
+- Schedule skills to run automatically via cron expressions
+- Per-repo targeting with skill and repo dropdowns
+- Manual "Run Now" trigger from the UI
+- Run history with links to spawned conversations
+- Create cronjobs directly from a skill's detail page
+- Background scheduler with 60s polling
+
 ### Git & forge integration
 - GitHub, GitLab, and Gitea/Codeberg support
 - PR/MR detection for current branch (status shown in header)
@@ -64,6 +72,8 @@ and starting new sessions.
 | Plan | Memory |
 |---|---|
 | ![](./screenshots/plan.png) | ![](./screenshots/memory.png) |
+
+![](./screenshots/tasks.png)
 
 ## Usage
 
