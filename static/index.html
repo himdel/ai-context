@@ -286,6 +286,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .rich-source { margin: 0 !important; border-radius: 0 !important; }
 .rich-rendered .rich-map { height: 300px; width: 100%; }
 .rich-rendered .abcjs-container { text-align: left; }
+.rich-rendered .abcjs-audio { margin-top: 4px; }
 .block.text code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
 .block.text pre code { background: none; padding: 0; }
 .block.text ul, .block.text ol { margin: 0.5em 0; padding-left: 1.5em; }
@@ -1038,6 +1039,7 @@ details > summary {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css">
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/abcjs@6/dist/abcjs-basic-min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/abcjs@6/abcjs-audio.css">
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18/dist/browser/index.iife.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18/dist/browser/index.js"></script>
@@ -1259,8 +1261,20 @@ function renderRichBlocks() {
       var abcDiv = document.createElement('div');
       abcDiv.className = 'abcjs-container';
       el.appendChild(abcDiv);
+      var audioDiv = document.createElement('div');
+      audioDiv.className = 'abcjs-audio';
+      el.appendChild(audioDiv);
       try {
-        ABCJS.renderAbc(abcDiv, src);
+        var visualObj = ABCJS.renderAbc(abcDiv, src);
+        if (ABCJS.synth && ABCJS.synth.supportsAudio()) {
+          var synthControl = new ABCJS.synth.SynthController();
+          synthControl.load(audioDiv, null, {
+            displayPlay: true,
+            displayProgress: true,
+            displayRestart: true,
+          });
+          synthControl.setTune(visualObj[0], false);
+        }
       } catch(e) {
         el.innerHTML = '<em style="color:#999">Failed to render notation</em>';
       }
