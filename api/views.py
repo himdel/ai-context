@@ -798,6 +798,22 @@ def _resolve_run_conversations(runs):
             run.save(update_fields=["conversation_id"])
 
 
+def _next_run_at(cj):
+    if not cj.enabled:
+        return None
+    try:
+        base = cj.last_run_at or cj.created_at
+        if base.tzinfo is None:
+            base = base.replace(tzinfo=timezone.utc)
+        cron = croniter(cj.cron_expression, base)
+        nxt = cron.get_next(datetime)
+        if nxt.tzinfo is None:
+            nxt = nxt.replace(tzinfo=timezone.utc)
+        return nxt.isoformat()
+    except (ValueError, KeyError):
+        return None
+
+
 def _serialize_cronjob(cj):
     return {
         "id": cj.id,
@@ -807,6 +823,7 @@ def _serialize_cronjob(cj):
         "params": cj.params,
         "enabled": cj.enabled,
         "last_run_at": cj.last_run_at.isoformat() if cj.last_run_at else None,
+        "next_run_at": _next_run_at(cj),
         "created_at": cj.created_at.isoformat(),
         "schedule_summary": _cron_summary(cj.cron_expression),
     }

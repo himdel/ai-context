@@ -2536,13 +2536,52 @@ function loadSkill(skillId, pushHistory) {
         }
         actions.appendChild(runWrap);
 
+        var cronWrap = document.createElement('div');
+        cronWrap.className = 'run-dropdown';
         var cronBtn = document.createElement('button');
         cronBtn.textContent = 'Cron';
         cronBtn.style.cssText = 'border-color:#fbbf24;background:#fffbeb;color:#92400e';
+        cronBtn.classList.add('has-dropdown');
+        var cronPanel = document.createElement('div');
+        cronPanel.className = 'run-dropdown-panel';
         cronBtn.onclick = function() {
-          showCreateCronjobForm(data.name);
+          if (cronPanel.classList.contains('open')) {
+            cronPanel.classList.remove('open');
+            return;
+          }
+          cronPanel.innerHTML = '<button disabled style="color:#aaa">Loading...</button>';
+          cronPanel.classList.add('open');
+          fetch('/api/cronjobs/')
+            .then(function(r) { return r.json(); })
+            .then(function(cronjobs) {
+              var matches = cronjobs.filter(function(cj) { return cj.skill_name === data.name; });
+              cronPanel.innerHTML = '';
+              matches.forEach(function(cj) {
+                var btn = document.createElement('button');
+                var short = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
+                btn.textContent = cj.schedule_summary + ' in ' + short;
+                btn.onclick = function() {
+                  cronPanel.classList.remove('open');
+                  loadCronjob(cj.id);
+                };
+                cronPanel.appendChild(btn);
+              });
+              var newBtn = document.createElement('button');
+              newBtn.textContent = '+ New cronjob';
+              newBtn.style.cssText = 'color:#92400e;font-weight:600';
+              newBtn.onclick = function() {
+                cronPanel.classList.remove('open');
+                showCreateCronjobForm(data.name);
+              };
+              cronPanel.appendChild(newBtn);
+            });
         };
-        actions.appendChild(cronBtn);
+        cronWrap.appendChild(cronBtn);
+        cronWrap.appendChild(cronPanel);
+        document.addEventListener('click', function(e) {
+          if (!cronWrap.contains(e.target)) cronPanel.classList.remove('open');
+        });
+        actions.appendChild(cronWrap);
 
         view.appendChild(actions);
 
@@ -3175,8 +3214,9 @@ function loadCronjobsSidebar() {
 
         var repoShort = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
         var rid = RepoIdentity.get(cj.repo);
+        var nextInfo = cj.next_run_at ? ' <span style="color:#666">' + esc(timeUntil(cj.next_run_at)) + '</span>' : '';
         div.innerHTML =
-          '<div class="cronjob-schedule">' + esc(cj.schedule_summary) + (cj.enabled ? '' : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
+          '<div class="cronjob-schedule">' + esc(cj.schedule_summary) + (cj.enabled ? nextInfo : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
           '<div class="cronjob-name">/' + esc(cj.skill_name) + '</div>' +
           '<div class="cronjob-repo">' + (rid ? rid.iconSm : '') + esc(repoShort) + '</div>';
 
@@ -3268,8 +3308,9 @@ function loadCronjob(cronjobId, pushHistory) {
       var header = document.createElement('div');
       header.className = 'conversation-header';
       var repoShort = data.repo.replace(/^\/home\/[^/]+\//, '~/');
+      var nextRunInfo = data.next_run_at ? ' (next: ' + timeUntil(data.next_run_at) + ')' : '';
       header.innerHTML = '<span style="font-size:18px;font-weight:700">/' + esc(data.skill_name) + '</span>' +
-        '<span style="font-size:13px;color:#888">' + esc(data.schedule_summary) + '</span>' +
+        '<span style="font-size:13px;color:#888">' + esc(data.schedule_summary) + nextRunInfo + '</span>' +
         '<span style="font-size:13px;color:#888">' + esc(repoShort) + '</span>';
       mainEl.appendChild(header);
 
@@ -4424,6 +4465,23 @@ function timeAgo(iso) {
     var days = Math.floor(hours / 24);
     if (days < 30) return days + 'd ago';
     return Math.floor(days / 30) + 'mo ago';
+  } catch(e) { return ''; }
+}
+
+function timeUntil(iso) {
+  try {
+    var ms = new Date(iso).getTime() - Date.now();
+    if (isNaN(ms)) return '';
+    if (ms < 0) return 'overdue';
+    var secs = Math.floor(ms / 1000);
+    if (secs < 60) return 'in <1m';
+    var mins = Math.floor(secs / 60);
+    if (mins < 60) return 'in ' + mins + 'm';
+    var hours = Math.floor(mins / 60);
+    var remMins = mins % 60;
+    if (hours < 24) return 'in ' + hours + 'h' + (remMins ? ' ' + remMins + 'm' : '');
+    var days = Math.floor(hours / 24);
+    return 'in ' + days + 'd ' + (hours % 24) + 'h';
   } catch(e) { return ''; }
 }
 

@@ -52,6 +52,16 @@ def _check_cronjobs():
             if next_run.tzinfo is None:
                 next_run = next_run.replace(tzinfo=timezone.utc)
             if next_run <= now:
+                if (now - next_run).total_seconds() > 60:
+                    logger.info(
+                        "skipping missed cronjob %d (/%s), advancing to next",
+                        cj.id,
+                        cj.skill_name,
+                    )
+                    cj.last_run_at = now
+                    cj.save(update_fields=["last_run_at"])
+                    continue
+
                 from api.views import _execute_cronjob
 
                 logger.info(
