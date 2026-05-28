@@ -3155,7 +3155,7 @@ function loadMemory(memoryId, pushHistory) {
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
-    if (!activeId && !activePlanId && !activeSkillId && !activeMemoryId) showHomeScreen(false);
+    if (!activeId && !activePlanId && !activeSkillId && !activeCronjobId && !activeMemoryId) showHomeScreen(false);
   }
 }
 
