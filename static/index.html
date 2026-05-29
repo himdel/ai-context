@@ -3156,6 +3156,40 @@ function loadMemory(memoryId, pushHistory) {
       actions.appendChild(deleteBtn);
 
       view.appendChild(actions);
+
+      // Render frontmatter as styled metadata block (like skills)
+      if (data.content && data.content.startsWith('---')) {
+        var fmMatch = data.content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+        if (fmMatch) {
+          var fmBlock = document.createElement('dl');
+          fmBlock.className = 'skill-frontmatter';
+          var fmLines = fmMatch[1].split('\n');
+          var currentKey = '';
+          var currentVal = '';
+          var flush = function() {
+            if (!currentKey) return;
+            var dt = document.createElement('dt');
+            dt.textContent = currentKey;
+            var dd = document.createElement('dd');
+            dd.textContent = currentVal.trim();
+            fmBlock.appendChild(dt);
+            fmBlock.appendChild(dd);
+          };
+          fmLines.forEach(function(line) {
+            var kv = line.match(/^([a-zA-Z_-]+)\s*:\s*(.*)$/);
+            if (kv && !line.match(/^\s/)) {
+              flush();
+              currentKey = kv[1];
+              currentVal = kv[2].replace(/^>-?\s*$/, '');
+            } else {
+              currentVal += ' ' + line.trim();
+            }
+          });
+          flush();
+          view.appendChild(fmBlock);
+        }
+      }
+
       view.appendChild(contentBlock);
       mainEl.appendChild(view);
       renderRichBlocks();
