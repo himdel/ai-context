@@ -101,6 +101,36 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   flex-shrink: 0;
 }
 
+.conversation-item.file-missing { opacity: 0.6; }
+.badge-missing { background: #fef3c7; color: #92400e; }
+.file-missing-notice {
+  margin: 24px auto;
+  max-width: 500px;
+  padding: 16px 20px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.file-missing-notice button {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #92400e;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.06);
+  color: #92400e;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.file-missing-notice button:hover { background: rgba(0,0,0,0.12); }
+.file-missing-notice code {
+  background: rgba(0,0,0,0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
 .conversation-toolbar {
   position: sticky;
   top: 0;
@@ -2444,6 +2474,7 @@ function loadSidebar() {
         const div = document.createElement('div');
         div.className = 'conversation-item';
         if (c.active) div.classList.add('active-session');
+        if (c.file_missing) div.classList.add('file-missing');
         div.dataset.id = c.id;
         if (c.id === activeId) div.classList.add('active');
 
@@ -2459,6 +2490,7 @@ function loadSidebar() {
           '<div class="row">' +
             '<div class="date">' + esc(formatDate(c.date)) + (duration ? ', ' + esc(duration) : '') + '</div>' +
             (c.message_count ? '<span class="badge">' + c.message_count + '</span>' : '') +
+            (c.file_missing ? '<span class="badge badge-missing">log deleted</span>' : '') +
           '</div>' +
           '<div class="blurb">' + esc(c.blurb) + '</div>';
 
@@ -4282,6 +4314,7 @@ function loadConversation(id, pushHistory) {
         if (duration) parts.push('<span>' + esc(duration) + '</span>');
         if (data.model) parts.push('<span>' + esc(data.model) + '</span>');
         if (data.version) parts.push('<span>claude-code ' + esc(data.version) + '</span>');
+        if (data.file_missing) parts.push('<span class="badge badge-missing">log file deleted — metadata only</span>');
         header.innerHTML = parts.join('');
 
         toolbar.querySelector('.scroll-bottom').onclick = function() {
@@ -4301,6 +4334,10 @@ function loadConversation(id, pushHistory) {
             setTimeout(() => { btn.textContent = '+'; }, 2000);
           });
         };
+        if (data.file_missing) {
+          toolbar.querySelector('.resume-conv').style.display = 'none';
+          toolbar.querySelector('.fork-conv').style.display = 'none';
+        }
         toolbar.querySelector('.resume-conv').onclick = function() {
           var btn = this;
           btn.textContent = '...';
@@ -4333,6 +4370,17 @@ function loadConversation(id, pushHistory) {
         toolbar.querySelector('.close-conv').onclick = function() { closeConversation('conversations'); };
         mainEl.appendChild(toolbar);
         mainEl.appendChild(header);
+
+        if (data.file_missing) {
+          var notice = document.createElement('div');
+          notice.className = 'file-missing-notice';
+          notice.innerHTML = 'The log file for this conversation has been deleted by Claude Code cleanup. Only cached metadata is available.<br><br>To control how long conversation logs are kept, set <code>cleanupPeriodDays</code> in <code>~/.claude/settings.json</code> <button title="Open in $EDITOR">$EDITOR</button>';
+          notice.querySelector('button').onclick = function() {
+            var home = (data.cwd || '/tmp').replace(/^(\/home\/[^/]+).*/, '$1');
+            openInEditor(home + '/.claude/settings.json');
+          };
+          mainEl.appendChild(notice);
+        }
 
         taskSubjects = {};
         data.messages.forEach(m => {

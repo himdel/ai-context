@@ -260,6 +260,27 @@ def conversations(request):
                 )
                 results.append(entry)
 
+    # Merge in DB-only entries (files deleted but index remains)
+    from api.models import ConversationIndex
+
+    seen_ids = {r["id"] for r in results}
+    for ci in ConversationIndex.objects.exclude(conversation_id__in=seen_ids):
+        results.append(
+            {
+                "id": ci.conversation_id,
+                "project": ci.project,
+                "date": ci.first_timestamp,
+                "blurb": ci.blurb,
+                "branch": ci.branch,
+                "message_count": ci.message_count,
+                "last_timestamp": ci.last_timestamp,
+                "url": request.build_absolute_uri(
+                    f"/api/conversations/{ci.conversation_id}/"
+                ),
+                "file_missing": True,
+            }
+        )
+
     active_ids = _active_session_ids()
     for r in results:
         r["active"] = r["id"] in active_ids
@@ -268,8 +289,6 @@ def conversations(request):
     search_query = request.query_params.get("q", "").strip()
     if search_query:
         from django.db.models import Q
-
-        from api.models import ConversationIndex
 
         qs = ConversationIndex.objects.all()
         for term in search_query.split():
@@ -430,7 +449,27 @@ def _parse_task_notification(text):
 def conversation_detail(request, conversation_id):
     jsonl_file = _find_conversation(conversation_id)
     if not jsonl_file:
-        return Response({"error": "not found"}, status=404)
+        from api.models import ConversationIndex
+
+        try:
+            ci = ConversationIndex.objects.get(conversation_id=conversation_id)
+        except ConversationIndex.DoesNotExist:
+            return Response({"error": "not found"}, status=404)
+        return Response(
+            {
+                "id": conversation_id,
+                "cwd": ci.project,
+                "branch": ci.branch,
+                "model": "",
+                "version": "",
+                "message_count": ci.message_count,
+                "first_timestamp": ci.first_timestamp,
+                "last_timestamp": ci.last_timestamp,
+                "active": False,
+                "messages": [],
+                "file_missing": True,
+            }
+        )
 
     messages = []
     cwd = None
