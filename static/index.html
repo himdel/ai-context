@@ -1338,7 +1338,7 @@ var RepoIdentity = {
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-cronjobs-btn') || e.target.closest('#new-cronjob-btn') || e.target.closest('#reload-memories-btn')) return;
+    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#reload-skills-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-cronjobs-btn') || e.target.closest('#new-cronjob-btn') || e.target.closest('#reload-memories-btn')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
@@ -1650,11 +1650,13 @@ fetch('/api/autolinks/')
     marked.use({ extensions: extensions });
   });
 
-reloadListBtn.onclick = function() {
+reloadListBtn.onclick = function(e) {
+  e.stopPropagation();
   loadSidebar();
 };
 
-document.getElementById('reload-skills-btn').onclick = function() {
+document.getElementById('reload-skills-btn').onclick = function(e) {
+  e.stopPropagation();
   loadSkillsSidebar();
 };
 
@@ -1751,7 +1753,10 @@ function showCreateSessionForm(pushHistory) {
   };
 }
 
-document.getElementById('new-session-btn').onclick = showCreateSessionForm;
+document.getElementById('new-session-btn').onclick = function(e) {
+  e.stopPropagation();
+  showCreateSessionForm();
+};
 
 document.getElementById('reload-plans-btn').onclick = function(e) {
   e.stopPropagation();
