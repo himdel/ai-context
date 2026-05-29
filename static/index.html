@@ -1265,7 +1265,25 @@ let activePlanId = null;
 let activeSkillId = null;
 let activeCronjobId = null;
 let activeMemoryId = null;
+let activeNewScreen = null;
 let currentMessages = null;
+
+function setActiveScreen(opts) {
+  activeId = opts.activeId || null;
+  activePlanId = opts.activePlanId || null;
+  activeSkillId = opts.activeSkillId || null;
+  activeCronjobId = opts.activeCronjobId || null;
+  activeMemoryId = opts.activeMemoryId || null;
+  activeNewScreen = opts.activeNewScreen || null;
+}
+
+function hasActiveScreen() {
+  return !!(activeId || activePlanId || activeSkillId || activeCronjobId || activeMemoryId || activeNewScreen);
+}
+
+function clearSidebarActive() {
+  document.querySelectorAll('.conversation-item, .plan-item, .skill-item, .cronjob-item, .memory-item').forEach(el => el.classList.remove('active'));
+}
 
 function setViewType(type) {
   mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-cronjob', 'view-memory', 'view-activity');
@@ -1654,10 +1672,14 @@ document.getElementById('reload-memories-btn').onclick = function(e) {
   loadMemoriesSidebar();
 };
 
-document.getElementById('new-session-btn').onclick = function() {
-  activeId = null;
-  history.pushState(null, '', '/conversations');
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+function showCreateSessionForm(pushHistory) {
+  stopFollowing();
+  setViewType('conversation');
+  setActiveScreen({ activeNewScreen: 'conversation' });
+  if (pushHistory !== false) {
+    history.pushState(null, '', '/conversations/new');
+  }
+  clearSidebarActive();
   mainEl.innerHTML =
     '<div class="new-session-form">' +
       '<h3 style="margin-bottom:12px">New session</h3>' +
@@ -1726,7 +1748,9 @@ document.getElementById('new-session-btn').onclick = function() {
       }, 1000);
     });
   };
-};
+}
+
+document.getElementById('new-session-btn').onclick = showCreateSessionForm;
 
 document.getElementById('reload-plans-btn').onclick = function(e) {
   e.stopPropagation();
@@ -1800,6 +1824,7 @@ var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/s
 
 var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', cronjobs: 'cronjob', memory: 'memory', activity: 'activity'};
 function showHomeScreen(pushHistory) {
+  setActiveScreen({});
   setViewType(homeTabViewType[homeTab] || null);
   if (pushHistory !== false) {
     history.pushState(null, '', homeTabUrls[homeTab] || '/conversations');
@@ -2013,14 +2038,11 @@ function showPlansHome() {
 function loadPlan(planId, pushHistory) {
   stopFollowing();
   setViewType('plan');
-  activeId = null;
-  activePlanId = planId;
-  activeCronjobId = null;
+  setActiveScreen({ activePlanId: planId });
   if (pushHistory !== false) {
     history.pushState({planId: planId}, '', '/plans/' + planId);
   }
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
+  clearSidebarActive();
   document.querySelectorAll('.plan-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === planId);
   });
@@ -2197,16 +2219,8 @@ function pollForUpdates() {
 function closeConversation(tab) {
   stopFollowing();
   currentMessages = null;
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = null;
-  activeCronjobId = null;
-  activeMemoryId = null;
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.memory-item').forEach(el => el.classList.remove('active'));
+  setActiveScreen({});
+  clearSidebarActive();
   document.getElementById('conv-section').classList.remove('collapsed');
   if (tab) homeTab = tab;
   showHomeScreen();
@@ -2423,13 +2437,8 @@ function showSkillsHome() {
 function loadSkill(skillId, pushHistory) {
   stopFollowing();
   setViewType('skill');
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = skillId;
-  activeCronjobId = null;
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
+  setActiveScreen({ activeSkillId: skillId });
+  clearSidebarActive();
   document.querySelectorAll('.skill-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === skillId);
   });
@@ -2757,15 +2766,12 @@ function loadSkill(skillId, pushHistory) {
 
 function showCreateSkillForm(pushHistory) {
   stopFollowing();
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = null;
+  setViewType('skill');
+  setActiveScreen({ activeNewScreen: 'skill' });
   if (pushHistory !== false) {
     history.pushState(null, '', '/skills/new');
   }
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
+  clearSidebarActive();
 
   // Fetch skills to discover repo scopes
   fetch('/api/skills/')
@@ -3094,18 +3100,11 @@ function renderHeatmap(container, days) {
 function loadMemory(memoryId, pushHistory) {
   stopFollowing();
   setViewType('memory');
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = null;
-  activeCronjobId = null;
-  activeMemoryId = memoryId;
+  setActiveScreen({ activeMemoryId: memoryId });
   if (pushHistory !== false) {
     history.pushState({memoryId: memoryId}, '', '/memories/' + memoryId);
   }
-  document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.skill-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
+  clearSidebarActive();
   document.querySelectorAll('.memory-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === memoryId);
   });
@@ -3271,7 +3270,7 @@ function loadMemory(memoryId, pushHistory) {
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
-    if (!activeId && !activePlanId && !activeSkillId && !activeCronjobId && !activeMemoryId) showHomeScreen(false);
+    if (!hasActiveScreen()) showHomeScreen(false);
   }
 }
 
@@ -3386,21 +3385,14 @@ function showCronjobsHome() {
 function loadCronjob(cronjobId, pushHistory) {
   stopFollowing();
   setViewType('cronjob');
-  activeCronjobId = cronjobId;
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = null;
-  activeMemoryId = null;
+  setActiveScreen({ activeCronjobId: cronjobId });
   if (pushHistory !== false) {
     history.pushState(null, '', '/cronjobs/' + cronjobId);
   }
+  clearSidebarActive();
   document.querySelectorAll('.cronjob-item').forEach(function(el) {
     el.classList.toggle('active', el.dataset.id == cronjobId);
   });
-  document.querySelectorAll('.conversation-item').forEach(function(el) { el.classList.remove('active'); });
-  document.querySelectorAll('.plan-item').forEach(function(el) { el.classList.remove('active'); });
-  document.querySelectorAll('.skill-item').forEach(function(el) { el.classList.remove('active'); });
-  document.querySelectorAll('.memory-item').forEach(function(el) { el.classList.remove('active'); });
   document.getElementById('cronjobs-section').classList.remove('collapsed');
   if (!cronjobListEl.children.length) loadCronjobsSidebar();
 
@@ -3650,15 +3642,11 @@ function loadCronjob(cronjobId, pushHistory) {
 function showCreateCronjobForm(prefilledName, pushHistory) {
   stopFollowing();
   setViewType('cronjob');
-  activeId = null;
-  activePlanId = null;
-  activeSkillId = null;
-  activeCronjobId = null;
-  activeMemoryId = null;
+  setActiveScreen({ activeNewScreen: 'cronjob' });
   if (pushHistory !== false) {
     history.pushState(null, '', '/cronjobs/new');
   }
-  document.querySelectorAll('.cronjob-item').forEach(function(el) { el.classList.remove('active'); });
+  clearSidebarActive();
   document.getElementById('cronjobs-section').classList.remove('collapsed');
 
   mainEl.innerHTML = '';
@@ -3816,6 +3804,7 @@ function showCreateCronjobForm(prefilledName, pushHistory) {
 }
 
 function routeUrl(pathname, pushHistory) {
+  var convNew = /^\/conversations\/new\/?$/.test(pathname);
   var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
   var planMatch = pathname.match(/^\/plans\/([^/]+)/);
   var skillNew = /^\/skills\/new\/?$/.test(pathname);
@@ -3823,7 +3812,9 @@ function routeUrl(pathname, pushHistory) {
   var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
   var cronjobNew = /^\/cronjobs\/new\/?$/.test(pathname);
   var cronjobMatch = pathname.match(/^\/cronjobs\/(\d+)/);
-  if (convMatch) {
+  if (convNew) {
+    showCreateSessionForm(pushHistory);
+  } else if (convMatch) {
     loadConversation(convMatch[1], pushHistory);
   } else if (planMatch) {
     loadPlan(planMatch[1], pushHistory);
@@ -3862,17 +3853,14 @@ window.addEventListener('popstate', function(e) {
 function loadConversation(id, pushHistory) {
   stopFollowing();
   setViewType('conversation');
-  activeId = id;
-  activePlanId = null;
-  activeCronjobId = null;
+  setActiveScreen({ activeId: id });
   if (pushHistory !== false) {
     history.pushState({id: id}, '', '/conversations/' + id);
   }
+  clearSidebarActive();
   document.querySelectorAll('.conversation-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === id);
   });
-  document.querySelectorAll('.plan-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.cronjob-item').forEach(el => el.classList.remove('active'));
   // Expand conversations section, collapse plans
   document.getElementById('conv-section').classList.remove('collapsed');
   document.getElementById('plans-section').classList.add('collapsed');
