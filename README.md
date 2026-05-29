@@ -37,11 +37,19 @@ and starting new sessions.
 ### Memory
 - Browse, edit, and delete persistent memory items (with $EDITOR support)
 - Type badges (user, feedback, project, reference)
+- MEMORY.md index with navigable links
 - Linked to originating conversation and project
+
+### Repos
+- Browse CLAUDE.md and CLAUDE.local.md files per repo
+- Shows files from parent directories, repo root, subdirectories, and global ~/.claude/CLAUDE.md
+- Expandable inline preview with file size, line count, and modified date
+- Open in $EDITOR
 
 ### Cronjobs
 - Schedule skills to run automatically via cron expressions
 - Per-repo targeting with skill and repo dropdowns
+- Next run preview with human-readable schedule summaries
 - Manual "Run Now" trigger from the UI
 - Run history with links to spawned conversations
 - Create cronjobs directly from a skill's detail page
@@ -56,7 +64,7 @@ and starting new sessions.
 
 ### Home screen
 - Conversations grouped by repo with active/recent sections
-- Tabs for Conversations, Plans, Skills, Memory, Activity
+- Tabs for Conversations, Plans, Skills, Cronjobs, Memory, Repos, Activity
 - Activity heatmap showing conversation frequency over time
 - New session launcher per repo
 - SPA with direct URL routing and browser history
