@@ -931,6 +931,66 @@ def repos_list(request):
     return Response(_discover_repos())
 
 
+@api_view(["GET"])
+def repo_claude_files(request):
+    repo = request.query_params.get("repo", "")
+    if not repo or not Path(repo).is_dir():
+        return Response({"error": "invalid repo path"}, status=400)
+
+    repo_path = Path(repo).resolve()
+    seen = set()
+    files = []
+
+    def add_file(p, d, name, group):
+        key = str(p)
+        if key in seen:
+            return
+        seen.add(key)
+        stat = p.stat()
+        files.append(
+            {
+                "path": key,
+                "dir": str(d),
+                "name": name,
+                "group": group,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "content": p.read_text(errors="replace"),
+            }
+        )
+
+    # Global CLAUDE.md
+    global_dir = settings.CLAUDE_DIR
+    for name in ("CLAUDE.md",):
+        p = global_dir / name
+        if p.is_file():
+            add_file(p, global_dir, name, "global")
+
+    # Walk from root through ancestors to the repo dir
+    parts = repo_path.parts
+    for i in range(1, len(parts) + 1):
+        d = Path(*parts[:i])
+        group = "repo" if d == repo_path else "parent"
+        for name in ("CLAUDE.md", "CLAUDE.local.md"):
+            p = d / name
+            if p.is_file():
+                add_file(p, d, name, group)
+
+    # Check immediate subdirectories
+    try:
+        for child in sorted(repo_path.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            for name in ("CLAUDE.md", "CLAUDE.local.md"):
+                p = child / name
+                if p.is_file():
+                    add_file(p, child, name, "subdir")
+    except PermissionError:
+        pass
+
+    return Response(files)
+
+
 def _build_plan_conversation_map():
     """Scan all JSONL files to map plan filenames to originating conversations."""
     plan_map = {}  # plan_stem -> {conversation_id, cwd, branch, timestamp}

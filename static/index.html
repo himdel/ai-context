@@ -239,6 +239,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 #main.view-memory { border-top-color: #d97706; }
 #main.view-activity { border-top-color: #16a34a; }
 #main.view-cronjob { border-top-color: #e11d48; }
+#main.view-repo { border-top-color: #6366f1; }
 
 #main .empty {
   color: #999;
@@ -761,6 +762,7 @@ details > summary {
 .home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
 .home-tab[data-tab="cronjobs"].active { border-bottom-color: #e11d48; }
 .home-tab[data-tab="memory"].active { border-bottom-color: #d97706; }
+.home-tab[data-tab="repos"].active { border-bottom-color: #6366f1; }
 .home-tab[data-tab="activity"].active { border-bottom-color: #16a34a; }
 
 .activity-controls {
@@ -1228,6 +1230,81 @@ details > summary {
 }
 .memory-detail-view .memory-actions button:hover { background: #fef3c7; }
 
+.repo-item {
+  padding: 8px 16px;
+  border-bottom: 1px solid #eee;
+  border-left: 3px solid #6366f1;
+  cursor: pointer;
+  font-size: 13px;
+}
+.repo-item:hover { background: #e8e8e8; }
+.repo-item.active { background: #d0d8ff; }
+.repo-item .repo-name { color: #333; }
+.repo-item .repo-path { font-size: 11px; color: #888; }
+#repos-section h2 { border-left: 3px solid #6366f1; }
+.view-repo .home-conv-item { border-left: 3px solid #6366f1; }
+
+.claude-file-tree { padding: 0 16px; }
+.claude-file-group { margin-bottom: 16px; }
+.claude-file-group-label {
+  font-size: 12px;
+  color: #888;
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-family: monospace;
+}
+.claude-file-details {
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.claude-file-details[open] { border-color: #c7d2fe; }
+.claude-file-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+.claude-file-item::-webkit-details-marker { display: none; }
+.claude-file-item:hover { background: #f3f4f6; }
+.claude-file-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #888;
+}
+.claude-file-body {
+  padding: 8px 12px;
+  border-top: 1px solid #e5e7eb;
+}
+.claude-file-body button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #c7d2fe;
+  border-radius: 4px;
+  background: #eef2ff;
+  color: #4f46e5;
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.claude-file-body button:hover { background: #e0e7ff; }
+.claude-file-preview {
+  font-size: 13px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  padding: 8px 12px 8px 24px;
+  background: #fafafa;
+}
+
 /* Repo identity */
 .repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
 </style>
@@ -1265,6 +1342,12 @@ details > summary {
     </h2>
     <div class="sidebar-list" id="memory-list"></div>
   </div>
+  <div class="sidebar-section collapsed" id="repos-section">
+    <h2><span class="toggle">&#x25BC;</span>Repos
+      <span id="reload-repos-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload repos">&#x21bb;</span>
+    </h2>
+    <div class="sidebar-list" id="repo-list"></div>
+  </div>
 </div>
 
 <div id="main-wrap">
@@ -1277,6 +1360,7 @@ const planListEl = document.getElementById('plan-list');
 const skillListEl = document.getElementById('skill-list');
 const cronjobListEl = document.getElementById('cronjob-list');
 const memoryListEl = document.getElementById('memory-list');
+const repoListEl = document.getElementById('repo-list');
 const mainEl = document.getElementById('main');
 const mainWrapEl = document.getElementById('main-wrap');
 const reloadListBtn = document.getElementById('reload-list-btn');
@@ -1285,6 +1369,7 @@ let activePlanId = null;
 let activeSkillId = null;
 let activeCronjobId = null;
 let activeMemoryId = null;
+let activeRepoPath = null;
 let activeNewScreen = null;
 let currentMessages = null;
 
@@ -1294,6 +1379,7 @@ var screenSections = {
   skill: 'skills-section',
   cronjob: 'cronjobs-section',
   memory: 'memories-section',
+  repo: 'repos-section',
 };
 
 var screenTypes = {
@@ -1302,6 +1388,7 @@ var screenTypes = {
   activeSkillId: 'skill',
   activeCronjobId: 'cronjob',
   activeMemoryId: 'memory',
+  activeRepoPath: 'repo',
 };
 
 function setActiveScreen(opts) {
@@ -1311,6 +1398,7 @@ function setActiveScreen(opts) {
   activeSkillId = opts.activeSkillId || null;
   activeCronjobId = opts.activeCronjobId || null;
   activeMemoryId = opts.activeMemoryId || null;
+  activeRepoPath = opts.activeRepoPath || null;
   activeNewScreen = opts.activeNewScreen || null;
 
   var type = opts.activeNewScreen || null;
@@ -1329,15 +1417,15 @@ function setActiveScreen(opts) {
 }
 
 function hasActiveScreen() {
-  return !!(activeId || activePlanId || activeSkillId || activeCronjobId || activeMemoryId || activeNewScreen);
+  return !!(activeId || activePlanId || activeSkillId || activeCronjobId || activeMemoryId || activeRepoPath || activeNewScreen);
 }
 
 function clearSidebarActive() {
-  document.querySelectorAll('.conversation-item, .plan-item, .skill-item, .cronjob-item, .memory-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.conversation-item, .plan-item, .skill-item, .cronjob-item, .memory-item, .repo-item').forEach(el => el.classList.remove('active'));
 }
 
 function setViewType(type) {
-  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-cronjob', 'view-memory', 'view-activity');
+  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-cronjob', 'view-memory', 'view-repo', 'view-activity');
   if (type) mainEl.classList.add('view-' + type);
 }
 
@@ -1408,6 +1496,10 @@ document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
       // Load memories on first expand
       if (section.id === 'memories-section' && !memoryListEl.children.length) {
         loadMemoriesSidebar();
+      }
+      // Load repos on first expand
+      if (section.id === 'repos-section' && !repoListEl.children.length) {
+        loadReposSidebar();
       }
     } else {
       section.classList.add('collapsed');
@@ -1725,6 +1817,11 @@ document.getElementById('reload-memories-btn').onclick = function(e) {
   loadMemoriesSidebar();
 };
 
+document.getElementById('reload-repos-btn').onclick = function(e) {
+  e.stopPropagation();
+  loadReposSidebar();
+};
+
 function showCreateSessionForm(pushHistory) {
   setActiveScreen({ activeNewScreen: 'conversation' });
   if (pushHistory !== false) {
@@ -1873,9 +1970,9 @@ document.getElementById('new-skill-btn').onclick = function(e) {
 
 let homeTab = 'conversations';
 
-var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', cronjobs: '/cronjobs', memory: '/memories', activity: '/activity'};
+var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', cronjobs: '/cronjobs', memory: '/memories', repos: '/repos', activity: '/activity'};
 
-var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', cronjobs: 'cronjob', memory: 'memory', activity: 'activity'};
+var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', cronjobs: 'cronjob', memory: 'memory', repos: 'repo', activity: 'activity'};
 function showHomeScreen(pushHistory) {
   setActiveScreen({});
   setViewType(homeTabViewType[homeTab] || null);
@@ -1890,6 +1987,7 @@ function showHomeScreen(pushHistory) {
         '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
         '<div class="home-tab' + (homeTab === 'cronjobs' ? ' active' : '') + '" data-tab="cronjobs">Cronjobs</div>' +
         '<div class="home-tab' + (homeTab === 'memory' ? ' active' : '') + '" data-tab="memory">Memory</div>' +
+        '<div class="home-tab' + (homeTab === 'repos' ? ' active' : '') + '" data-tab="repos">Repos</div>' +
         '<div class="home-tab' + (homeTab === 'activity' ? ' active' : '') + '" data-tab="activity">Activity</div>' +
       '</div>' +
       '<div class="home-columns" id="home-cols"></div>' +
@@ -1910,6 +2008,8 @@ function showHomeScreen(pushHistory) {
     showCronjobsHome();
   } else if (homeTab === 'memory') {
     showMemoriesHome();
+  } else if (homeTab === 'repos') {
+    showReposHome();
   } else if (homeTab === 'activity') {
     showActivityHome();
   } else {
@@ -3323,6 +3423,208 @@ function loadMemory(memoryId, pushHistory) {
     });
 }
 
+function loadReposSidebar() {
+  fetch('/api/repos/')
+    .then(r => r.json())
+    .then(repos => {
+      repoListEl.innerHTML = '';
+      repos.forEach(repo => {
+        var div = document.createElement('div');
+        div.className = 'repo-item';
+        div.dataset.path = repo;
+        if (repo === activeRepoPath) div.classList.add('active');
+
+        var short = repo.replace(/^\/home\/[^/]+\//, '~/');
+        var name = short.split('/').pop();
+        var rid = RepoIdentity.get(repo);
+        div.innerHTML =
+          '<div class="repo-name">' + (rid ? rid.iconSm : '') + esc(name) + '</div>' +
+          '<div class="repo-path">' + esc(short) + '</div>';
+
+        div.onclick = function() { loadRepo(repo); };
+        repoListEl.appendChild(div);
+      });
+    });
+}
+
+function showReposHome() {
+  fetch('/api/repos/')
+    .then(r => r.json())
+    .then(repos => {
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      repos.forEach(function(repo) {
+        var short = repo.replace(/^\/home\/[^/]+\//, '~/');
+        var name = short.split('/').pop();
+        var rid = RepoIdentity.get(repo);
+
+        var col = document.createElement('div');
+        col.className = 'home-column';
+        if (rid) col.style.borderTop = '3px solid ' + rid.colorBorder;
+
+        var header = document.createElement('div');
+        header.className = 'home-column-header';
+        if (rid) header.style.background = rid.colorLight;
+        var nameDiv = document.createElement('div');
+        nameDiv.innerHTML = (rid ? rid.iconMd : '') + esc(name) + '<span class="col-path">' + esc(short) + '</span>';
+        nameDiv.title = repo;
+        nameDiv.style.cursor = 'pointer';
+        nameDiv.onclick = function() { loadRepo(repo); };
+        header.appendChild(nameDiv);
+        col.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'home-conv-list';
+        list.innerHTML = '<div style="padding:8px 12px;color:#999;font-size:12px">Loading...</div>';
+        col.appendChild(list);
+        container.appendChild(col);
+
+        fetch('/api/repos/claude-files/?repo=' + encodeURIComponent(repo))
+          .then(r => r.json())
+          .then(files => {
+            list.innerHTML = '';
+            if (!files.length) {
+              list.innerHTML = '<div style="padding:8px 12px;color:#999;font-size:12px">No CLAUDE.md files</div>';
+              return;
+            }
+            files.forEach(function(f) {
+              var item = document.createElement('div');
+              item.className = 'home-conv-item';
+              item.style.cursor = 'pointer';
+              item.style.fontFamily = 'monospace';
+              item.style.fontSize = '12px';
+              var relDir = f.dir.replace(/^\/home\/[^/]+\//, '~/');
+              var sizeStr = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB';
+              var lines = f.content ? f.content.split('\n').length : 0;
+              item.innerHTML = '<div class="conv-meta"><span style="font-size:10px;color:#888">' + esc(sizeStr) + ', ' + lines + ' lines</span></div>' +
+                '<div>' + esc(f.name) + '</div>' +
+                '<div style="font-size:11px;color:#888;margin-top:1px">' + esc(relDir) + '</div>';
+              item.onclick = function() { loadRepo(repo); };
+              list.appendChild(item);
+            });
+          });
+      });
+    });
+}
+
+function loadRepo(repoPath, pushHistory) {
+  setActiveScreen({ activeRepoPath: repoPath });
+  if (pushHistory !== false) {
+    history.pushState({repoPath: repoPath}, '', '/repos/detail/' + encodeURIComponent(repoPath));
+  }
+  document.querySelectorAll('.repo-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.path === repoPath);
+  });
+  if (!repoListEl.children.length) loadReposSidebar();
+  mainEl.innerHTML = '<div class="empty">Loading...</div>';
+
+  var short = repoPath.replace(/^\/home\/[^/]+\//, '~/');
+  var name = short.split('/').pop();
+  var rid = RepoIdentity.get(repoPath);
+
+  fetch('/api/repos/claude-files/?repo=' + encodeURIComponent(repoPath))
+    .then(r => r.json())
+    .then(files => {
+      if (files.error) {
+        mainEl.innerHTML = '<div class="empty">' + esc(files.error) + '</div>';
+        return;
+      }
+
+      mainEl.innerHTML = '';
+
+      var toolbar = document.createElement('div');
+      toolbar.className = 'conversation-toolbar';
+      toolbar.innerHTML = '<span class="header-btns"><span class="close-conv" title="Close">&times;</span></span>';
+      toolbar.querySelector('.close-conv').onclick = function() { closeConversation('repos'); };
+      mainEl.appendChild(toolbar);
+
+      var header = document.createElement('div');
+      header.className = 'conversation-header';
+      if (rid) {
+        header.style.borderLeft = '3px solid ' + rid.colorBorder;
+        header.style.paddingLeft = '12px';
+      }
+      header.innerHTML =
+        '<span>' + (rid ? rid.iconMd : '') + esc(name) + '</span>' +
+        '<span style="font-family:monospace;font-size:11px">' + esc(repoPath) + '</span>';
+      mainEl.appendChild(header);
+
+      var view = document.createElement('div');
+      view.className = 'skill-detail-view';
+
+      if (!files.length) {
+        view.innerHTML = '<div style="padding:16px;color:#999">No CLAUDE.md files found</div>';
+        mainEl.appendChild(view);
+        return;
+      }
+
+      var groupLabels = {global: 'Global', parent: 'Parent directories', repo: 'Repository root', subdir: 'Subdirectories'};
+      var groupOrder = ['global', 'parent', 'repo', 'subdir'];
+      var groups = {};
+      files.forEach(function(f) {
+        var g = f.group || 'repo';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(f);
+      });
+
+      var tree = document.createElement('div');
+      tree.className = 'claude-file-tree';
+
+      groupOrder.forEach(function(g) {
+        if (!groups[g]) return;
+        var group = document.createElement('div');
+        group.className = 'claude-file-group';
+        var lbl = document.createElement('div');
+        lbl.className = 'claude-file-group-label';
+        lbl.textContent = groupLabels[g];
+        group.appendChild(lbl);
+
+        groups[g].forEach(function(f) {
+          var details = document.createElement('details');
+          details.className = 'claude-file-details';
+
+          var summary = document.createElement('summary');
+          summary.className = 'claude-file-item';
+          var relDir = f.dir.replace(/^\/home\/[^/]+\//, '~/');
+          var sizeStr = f.size < 1024 ? f.size + ' B' : (f.size / 1024).toFixed(1) + ' KB';
+          var lines = f.content ? f.content.split('\n').length : 0;
+          var modDate = f.modified ? f.modified.substring(0, 10) : '';
+          summary.innerHTML = esc(f.name) +
+            '<span class="claude-file-meta">' +
+              '<span>' + esc(sizeStr) + ', ' + lines + ' lines</span>' +
+              '<span>' + esc(modDate) + '</span>' +
+              '<span>' + esc(relDir) + '</span>' +
+            '</span>';
+          summary.title = f.path;
+          details.appendChild(summary);
+
+          var body = document.createElement('div');
+          body.className = 'claude-file-body';
+          var editorBtn = document.createElement('button');
+          editorBtn.textContent = '$EDITOR';
+          editorBtn.onclick = function(e) { e.stopPropagation(); openInEditor(f.path); };
+          body.appendChild(editorBtn);
+          var pre = document.createElement('div');
+          pre.className = 'claude-file-preview';
+          pre.innerHTML = renderMarkdown(f.content || '');
+          body.appendChild(pre);
+          details.appendChild(body);
+
+          group.appendChild(details);
+        });
+
+        tree.appendChild(group);
+      });
+
+      view.appendChild(tree);
+      mainEl.appendChild(view);
+      renderRichBlocks();
+      mainEl.scrollTop = 0;
+      mainEl.focus();
+    });
+}
+
 function handleReturnToPage() {
   if (Date.now() - lastSidebarLoad > 20000) {
     loadSidebar();
@@ -3858,6 +4160,7 @@ function routeUrl(pathname, pushHistory) {
   var skillNew = /^\/skills\/new\/?$/.test(pathname);
   var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
   var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
+  var repoMatch = pathname.match(/^\/repos\/detail\/(.+)/);
   var cronjobNew = /^\/cronjobs\/new\/?$/.test(pathname);
   var cronjobMatch = pathname.match(/^\/cronjobs\/(\d+)/);
   if (convNew) {
@@ -3874,6 +4177,8 @@ function routeUrl(pathname, pushHistory) {
     showCreateCronjobForm(null, pushHistory);
   } else if (cronjobMatch) {
     loadCronjob(parseInt(cronjobMatch[1]), pushHistory);
+  } else if (repoMatch) {
+    loadRepo(decodeURIComponent(repoMatch[1]), pushHistory);
   } else if (memoryMatch) {
     loadMemory(memoryMatch[1], pushHistory);
   } else if (/^\/cronjobs\b/.test(pathname)) {
@@ -3884,6 +4189,8 @@ function routeUrl(pathname, pushHistory) {
     homeTab = 'skills'; showHomeScreen(pushHistory);
   } else if (/^\/plans\b/.test(pathname)) {
     homeTab = 'plans'; showHomeScreen(pushHistory);
+  } else if (/^\/repos\b/.test(pathname)) {
+    homeTab = 'repos'; showHomeScreen(pushHistory);
   } else if (/^\/activity\b/.test(pathname)) {
     homeTab = 'activity'; showHomeScreen(pushHistory);
   } else {

@@ -45,4 +45,6 @@ urlpatterns = [
     path("cronjobs/<int:cronjob_id>/run", views.cronjob_run),
     path("repos/", views.repos_list),
     path("repos", views.repos_list),
+    path("repos/claude-files/", views.repo_claude_files),
+    path("repos/claude-files", views.repo_claude_files),
 ]
