@@ -1338,7 +1338,7 @@ var RepoIdentity = {
 // Sidebar section accordion
 document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
   h2.addEventListener('click', function(e) {
-    if (e.target.closest('#reload-list-btn') || e.target.closest('#new-session-btn') || e.target.closest('#reload-plans-btn') || e.target.closest('#new-plan-btn') || e.target.closest('#reload-skills-btn') || e.target.closest('#new-skill-btn') || e.target.closest('#reload-cronjobs-btn') || e.target.closest('#new-cronjob-btn') || e.target.closest('#reload-memories-btn')) return;
+    if (e.target !== h2 && e.target.closest('span[id]')) return;
     var section = h2.closest('.sidebar-section');
     var wasCollapsed = section.classList.contains('collapsed');
     if (wasCollapsed) {
