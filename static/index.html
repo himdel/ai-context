@@ -1205,6 +1205,7 @@ details > summary {
 .memory-type-feedback { background: #fef3c7; color: #b45309; }
 .memory-type-project { background: #dcfce7; color: #15803d; }
 .memory-type-reference { background: #ede9fe; color: #6d28d9; }
+.memory-type-index { background: #fef9c3; color: #854d0e; border: 1px solid #ca8a04; }
 
 #memories-section h2 { border-left: 3px solid #d97706; }
 
@@ -3145,6 +3146,22 @@ function loadMemory(memoryId, pushHistory) {
         '<span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
       mainEl.appendChild(header);
 
+      if (data.type === 'index') {
+        var note = document.createElement('div');
+        note.style.cssText = 'background:#fefce8;border:1px solid #ca8a04;border-radius:6px;padding:8px 12px;margin:8px 0;font-size:12px;color:#854d0e';
+        note.textContent = 'This is the memory index — the only file loaded into context by default. Claude uses the descriptions here to decide which memories to read in full, so keeping them accurate and specific is important.';
+        mainEl.appendChild(note);
+      } else {
+        var indexPath = data.path.replace(/\/[^/]+$/, '/MEMORY.md');
+        var indexId = btoa(indexPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        var backLink = document.createElement('a');
+        backLink.href = '/memories/' + indexId;
+        backLink.textContent = '← Memory Index';
+        backLink.style.cssText = 'display:inline-block;margin:8px 0;font-size:12px;color:#854d0e;text-decoration:none';
+        backLink.onclick = function(e) { e.preventDefault(); loadMemory(indexId); };
+        mainEl.appendChild(backLink);
+      }
+
       var view = document.createElement('div');
       view.className = 'skill-detail-view';
 
@@ -3162,6 +3179,20 @@ function loadMemory(memoryId, pushHistory) {
           if (end !== -1) displayText = displayText.substring(end + 4).trim();
         }
         contentBlock.innerHTML = renderMarkdown(displayText);
+
+        if (data.type === 'index') {
+          var memoryDir = data.path.replace(/\/[^/]+$/, '/');
+          contentBlock.querySelectorAll('a[href$=".md"]').forEach(function(a) {
+            var href = a.getAttribute('href');
+            if (/^https?:\/\//.test(href)) return;
+            var absPath = memoryDir + href;
+            var id = btoa(absPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            a.href = '/memories/' + id;
+            a.removeAttribute('target');
+            a.removeAttribute('rel');
+            a.onclick = function(e) { e.preventDefault(); loadMemory(id); };
+          });
+        }
       };
       renderContent();
 
@@ -3222,7 +3253,7 @@ function loadMemory(memoryId, pushHistory) {
             closeConversation('memory');
           });
       };
-      actions.appendChild(deleteBtn);
+      if (data.type !== 'index') actions.appendChild(deleteBtn);
 
       view.appendChild(actions);
 

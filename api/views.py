@@ -1497,8 +1497,6 @@ def memories_list(request):
         project_path = _project_dir_to_cwd(project_dir)
 
         for md_file in sorted(memory_dir.glob("*.md")):
-            if md_file.name == "MEMORY.md":
-                continue
             try:
                 text = md_file.read_text()
                 mtime = md_file.stat().st_mtime
@@ -1506,11 +1504,14 @@ def memories_list(request):
                 continue
 
             fm = _parse_memory_frontmatter(text)
+            is_index = md_file.name == "MEMORY.md"
             results.append(
                 {
                     "id": _path_id(md_file),
-                    "name": fm["name"] or md_file.stem,
-                    "type": fm["type"],
+                    "name": "Memory Index"
+                    if is_index
+                    else (fm["name"] or md_file.stem),
+                    "type": "index" if is_index else fm["type"],
                     "description": fm["description"],
                     "conversation_id": fm["originSessionId"],
                     "project": project_path or project_dir.name,
@@ -1550,6 +1551,7 @@ def memory_detail(request, memory_id):
         return Response({"error": "failed to read"}, status=500)
 
     fm = _parse_memory_frontmatter(text)
+    is_index = path.name == "MEMORY.md"
 
     project_dir = path.parent.parent
     project_path = _project_dir_to_cwd(project_dir)
@@ -1557,8 +1559,8 @@ def memory_detail(request, memory_id):
     return Response(
         {
             "id": memory_id,
-            "name": fm["name"] or path.stem,
-            "type": fm["type"],
+            "name": "Memory Index" if is_index else (fm["name"] or path.stem),
+            "type": "index" if is_index else fm["type"],
             "description": fm["description"],
             "conversation_id": fm["originSessionId"],
             "project": project_path or project_dir.name,
