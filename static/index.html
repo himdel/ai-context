@@ -1007,6 +1007,33 @@ details > summary {
   font-weight: normal;
 }
 .skill-detail-view .run-dropdown-panel button:hover { background: #f0f4ff; }
+.sidebar-dropdown {
+  display: none;
+  position: fixed;
+  background: #fff;
+  border: 1px solid #d0d8e0;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  z-index: 20;
+  min-width: 180px;
+  padding: 4px;
+}
+.sidebar-dropdown.open { display: block; }
+.sidebar-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #555;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 3px;
+  font-weight: normal;
+  white-space: nowrap;
+}
+.sidebar-dropdown button:hover { background: #f0f4ff; }
 .skill-detail-view .skill-edit-area {
   width: 100%;
   min-height: 300px;
@@ -1196,7 +1223,7 @@ details > summary {
   </div>
   <div class="sidebar-section collapsed" id="plans-section">
     <h2><span class="toggle">&#x25BC;</span>Plans
-      <span id="reload-plans-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload plans">&#x21bb;</span><span id="new-plan-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New plan">+</span>
+      <span id="reload-plans-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload plans">&#x21bb;</span><span id="new-plan-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New plan">+<div id="new-plan-picker" class="sidebar-dropdown"></div></span>
     </h2>
     <div class="sidebar-list" id="plan-list"></div>
   </div>
@@ -1708,16 +1735,59 @@ document.getElementById('reload-plans-btn').onclick = function(e) {
 
 document.getElementById('new-plan-btn').onclick = function(e) {
   e.stopPropagation();
-  fetch('/api/sessions/new/', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({prompt: '/plan'})
-  })
-  .then(r => r.json())
-  .then(() => {
-    setTimeout(loadPlansSidebar, 2000);
-  });
+  var picker = document.getElementById('new-plan-picker');
+  if (picker.classList.contains('open')) {
+    picker.classList.remove('open');
+    return;
+  }
+  picker.innerHTML = '';
+  fetch('/api/conversations/')
+    .then(r => r.json())
+    .then(conversations => {
+      var seen = {};
+      var cwds = [];
+      conversations.forEach(c => {
+        var p = c.project;
+        if (p && !seen[p]) {
+          seen[p] = true;
+          cwds.push(p);
+        }
+      });
+      var btnRect = document.getElementById('new-plan-btn').getBoundingClientRect();
+      picker.style.top = (btnRect.bottom + 4) + 'px';
+      picker.style.left = btnRect.left + 'px';
+      if (!cwds.length) {
+        picker.innerHTML = '<button disabled style="color:#999">No repos found</button>';
+        picker.classList.add('open');
+        return;
+      }
+      cwds.forEach(cwd => {
+        var btn = document.createElement('button');
+        btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
+        btn.title = cwd;
+        btn.onclick = function(ev) {
+          ev.stopPropagation();
+          picker.classList.remove('open');
+          btn.textContent = '...';
+          fetch('/api/sessions/new/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({prompt: '/plan', cwd: cwd})
+          })
+          .then(r => r.json())
+          .then(() => {
+            setTimeout(loadPlansSidebar, 2000);
+          });
+        };
+        picker.appendChild(btn);
+      });
+      picker.classList.add('open');
+    });
 };
+document.addEventListener('click', function(e) {
+  var picker = document.getElementById('new-plan-picker');
+  if (picker && !e.target.closest('#new-plan-btn')) picker.classList.remove('open');
+});
 
 document.getElementById('new-skill-btn').onclick = function(e) {
   e.stopPropagation();
