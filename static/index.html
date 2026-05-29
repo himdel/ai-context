@@ -1269,13 +1269,44 @@ let activeMemoryId = null;
 let activeNewScreen = null;
 let currentMessages = null;
 
+var screenSections = {
+  conversation: 'conv-section',
+  plan: 'plans-section',
+  skill: 'skills-section',
+  cronjob: 'cronjobs-section',
+  memory: 'memories-section',
+};
+
+var screenTypes = {
+  activeId: 'conversation',
+  activePlanId: 'plan',
+  activeSkillId: 'skill',
+  activeCronjobId: 'cronjob',
+  activeMemoryId: 'memory',
+};
+
 function setActiveScreen(opts) {
+  stopFollowing();
   activeId = opts.activeId || null;
   activePlanId = opts.activePlanId || null;
   activeSkillId = opts.activeSkillId || null;
   activeCronjobId = opts.activeCronjobId || null;
   activeMemoryId = opts.activeMemoryId || null;
   activeNewScreen = opts.activeNewScreen || null;
+
+  var type = opts.activeNewScreen || null;
+  for (var k in screenTypes) {
+    if (opts[k]) { type = screenTypes[k]; break; }
+  }
+  setViewType(type);
+  clearSidebarActive();
+  if (type) {
+    var expandId = screenSections[type];
+    Object.values(screenSections).forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.toggle('collapsed', id !== expandId);
+    });
+  }
 }
 
 function hasActiveScreen() {
@@ -1676,13 +1707,10 @@ document.getElementById('reload-memories-btn').onclick = function(e) {
 };
 
 function showCreateSessionForm(pushHistory) {
-  stopFollowing();
-  setViewType('conversation');
   setActiveScreen({ activeNewScreen: 'conversation' });
   if (pushHistory !== false) {
     history.pushState(null, '', '/conversations/new');
   }
-  clearSidebarActive();
   mainEl.innerHTML =
     '<div class="new-session-form">' +
       '<h3 style="margin-bottom:12px">New session</h3>' +
@@ -2042,19 +2070,13 @@ function showPlansHome() {
 }
 
 function loadPlan(planId, pushHistory) {
-  stopFollowing();
-  setViewType('plan');
   setActiveScreen({ activePlanId: planId });
   if (pushHistory !== false) {
     history.pushState({planId: planId}, '', '/plans/' + planId);
   }
-  clearSidebarActive();
   document.querySelectorAll('.plan-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === planId);
   });
-  // Expand plans section, collapse conversations
-  document.getElementById('plans-section').classList.remove('collapsed');
-  document.getElementById('conv-section').classList.add('collapsed');
   if (!planListEl.children.length) loadPlansSidebar();
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
 
@@ -2223,11 +2245,7 @@ function pollForUpdates() {
 }
 
 function closeConversation(tab) {
-  stopFollowing();
   currentMessages = null;
-  setActiveScreen({});
-  clearSidebarActive();
-  document.getElementById('conv-section').classList.remove('collapsed');
   if (tab) homeTab = tab;
   showHomeScreen();
 }
@@ -2441,17 +2459,10 @@ function showSkillsHome() {
 }
 
 function loadSkill(skillId, pushHistory) {
-  stopFollowing();
-  setViewType('skill');
   setActiveScreen({ activeSkillId: skillId });
-  clearSidebarActive();
   document.querySelectorAll('.skill-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === skillId);
   });
-  // Expand skills section, collapse others
-  document.getElementById('skills-section').classList.remove('collapsed');
-  document.getElementById('conv-section').classList.add('collapsed');
-  document.getElementById('plans-section').classList.add('collapsed');
   if (!skillListEl.children.length) loadSkillsSidebar();
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
 
@@ -2771,13 +2782,10 @@ function loadSkill(skillId, pushHistory) {
 }
 
 function showCreateSkillForm(pushHistory) {
-  stopFollowing();
-  setViewType('skill');
   setActiveScreen({ activeNewScreen: 'skill' });
   if (pushHistory !== false) {
     history.pushState(null, '', '/skills/new');
   }
-  clearSidebarActive();
 
   // Fetch skills to discover repo scopes
   fetch('/api/skills/')
@@ -3104,20 +3112,13 @@ function renderHeatmap(container, days) {
 }
 
 function loadMemory(memoryId, pushHistory) {
-  stopFollowing();
-  setViewType('memory');
   setActiveScreen({ activeMemoryId: memoryId });
   if (pushHistory !== false) {
     history.pushState({memoryId: memoryId}, '', '/memories/' + memoryId);
   }
-  clearSidebarActive();
   document.querySelectorAll('.memory-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === memoryId);
   });
-  document.getElementById('memories-section').classList.remove('collapsed');
-  document.getElementById('conv-section').classList.add('collapsed');
-  document.getElementById('plans-section').classList.add('collapsed');
-  document.getElementById('skills-section').classList.add('collapsed');
   if (!memoryListEl.children.length) loadMemoriesSidebar();
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
 
@@ -3419,17 +3420,13 @@ function showCronjobsHome() {
 }
 
 function loadCronjob(cronjobId, pushHistory) {
-  stopFollowing();
-  setViewType('cronjob');
   setActiveScreen({ activeCronjobId: cronjobId });
   if (pushHistory !== false) {
     history.pushState(null, '', '/cronjobs/' + cronjobId);
   }
-  clearSidebarActive();
   document.querySelectorAll('.cronjob-item').forEach(function(el) {
     el.classList.toggle('active', el.dataset.id == cronjobId);
   });
-  document.getElementById('cronjobs-section').classList.remove('collapsed');
   if (!cronjobListEl.children.length) loadCronjobsSidebar();
 
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
@@ -3676,14 +3673,10 @@ function loadCronjob(cronjobId, pushHistory) {
 }
 
 function showCreateCronjobForm(prefilledName, pushHistory) {
-  stopFollowing();
-  setViewType('cronjob');
   setActiveScreen({ activeNewScreen: 'cronjob' });
   if (pushHistory !== false) {
     history.pushState(null, '', '/cronjobs/new');
   }
-  clearSidebarActive();
-  document.getElementById('cronjobs-section').classList.remove('collapsed');
 
   mainEl.innerHTML = '';
 
@@ -3887,19 +3880,13 @@ window.addEventListener('popstate', function(e) {
 });
 
 function loadConversation(id, pushHistory) {
-  stopFollowing();
-  setViewType('conversation');
   setActiveScreen({ activeId: id });
   if (pushHistory !== false) {
     history.pushState({id: id}, '', '/conversations/' + id);
   }
-  clearSidebarActive();
   document.querySelectorAll('.conversation-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === id);
   });
-  // Expand conversations section, collapse plans
-  document.getElementById('conv-section').classList.remove('collapsed');
-  document.getElementById('plans-section').classList.add('collapsed');
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
 
   fetch('/api/conversations/' + id + '/')
