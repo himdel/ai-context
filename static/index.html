@@ -238,7 +238,7 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 #main.view-skill { border-top-color: #0d9488; }
 #main.view-memory { border-top-color: #d97706; }
 #main.view-activity { border-top-color: #16a34a; }
-#main.view-cronjob { border-top-color: #d97706; }
+#main.view-cronjob { border-top-color: #e11d48; }
 
 #main .empty {
   color: #999;
@@ -713,7 +713,7 @@ details > summary {
 .view-skill .home-conv-item { border-left: 3px solid #0d9488; }
 .view-memory .home-conv-item { border-left: 3px solid #d97706; }
 .view-activity .home-conv-item { border-left: 3px solid #16a34a; }
-.view-cronjob .home-conv-item { border-left: 3px solid #d97706; }
+.view-cronjob .home-conv-item { border-left: 3px solid #e11d48; }
 .skill-invocations .home-conv-item { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .invoc-summary { font-size: 12px; color: #666; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .invoc-summary p { margin: 0; display: inline; }
@@ -759,7 +759,7 @@ details > summary {
 .home-tab[data-tab="conversations"].active { border-bottom-color: #3b82f6; }
 .home-tab[data-tab="plans"].active { border-bottom-color: #8b5cf6; }
 .home-tab[data-tab="skills"].active { border-bottom-color: #0d9488; }
-.home-tab[data-tab="cronjobs"].active { border-bottom-color: #d97706; }
+.home-tab[data-tab="cronjobs"].active { border-bottom-color: #e11d48; }
 .home-tab[data-tab="memory"].active { border-bottom-color: #d97706; }
 .home-tab[data-tab="activity"].active { border-bottom-color: #16a34a; }
 
@@ -965,14 +965,14 @@ details > summary {
 .skill-detail-view .skill-actions button {
   padding: 6px 16px;
   font-size: 13px;
-  border: 1px solid #d0d8e0;
+  border: 1px solid #99f6e4;
   border-radius: 4px;
-  background: #f0f4ff;
-  color: #4338ca;
+  background: #f0fdfa;
+  color: #0f766e;
   cursor: pointer;
   font-weight: 600;
 }
-.skill-detail-view .skill-actions button:hover { background: #e0e8ff; }
+.skill-detail-view .skill-actions button:hover { background: #ccfbf1; }
 .skill-detail-view .skill-actions button.has-dropdown::after { content: ' \25BE'; }
 .skill-detail-view .skill-actions button.has-plus::after { content: ' +'; }
 @keyframes cron-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
@@ -1006,7 +1006,7 @@ details > summary {
   border-radius: 3px;
   font-weight: normal;
 }
-.skill-detail-view .run-dropdown-panel button:hover { background: #f0f4ff; }
+.skill-detail-view .run-dropdown-panel button:hover { background: #f0fdfa; }
 .sidebar-dropdown {
   display: none;
   position: fixed;
@@ -1034,7 +1034,8 @@ details > summary {
   white-space: nowrap;
 }
 .sidebar-dropdown button:hover { background: #f0f4ff; }
-.skill-detail-view .skill-edit-area {
+.skill-detail-view .skill-edit-area,
+.memory-detail-view .skill-edit-area {
   width: 100%;
   min-height: 300px;
   font-family: monospace;
@@ -1088,7 +1089,7 @@ details > summary {
 .cronjob-item {
   padding: 8px 16px;
   border-bottom: 1px solid #eee;
-  border-left: 3px solid #d97706;
+  border-left: 3px solid #e11d48;
   cursor: pointer;
   font-size: 13px;
 }
@@ -1097,7 +1098,7 @@ details > summary {
 .cronjob-item .cronjob-name { color: #333; }
 .cronjob-item .cronjob-schedule { font-size: 11px; color: #888; }
 .cronjob-item .cronjob-repo { font-size: 11px; color: #888; }
-#cronjobs-section h2 { border-left: 3px solid #d97706; }
+#cronjobs-section h2 { border-left: 3px solid #e11d48; }
 .cronjob-detail-view { max-width: 800px; }
 .cronjob-detail-view .cronjob-actions {
   display: flex;
@@ -1107,14 +1108,14 @@ details > summary {
 .cronjob-detail-view .cronjob-actions button {
   padding: 6px 16px;
   font-size: 13px;
-  border: 1px solid #fbbf24;
+  border: 1px solid #fda4af;
   border-radius: 4px;
-  background: #fffbeb;
-  color: #92400e;
+  background: #fff1f2;
+  color: #9f1239;
   cursor: pointer;
   font-weight: 600;
 }
-.cronjob-detail-view .cronjob-actions button:hover { background: #fef3c7; }
+.cronjob-detail-view .cronjob-actions button:hover { background: #ffe4e6; }
 .cronjob-form {
   display: flex;
   flex-direction: column;
@@ -1168,7 +1169,7 @@ details > summary {
   font-size: 11px;
 }
 .badge-scheduled { background: #dcfce7; color: #15803d; }
-.badge-manual { background: #fef3c7; color: #b45309; }
+.badge-manual { background: #ffe4e6; color: #9f1239; }
 
 .create-skill-form .form-status {
   display: inline-block;
@@ -1208,6 +1209,24 @@ details > summary {
 .memory-type-index { background: #fef9c3; color: #854d0e; border: 1px solid #ca8a04; }
 
 #memories-section h2 { border-left: 3px solid #d97706; }
+
+.memory-detail-view { max-width: 800px; }
+.memory-detail-view .memory-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.memory-detail-view .memory-actions button {
+  padding: 6px 16px;
+  font-size: 13px;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  background: #fffbeb;
+  color: #92400e;
+  cursor: pointer;
+  font-weight: 600;
+}
+.memory-detail-view .memory-actions button:hover { background: #fef3c7; }
 
 /* Repo identity */
 .repo-icon { display: inline-block; vertical-align: middle; margin-right: 4px; flex-shrink: 0; }
@@ -2642,7 +2661,7 @@ function loadSkill(skillId, pushHistory) {
         cronWrap.className = 'run-dropdown';
         var cronBtn = document.createElement('button');
         cronBtn.textContent = 'Cron';
-        cronBtn.style.cssText = 'border-color:#fbbf24;background:#fffbeb;color:#92400e';
+        cronBtn.style.cssText = 'border-color:#fda4af;background:#fff1f2;color:#9f1239';
         var cronPanel = document.createElement('div');
         cronPanel.className = 'run-dropdown-panel';
         cronBtn.classList.add('loading');
@@ -2674,7 +2693,7 @@ function loadSkill(skillId, pushHistory) {
                 });
                 var newBtn = document.createElement('button');
                 newBtn.textContent = '+ New cronjob';
-                newBtn.style.cssText = 'color:#92400e;font-weight:600';
+                newBtn.style.cssText = 'color:#9f1239;font-weight:600';
                 newBtn.onclick = function() {
                   cronPanel.classList.remove('open');
                   showCreateCronjobForm(data.name);
@@ -3169,10 +3188,10 @@ function loadMemory(memoryId, pushHistory) {
       }
 
       var view = document.createElement('div');
-      view.className = 'skill-detail-view';
+      view.className = 'memory-detail-view';
 
       var actions = document.createElement('div');
-      actions.className = 'skill-actions';
+      actions.className = 'memory-actions';
 
       var contentBlock = document.createElement('div');
       contentBlock.className = 'block text';
