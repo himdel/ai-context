@@ -933,7 +933,7 @@ function loadConversation(id, pushHistory) {
           mainEl.appendChild(notice);
         }
 
-        taskSubjects = {};
+        for (var k in taskSubjects) delete taskSubjects[k];
         data.messages.forEach(m => {
           m.content.forEach(block => {
             if (block.type === 'tool_use' && block.name === 'TaskCreate' && block.result) {
