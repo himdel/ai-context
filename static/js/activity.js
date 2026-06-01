@@ -34,7 +34,7 @@ export function showActivityHome() {
     });
 }
 
-export function renderHeatmap(container, days) {
+function renderHeatmap(container, days) {
   var existing = container.querySelector('.heatmap-wrapper');
   if (existing) existing.remove();
 

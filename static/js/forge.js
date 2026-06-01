@@ -11,16 +11,16 @@ export function forgeBranchUrl(f, branch) {
   if (f.type === 'gitea') return forgeRepoUrl(f) + '/src/branch/' + encodeURIComponent(branch);
   return forgeRepoUrl(f) + '/tree/' + encodeURIComponent(branch);
 }
-export function forgeCommitUrl(f, sha) {
+function forgeCommitUrl(f, sha) {
   if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/commit/' + sha;
   return forgeRepoUrl(f) + '/commit/' + sha;
 }
-export function forgePrUrl(f, id) {
+function forgePrUrl(f, id) {
   if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/merge_requests/' + id;
   if (f.type === 'gitea') return forgeRepoUrl(f) + '/pulls/' + id;
   return forgeRepoUrl(f) + '/pull/' + id;
 }
-export function forgeName(f) {
+function forgeName(f) {
   if (f.type === 'gitlab') return 'GitLab';
   if (f.type === 'gitea') return 'Gitea';
   return 'GitHub';

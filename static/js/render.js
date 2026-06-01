@@ -273,7 +273,7 @@ export function renderMarkdown(text) {
   return html;
 }
 
-export function formatJson(str) {
+function formatJson(str) {
   var trimmed = str.trim();
   if (!(trimmed.charAt(0) === '{' || trimmed.charAt(0) === '[')) return null;
   try {
@@ -291,7 +291,7 @@ export function formatJson(str) {
 
 export var taskSubjects = {};
 
-export function extractTaskStates(messages) {
+function extractTaskStates(messages) {
   var tasks = {};
   messages.forEach(function(m) {
     m.content.forEach(function(block) {
@@ -320,7 +320,7 @@ export function extractTaskStates(messages) {
   return { tasks: tasks, counts: counts };
 }
 
-export function extractRunningAgents(messages) {
+function extractRunningAgents(messages) {
   var running = [];
   messages.forEach(function(m) {
     m.content.forEach(function(block) {
@@ -337,7 +337,7 @@ export function extractRunningAgents(messages) {
   return running;
 }
 
-export function scrollToBlock(selector) {
+function scrollToBlock(selector) {
   var els = mainEl.querySelectorAll(selector);
   var el = els.length ? els[els.length - 1] : null;
   if (el) {
@@ -347,7 +347,7 @@ export function scrollToBlock(selector) {
   }
 }
 
-export function buildStatusBar(messages) {
+function buildStatusBar(messages) {
   var taskState = extractTaskStates(messages);
   var agents = extractRunningAgents(messages);
   if (taskState.counts.total === 0 && agents.length === 0) return null;
@@ -416,7 +416,7 @@ export function updateStatusBar(messages) {
   if (bar) mainWrapEl.appendChild(bar);
 }
 
-export function renderToolInput(name, input) {
+function renderToolInput(name, input) {
   var main = null;
   var skip = [];
   if (name === 'Read') {
@@ -565,7 +565,7 @@ export function renderToolInput(name, input) {
   return main;
 }
 
-export function blockToMarkdown(block) {
+function blockToMarkdown(block) {
   if (block.type === 'text') return block.text || '';
   if (block.type === 'thinking') return '<thinking>\n' + (block.text || '') + '\n</thinking>';
   if (block.type === 'tool_use') {
@@ -586,7 +586,7 @@ export function blockToMarkdown(block) {
   return '';
 }
 
-export function subagentToMarkdown(sub) {
+function subagentToMarkdown(sub) {
   var label = (sub.agent_type || 'Agent') + (sub.description ? ': ' + sub.description : '');
   var md = '> **' + label + '**\n';
   sub.messages.forEach(function(m) {
@@ -609,7 +609,7 @@ export function messageToMarkdown(msgEl) {
   return parts.join('\n\n');
 }
 
-export function renderToolResult(block) {
+function renderToolResult(block) {
   if (!block.result && !block.subagent) return '';
   var useMarkdown = block.subagent || block.name === 'ExitPlanMode';
   var html = '';
@@ -633,7 +633,7 @@ export function renderToolResult(block) {
   return html;
 }
 
-export function isSkillTrigger(m) {
+function isSkillTrigger(m) {
   if (!m) return false;
   if (m.role === 'user' && m.content.some(b => b.type === 'text' && /<command-name>/.test(b.text))) return true;
   if (m.role === 'assistant' && m.content.some(b => b.type === 'tool_use' && b.name === 'Skill')) return true;
@@ -700,7 +700,7 @@ export function renderBlock(block) {
   return '';
 }
 
-export function renderSubagent(sub) {
+function renderSubagent(sub) {
   var label = (sub.agent_type || 'Agent') + (sub.description ? ': ' + sub.description : '');
   var html = '<details class="subagent"><summary>' + esc(label) + ' <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>';
   html += '<div class="subagent-messages">';
