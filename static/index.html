@@ -4902,17 +4902,25 @@ function messageToMarkdown(msgEl) {
 
 function renderToolResult(block) {
   if (!block.result && !block.subagent) return '';
+  var useMarkdown = block.subagent || block.name === 'ExitPlanMode';
   var html = '';
-  if (block.result) {
-    var resultBody = (block.name === 'Agent' || block.name === 'ExitPlanMode')
-      ? renderMarkdown(block.result)
-      : (formatJson(block.result) || esc(block.result));
-    html += '<details class="tool-result-inline"><summary>output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
-      '<div class="tool-output">' + resultBody + '</div></details>';
-  }
+
   if (block.subagent) {
     html += renderSubagent(block.subagent);
   }
+  if (block.result) {
+    var resultBody = useMarkdown
+      ? renderMarkdown(block.result)
+      : (formatJson(block.result) || esc(block.result));
+    if (useMarkdown) {
+      html += '<details class="agent-result"><summary>output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
+        '<div class="agent-result-body">' + resultBody + '</div></details>';
+    } else {
+      html += '<details class="tool-result-inline"><summary>output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
+        '<div class="tool-output">' + resultBody + '</div></details>';
+    }
+  }
+
   return html;
 }
 
