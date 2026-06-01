@@ -223,9 +223,6 @@ export function loadSkill(skillId, pushHistory) {
         };
         actions.appendChild(deleteBtn);
 
-        if (data.kind === 'workflow') {
-          // no Run/Cron for workflows
-        } else {
         var runWrap = document.createElement('div');
         runWrap.className = 'run-dropdown';
         var runBtn = document.createElement('button');
@@ -350,7 +347,6 @@ export function loadSkill(skillId, pushHistory) {
         cronWrap.appendChild(cronBtn);
         cronWrap.appendChild(cronPanel);
         actions.appendChild(cronWrap);
-        }
 
         view.appendChild(actions);
 
