@@ -6,8 +6,8 @@ Django app serving a REST API and static UI, running via uv.
 
 - `make` / `make run` - start the dev server
 - `uv run python manage.py ...` - manage.py commands
-- `make fix` - ruff check + format
-- `make lint` - ruff check + format (check only)
+- `make fix` - ruff check + format, prettier
+- `make lint` - ruff check + format, prettier (check only)
 
 ## Frontend
 
