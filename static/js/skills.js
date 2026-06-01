@@ -16,6 +16,14 @@ export function initSkills(deps) {
   getActiveSkillId = deps.getActiveSkillId;
   showCreateCronjobForm = deps.showCreateCronjobForm;
   loadCronjob = deps.loadCronjob;
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.run-dropdown')) {
+      document.querySelectorAll('.run-dropdown-panel.open').forEach(function(p) {
+        p.classList.remove('open');
+      });
+    }
+  });
 }
 
 export function loadSkillsSidebar() {
@@ -269,9 +277,6 @@ export function loadSkill(skillId, pushHistory) {
           };
           runWrap.appendChild(runBtn);
           runWrap.appendChild(runPanel);
-          document.addEventListener('click', function(e) {
-            if (!runWrap.contains(e.target)) runPanel.classList.remove('open');
-          });
         } else {
           runBtn.onclick = function() {
             runBtn.textContent = '...';
@@ -338,9 +343,6 @@ export function loadSkill(skillId, pushHistory) {
           });
         cronWrap.appendChild(cronBtn);
         cronWrap.appendChild(cronPanel);
-        document.addEventListener('click', function(e) {
-          if (!cronWrap.contains(e.target)) cronPanel.classList.remove('open');
-        });
         actions.appendChild(cronWrap);
 
         view.appendChild(actions);

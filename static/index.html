@@ -52,10 +52,10 @@
 </div>
 
 <script type="module">
-import { esc, timeAgo, timeUntil, formatDuration, formatDate, formatTime, openInEditor, isNearBottom, loadScript, loadCSS } from '/js/utils.js';
+import { esc, formatDuration, formatDate, formatTime, openInEditor, isNearBottom } from '/js/utils.js';
 import { showActivityHome } from '/js/activity.js';
-import { currentForgeRepo, currentForgeOrigin, currentPR, currentCwd, forgeRepoUrl, forgeBranchUrl, forgeCommitUrl, forgePrUrl, forgeName, setForgeAutolink, setCurrentCwd, linkifyForge } from '/js/forge.js';
-import { initRender, initAutolinks, renderMarkdown, renderBlock, renderToolInput, renderToolResult, renderSubagent, renderRichBlocks, formatJson, taskSubjects, extractTaskStates, extractRunningAgents, scrollToBlock, buildStatusBar, updateStatusBar, isSkillTrigger, isSkillPrompt, renderSkillPrompt, blockToMarkdown, subagentToMarkdown, messageToMarkdown } from '/js/render.js';
+import { currentForgeRepo, currentForgeOrigin, currentPR, currentCwd, forgeRepoUrl, forgeBranchUrl, setForgeAutolink, setCurrentCwd } from '/js/forge.js';
+import { initRender, initAutolinks, renderMarkdown, renderBlock, renderRichBlocks, taskSubjects, updateStatusBar, isSkillPrompt, renderSkillPrompt, messageToMarkdown } from '/js/render.js';
 import { initMemories, loadMemoriesSidebar, showMemoriesHome, loadMemory } from '/js/memories.js';
 import { initRepos, loadReposSidebar, showReposHome, loadRepo } from '/js/repos.js';
 import { initPlans, loadPlansSidebar, showPlansHome, loadPlan } from '/js/plans.js';
