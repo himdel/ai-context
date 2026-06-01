@@ -11,63 +11,46 @@ and starting new sessions.
 ## Features
 
 ### Conversations
-- Full-text search with SQLite-backed index (with clear button)
-- Markdown rendering with syntax highlighting and Mermaid diagram rendering
-- Rich code blocks: LaTeX math, Graphviz, Vega-Lite charts, GeoJSON maps, ABC music notation (with audio playback), Markmap mind maps, PlantUML diagrams
-- Tool use blocks with inline results, thinking blocks, subagent threads
-- Edit blocks rendered as diffs
-- Skill invocations collapsed under their prompt
-- Timestamps, copy-as-markdown, expand/collapse all
+- Full-text search with SQLite-backed index
+- Markdown rendering with syntax highlighting, Mermaid diagrams
+- Rich code blocks: LaTeX, Graphviz, Vega-Lite, GeoJSON, ABC notation (with audio), Markmap, PlantUML
+- Tool use, thinking, subagent, and workflow blocks with inline results
+- Edit blocks rendered as diffs, skill invocations collapsed under prompt
 - Resume, fork, or start new sessions from the UI
-- Active session indicator (green dot + favicon badge)
-- Status bar showing running tasks and agents
-- Auto-refresh on tab focus, live tailing for active conversations
+- Active session indicator, status bar with running tasks and agents
+- Deleted logs stay visible from DB cache, live tailing for active sessions
 
 ### Plans
 - Grouped by repo, linked back to originating conversation
 - Full markdown rendering with Execute button to launch a new session
 
 ### Skills
-- Browse both commands (.claude/commands/) and skills (.claude/skills/) with kind badges
-- Create, edit, and delete with type picker (command vs skill format)
-- Frontmatter rendered as structured metadata above skill body
-- Open in $EDITOR, run button with repo chooser for global skills
-- Recent invocations with links to originating conversations
+- Browse commands, skills, and saved workflows
+- Create, edit, and delete with frontmatter metadata and syntax highlighting
+- Open in $EDITOR, run with repo chooser, recent invocations
 
 ### Memory
-- Browse, edit, and delete persistent memory items (with $EDITOR support)
-- Type badges (user, feedback, project, reference)
-- MEMORY.md index with navigable links
-- Linked to originating conversation and project
+- Browse, edit, and delete persistent memory items ($EDITOR support)
+- MEMORY.md index with navigable links, linked to originating conversations
 
 ### Repos
-- Browse CLAUDE.md and CLAUDE.local.md files per repo
-- Shows files from parent directories, repo root, subdirectories, and global ~/.claude/CLAUDE.md
-- Expandable inline preview with file size, line count, and modified date
-- Open in $EDITOR
+- Browse CLAUDE.md files per repo (parent dirs, root, subdirs, global)
+- Expandable inline preview with metadata, open in $EDITOR
 
 ### Cronjobs
-- Schedule skills to run automatically via cron expressions
-- Per-repo targeting with skill and repo dropdowns
-- Next run preview with human-readable schedule summaries
-- Manual "Run Now" trigger from the UI
-- Run history with links to spawned conversations
+- Schedule skills to run on cron with per-repo targeting
+- Next run preview, manual "Run Now", run history with conversation links
 - Create cronjobs directly from a skill's detail page
-- Background scheduler with 60s polling
 
 ### Git & forge integration
 - GitHub, GitLab, and Gitea/Codeberg support
-- PR/MR detection for current branch (status shown in header)
-- Autolinks for GitHub issues (#123) and configurable Jira-style references
-- Clickable commit SHAs — opens `git show` locally, with forge link
-- Deterministic repo icon + color tint per repository
+- PR/MR detection for current branch, autolinks for issues and Jira references
+- Clickable commit SHAs, deterministic repo icon + color tint
 
 ### Home screen
 - Conversations grouped by repo with active/recent sections
 - Tabs for Conversations, Plans, Skills, Cronjobs, Memory, Repos, Activity
-- Activity heatmap showing conversation frequency over time
-- New session launcher per repo
-- SPA with direct URL routing and browser history
+- Activity heatmap, new session launcher, SPA with direct URL routing
 
 ## Screenshots
 
