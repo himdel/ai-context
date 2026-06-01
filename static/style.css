@@ -982,6 +982,10 @@ details > summary {
   background: #d1fae5;
   color: #065f46;
 }
+.skill-kind-badge.kind-workflow {
+  background: #fef3c7;
+  color: #92400e;
+}
 
 .skill-frontmatter {
   background: #f8f9fb;

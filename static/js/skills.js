@@ -2,6 +2,12 @@ import { esc, formatDate, openInEditor, timeAgo } from '/js/utils.js';
 import { currentCwd } from '/js/forge.js';
 import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 
+function kindBadge(kind) {
+  if (kind === 'skill') return '<span class="skill-kind-badge kind-skill">skill</span>';
+  if (kind === 'workflow') return '<span class="skill-kind-badge kind-workflow">workflow</span>';
+  return '<span class="skill-kind-badge">cmd</span>';
+}
+
 let skillListEl, mainEl, setActiveScreen, closeConversation, RepoIdentity, loadConversation;
 let getActiveSkillId;
 let showCreateCronjobForm, loadCronjob;
@@ -39,10 +45,9 @@ export function loadSkillsSidebar() {
 
         var scopeLabel = s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/');
         var skrid = s.scope !== 'global' ? RepoIdentity.get(s.scope) : null;
-        var kindBadge = s.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
         div.innerHTML =
           '<div class="skill-scope">' + (skrid ? skrid.iconSm : '') + esc(scopeLabel) + '</div>' +
-          '<div class="skill-name">/' + esc(s.name) + kindBadge + '</div>';
+          '<div class="skill-name">' + (s.kind === 'workflow' ? '' : '/') + esc(s.name) + kindBadge(s.kind) + '</div>';
 
         div.onclick = function() { loadSkill(s.id); };
         skillListEl.appendChild(div);
@@ -106,8 +111,7 @@ export function showSkillsHome() {
           var meta = '<div class="conv-meta">';
           if (s.modified) meta += '<span>' + esc(formatDate(s.modified)) + '</span>';
           meta += '</div>';
-          var homeKindBadge = s.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
-          item.innerHTML = meta + '<div>/' + esc(s.name) + homeKindBadge + '</div>';
+          item.innerHTML = meta + '<div>' + (s.kind === 'workflow' ? '' : '/') + esc(s.name) + kindBadge(s.kind) + '</div>';
           item.onclick = function() { loadSkill(s.id); };
           list.appendChild(item);
         });
@@ -151,8 +155,7 @@ export function loadSkill(skillId, pushHistory) {
         header.style.borderLeft = '3px solid #0d9488';
         header.style.paddingLeft = '12px';
         var scopeLabel = data.scope === 'global' ? 'Global' : data.scope.replace(/^\/home\/[^/]+\//, '~/');
-        var detailKindBadge = data.kind === 'skill' ? '<span class="skill-kind-badge kind-skill">skill</span>' : '<span class="skill-kind-badge">cmd</span>';
-        header.innerHTML = '<span>/' + esc(data.name) + detailKindBadge + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
+        header.innerHTML = '<span>' + (data.kind === 'workflow' ? '' : '/') + esc(data.name) + kindBadge(data.kind) + '</span><span>' + esc(scopeLabel) + '</span><span style="font-family:monospace;font-size:11px">' + esc(data.path) + '</span>';
         mainEl.appendChild(header);
 
         var view = document.createElement('div');
@@ -220,6 +223,9 @@ export function loadSkill(skillId, pushHistory) {
         };
         actions.appendChild(deleteBtn);
 
+        if (data.kind === 'workflow') {
+          // no Run/Cron for workflows
+        } else {
         var runWrap = document.createElement('div');
         runWrap.className = 'run-dropdown';
         var runBtn = document.createElement('button');
@@ -344,45 +350,88 @@ export function loadSkill(skillId, pushHistory) {
         cronWrap.appendChild(cronBtn);
         cronWrap.appendChild(cronPanel);
         actions.appendChild(cronWrap);
+        }
 
         view.appendChild(actions);
 
-        var body = data.content;
-        var fmMatch = body.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-        if (fmMatch) {
-          var fmBlock = document.createElement('dl');
-          fmBlock.className = 'skill-frontmatter';
-          var fmLines = fmMatch[1].split('\n');
-          var currentKey = '';
-          var currentVal = '';
-          var flush = function() {
-            if (!currentKey) return;
-            var dt = document.createElement('dt');
-            dt.textContent = currentKey;
-            var dd = document.createElement('dd');
-            dd.textContent = currentVal.trim();
-            fmBlock.appendChild(dt);
-            fmBlock.appendChild(dd);
-          };
-          fmLines.forEach(function(line) {
-            var kv = line.match(/^([a-zA-Z_-]+)\s*:\s*(.*)$/);
-            if (kv && !line.match(/^\s/)) {
-              flush();
-              currentKey = kv[1];
-              currentVal = kv[2].replace(/^>-?\s*$/, '');
-            } else {
-              currentVal += ' ' + line.trim();
+        if (data.kind === 'workflow') {
+          var meta = null;
+          var metaMatch = data.content.match(/export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\})/);
+          if (metaMatch) {
+            try {
+              var cleaned = metaMatch[1]
+                .replace(/,(\s*[}\]])/g, '$1')
+                .replace(/'/g, '"')
+                .replace(/([{,])\s*(\w+)\s*:/g, '$1 "$2":');
+              meta = JSON.parse(cleaned);
+            } catch (e) { /* ignore */ }
+          }
+          if (meta) {
+            var fmBlock = document.createElement('dl');
+            fmBlock.className = 'skill-frontmatter';
+            if (meta.description) {
+              var dt = document.createElement('dt'); dt.textContent = 'description';
+              var dd = document.createElement('dd'); dd.textContent = meta.description;
+              fmBlock.appendChild(dt); fmBlock.appendChild(dd);
             }
-          });
-          flush();
-          view.appendChild(fmBlock);
-          body = fmMatch[2];
-        }
+            if (meta.whenToUse) {
+              var dt2 = document.createElement('dt'); dt2.textContent = 'whenToUse';
+              var dd2 = document.createElement('dd'); dd2.textContent = meta.whenToUse;
+              fmBlock.appendChild(dt2); fmBlock.appendChild(dd2);
+            }
+            if (meta.phases && meta.phases.length) {
+              var dt3 = document.createElement('dt'); dt3.textContent = 'phases';
+              var dd3 = document.createElement('dd');
+              dd3.innerHTML = meta.phases.map(function(p) {
+                return '<div><strong>' + esc(p.title || '') + '</strong>' +
+                  (p.detail ? ' — ' + esc(p.detail) : '') + '</div>';
+              }).join('');
+              fmBlock.appendChild(dt3); fmBlock.appendChild(dd3);
+            }
+            view.appendChild(fmBlock);
+          }
+          var contentBlock = document.createElement('div');
+          contentBlock.className = 'block text';
+          contentBlock.innerHTML = '<pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;font-size:12px">' + esc(data.content) + '</pre>';
+          view.appendChild(contentBlock);
+        } else {
+          var body = data.content;
+          var fmMatch = body.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+          if (fmMatch) {
+            var fmBlock = document.createElement('dl');
+            fmBlock.className = 'skill-frontmatter';
+            var fmLines = fmMatch[1].split('\n');
+            var currentKey = '';
+            var currentVal = '';
+            var flush = function() {
+              if (!currentKey) return;
+              var dt = document.createElement('dt');
+              dt.textContent = currentKey;
+              var dd = document.createElement('dd');
+              dd.textContent = currentVal.trim();
+              fmBlock.appendChild(dt);
+              fmBlock.appendChild(dd);
+            };
+            fmLines.forEach(function(line) {
+              var kv = line.match(/^([a-zA-Z_-]+)\s*:\s*(.*)$/);
+              if (kv && !line.match(/^\s/)) {
+                flush();
+                currentKey = kv[1];
+                currentVal = kv[2].replace(/^>-?\s*$/, '');
+              } else {
+                currentVal += ' ' + line.trim();
+              }
+            });
+            flush();
+            view.appendChild(fmBlock);
+            body = fmMatch[2];
+          }
 
-        var contentBlock = document.createElement('div');
-        contentBlock.className = 'block text';
-        contentBlock.innerHTML = renderMarkdown(body);
-        view.appendChild(contentBlock);
+          var contentBlock = document.createElement('div');
+          contentBlock.className = 'block text';
+          contentBlock.innerHTML = renderMarkdown(body);
+          view.appendChild(contentBlock);
+        }
 
         var invocSection = document.createElement('div');
         invocSection.className = 'skill-invocations';

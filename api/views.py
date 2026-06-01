@@ -1228,7 +1228,7 @@ def _is_valid_skill_path(path):
         return False
     # Use unresolved path so symlinks (e.g. .claude/skills -> ../.agents/skills) still match
     parts = path.parts
-    for subdir in ("commands", "skills"):
+    for subdir in ("commands", "skills", "workflows"):
         global_dir = settings.CLAUDE_DIR / subdir
         if str(path).startswith(str(global_dir) + "/"):
             return True
@@ -1236,7 +1236,7 @@ def _is_valid_skill_path(path):
         if (
             part == ".claude"
             and i + 1 < len(parts)
-            and parts[i + 1] in ("commands", "skills")
+            and parts[i + 1] in ("commands", "skills", "workflows")
         ):
             return True
     return False
@@ -1359,9 +1359,29 @@ def skills_list(request):
                 }
             )
 
+    def _scan_workflows_dir(workflows_dir, scope):
+        if not workflows_dir.is_dir():
+            return
+        for js_file in sorted(workflows_dir.glob("*.js")):
+            try:
+                mtime = js_file.stat().st_mtime
+            except OSError:
+                continue
+            results.append(
+                {
+                    "id": _path_id(js_file),
+                    "name": js_file.stem,
+                    "path": str(js_file),
+                    "scope": scope,
+                    "kind": "workflow",
+                    "modified": datetime.fromtimestamp(mtime).isoformat(),
+                }
+            )
+
     # Global
     _scan_commands_dir(settings.CLAUDE_DIR / "commands", "global")
     _scan_skills_dir(settings.CLAUDE_DIR / "skills", "global")
+    _scan_workflows_dir(settings.CLAUDE_DIR / "workflows", "global")
 
     # Per-repo
     for repo in _discover_repos():
@@ -1404,10 +1424,11 @@ def skill_detail(request, skill_id):
     # Determine scope and kind (use unresolved path for symlink compat)
     scope = "global"
     kind = "command"
-    for subdir in ("commands", "skills"):
+    kind_map = {"commands": "command", "skills": "skill", "workflows": "workflow"}
+    for subdir in ("commands", "skills", "workflows"):
         global_dir = settings.CLAUDE_DIR / subdir
         if str(path).startswith(str(global_dir) + "/"):
-            kind = "skill" if subdir == "skills" else "command"
+            kind = kind_map[subdir]
             scope = "global"
             break
     else:
@@ -1416,10 +1437,10 @@ def skill_detail(request, skill_id):
             if (
                 part == ".claude"
                 and i + 1 < len(parts)
-                and parts[i + 1] in ("commands", "skills")
+                and parts[i + 1] in ("commands", "skills", "workflows")
             ):
                 scope = str(Path(*parts[:i]))
-                kind = "skill" if parts[i + 1] == "skills" else "command"
+                kind = kind_map.get(parts[i + 1], "command")
                 break
 
     name = path.parent.name if kind == "skill" else path.stem
