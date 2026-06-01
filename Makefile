@@ -4,10 +4,12 @@ run:
 lint:
 	uv run ruff check
 	uv run ruff format --check
+	./node_modules/.bin/prettier --check static/
 
 fix:
 	uv run ruff check --fix
 	uv run ruff format
+	./node_modules/.bin/prettier --write static/
 
 migrate:
 	uv run python manage.py migrate
