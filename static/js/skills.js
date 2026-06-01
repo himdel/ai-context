@@ -1,4 +1,4 @@
-import { esc, formatDate, openInEditor, timeAgo } from '/js/utils.js';
+import { esc, formatDate, loadCSS, loadScript, openInEditor, timeAgo } from '/js/utils.js';
 import { currentCwd } from '/js/forge.js';
 import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 
@@ -388,8 +388,20 @@ export function loadSkill(skillId, pushHistory) {
           }
           var contentBlock = document.createElement('div');
           contentBlock.className = 'block text';
-          contentBlock.innerHTML = '<pre style="background:#f5f5f5;padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;font-size:12px">' + esc(data.content) + '</pre>';
+          var pre = document.createElement('pre');
+          pre.style.cssText = 'background:#f5f5f5;padding:12px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;font-size:12px';
+          var code = document.createElement('code');
+          code.className = 'language-javascript';
+          code.textContent = data.content;
+          pre.appendChild(code);
+          contentBlock.appendChild(pre);
           view.appendChild(contentBlock);
+          Promise.all([
+            loadScript('https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11/highlight.min.js'),
+            loadCSS('https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11/styles/github.min.css'),
+          ]).then(function() {
+            hljs.highlightElement(code);
+          });
         } else {
           var body = data.content;
           var fmMatch = body.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
