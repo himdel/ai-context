@@ -1,7 +1,7 @@
 var _loadCache = {};
 export function loadScript(url) {
   if (!_loadCache[url]) {
-    _loadCache[url] = new Promise(function(resolve, reject) {
+    _loadCache[url] = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
       s.src = url;
       s.onload = resolve;
@@ -23,7 +23,7 @@ export function loadCSS(url) {
 }
 
 export function isNearBottom(el, threshold) {
-  return (el.scrollHeight - el.scrollTop - el.clientHeight) < (threshold || 150);
+  return el.scrollHeight - el.scrollTop - el.clientHeight < (threshold || 150);
 }
 
 export function timeAgo(iso) {
@@ -39,7 +39,9 @@ export function timeAgo(iso) {
     var days = Math.floor(hours / 24);
     if (days < 30) return days + 'd ago';
     return Math.floor(days / 30) + 'mo ago';
-  } catch(e) { return ''; }
+  } catch (e) {
+    return '';
+  }
 }
 
 export function timeUntil(iso) {
@@ -53,10 +55,13 @@ export function timeUntil(iso) {
     if (mins < 60) return 'in ' + mins + 'm';
     var hours = Math.floor(mins / 60);
     var remMins = mins % 60;
-    if (hours < 24) return 'in ' + hours + 'h' + (remMins ? ' ' + remMins + 'm' : '');
+    if (hours < 24)
+      return 'in ' + hours + 'h' + (remMins ? ' ' + remMins + 'm' : '');
     var days = Math.floor(hours / 24);
     return 'in ' + days + 'd ' + (hours % 24) + 'h';
-  } catch(e) { return ''; }
+  } catch (e) {
+    return '';
+  }
 }
 
 export function formatDuration(startIso, endIso) {
@@ -70,29 +75,55 @@ export function formatDuration(startIso, endIso) {
     const remMins = mins % 60;
     if (hours < 24) return hours + 'h' + (remMins ? ' ' + remMins + 'm' : '');
     return Math.floor(hours / 24) + 'd ' + (hours % 24) + 'h';
-  } catch(e) { return ''; }
+  } catch (e) {
+    return '';
+  }
 }
 
 export function formatDate(iso) {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-CA') + ' ' + d.toLocaleTimeString('en-CA', {hour: '2-digit', minute: '2-digit', hour12: false});
-  } catch(e) { return iso; }
+    return (
+      d.toLocaleDateString('en-CA') +
+      ' ' +
+      d.toLocaleTimeString('en-CA', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    );
+  } catch (e) {
+    return iso;
+  }
 }
 
 export function formatTime(iso) {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-CA') + ' ' + d.toLocaleTimeString('en-CA', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
-  } catch(e) { return ''; }
+    return (
+      d.toLocaleDateString('en-CA') +
+      ' ' +
+      d.toLocaleTimeString('en-CA', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+    );
+  } catch (e) {
+    return '';
+  }
 }
 
 export function openInEditor(filePath) {
   var dir = filePath.replace(/\/[^/]+$/, '');
   fetch('/api/terminal/run/', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cmd: ['sh', '-c', '"${EDITOR:-vi}" "$1"', '--', filePath], cwd: dir})
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cmd: ['sh', '-c', '"${EDITOR:-vi}" "$1"', '--', filePath],
+      cwd: dir,
+    }),
   });
 }
 

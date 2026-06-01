@@ -1,7 +1,9 @@
 export function showActivityHome() {
   fetch('/api/stats/')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (data) {
       var container = document.getElementById('home-cols');
       if (!container) return;
 
@@ -12,18 +14,20 @@ export function showActivityHome() {
       allOpt.value = '';
       allOpt.textContent = 'All repos';
       select.appendChild(allOpt);
-      data.projects.forEach(function(p) {
+      data.projects.forEach(function (p) {
         var opt = document.createElement('option');
         opt.value = p;
         opt.textContent = p.replace(/^\/home\/[^/]+\//, '~/');
         select.appendChild(opt);
       });
-      select.onchange = function() {
+      select.onchange = function () {
         var url = '/api/stats/';
         if (select.value) url += '?repo=' + encodeURIComponent(select.value);
         fetch(url)
-          .then(function(r) { return r.json(); })
-          .then(function(newData) {
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (newData) {
             renderHeatmap(container, newData.days);
           });
       };
@@ -39,11 +43,20 @@ function renderHeatmap(container, days) {
   if (existing) existing.remove();
 
   var countMap = {};
-  days.forEach(function(d) {
+  days.forEach(function (d) {
     countMap[d.date] = d.count;
   });
 
-  var counts = days.map(function(d) { return d.count; }).filter(function(c) { return c > 0; }).sort(function(a, b) { return a - b; });
+  var counts = days
+    .map(function (d) {
+      return d.count;
+    })
+    .filter(function (c) {
+      return c > 0;
+    })
+    .sort(function (a, b) {
+      return a - b;
+    });
   var q1 = counts[Math.floor(counts.length * 0.25)] || 1;
   var q2 = counts[Math.floor(counts.length * 0.5)] || q1;
   var q3 = counts[Math.floor(counts.length * 0.75)] || q2;
@@ -71,15 +84,36 @@ function renderHeatmap(container, days) {
     if (dayIdx === 0 || weeks.length === 0) {
       weeks.push([]);
     }
-    var ds = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    var ds =
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0');
     weeks[weeks.length - 1][dayIdx] = { dateStr: ds, count: countMap[ds] || 0 };
     d.setDate(d.getDate() + 1);
   }
 
   var numWeeks = weeks.length;
-  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
 
-  var monthsHtml = '<div class="heatmap-months" style="grid-template-columns: 30px repeat(' + numWeeks + ', 14px);">';
+  var monthsHtml =
+    '<div class="heatmap-months" style="grid-template-columns: 30px repeat(' +
+    numWeeks +
+    ', 14px);">';
   monthsHtml += '<span></span>';
   var lastMonth = -1;
   for (var w = 0; w < numWeeks; w++) {
@@ -98,8 +132,11 @@ function renderHeatmap(container, days) {
   }
   monthsHtml += '</div>';
 
-  var dayLabels = ['Mon','','Wed','','Fri','','Sun'];
-  var gridHtml = '<div class="heatmap" style="grid-template-columns: 30px repeat(' + numWeeks + ', 14px); grid-template-rows: repeat(7, 14px);">';
+  var dayLabels = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'];
+  var gridHtml =
+    '<div class="heatmap" style="grid-template-columns: 30px repeat(' +
+    numWeeks +
+    ', 14px); grid-template-rows: repeat(7, 14px);">';
 
   for (var row = 0; row < 7; row++) {
     gridHtml += '<div class="heatmap-day-label">' + dayLabels[row] + '</div>';
@@ -107,15 +144,24 @@ function renderHeatmap(container, days) {
       var cell = weeks[col] && weeks[col][row];
       if (cell) {
         var level = getLevel(cell.count);
-        gridHtml += '<div class="heatmap-cell" data-date="' + cell.dateStr + '" data-count="' + cell.count + '"' + (level ? ' data-level="' + level + '"' : '') + '></div>';
+        gridHtml +=
+          '<div class="heatmap-cell" data-date="' +
+          cell.dateStr +
+          '" data-count="' +
+          cell.count +
+          '"' +
+          (level ? ' data-level="' + level + '"' : '') +
+          '></div>';
       } else {
-        gridHtml += '<div class="heatmap-cell" style="visibility:hidden"></div>';
+        gridHtml +=
+          '<div class="heatmap-cell" style="visibility:hidden"></div>';
       }
     }
   }
   gridHtml += '</div>';
 
-  var legendHtml = '<div class="heatmap-legend">Less <div class="heatmap-cell"></div><div class="heatmap-cell" data-level="1"></div><div class="heatmap-cell" data-level="2"></div><div class="heatmap-cell" data-level="3"></div><div class="heatmap-cell" data-level="4"></div> More</div>';
+  var legendHtml =
+    '<div class="heatmap-legend">Less <div class="heatmap-cell"></div><div class="heatmap-cell" data-level="1"></div><div class="heatmap-cell" data-level="2"></div><div class="heatmap-cell" data-level="3"></div><div class="heatmap-cell" data-level="4"></div> More</div>';
 
   var wrapper = document.createElement('div');
   wrapper.className = 'heatmap-wrapper';
@@ -123,7 +169,7 @@ function renderHeatmap(container, days) {
   container.appendChild(wrapper);
 
   var tooltip = null;
-  wrapper.addEventListener('mouseover', function(e) {
+  wrapper.addEventListener('mouseover', function (e) {
     var cell = e.target.closest('.heatmap-cell[data-date]');
     if (!cell) return;
     if (!tooltip) {
@@ -133,18 +179,20 @@ function renderHeatmap(container, days) {
     }
     var count = cell.dataset.count;
     var date = cell.dataset.date;
-    tooltip.textContent = count + ' message' + (count === '1' ? '' : 's') + ' on ' + date;
+    tooltip.textContent =
+      count + ' message' + (count === '1' ? '' : 's') + ' on ' + date;
     tooltip.style.display = 'block';
     var rect = cell.getBoundingClientRect();
-    tooltip.style.left = rect.left + rect.width / 2 - tooltip.offsetWidth / 2 + 'px';
+    tooltip.style.left =
+      rect.left + rect.width / 2 - tooltip.offsetWidth / 2 + 'px';
     tooltip.style.top = rect.top - tooltip.offsetHeight - 6 + 'px';
   });
-  wrapper.addEventListener('mouseout', function(e) {
+  wrapper.addEventListener('mouseout', function (e) {
     if (tooltip && !e.target.closest('.heatmap-cell[data-date]')) {
       tooltip.style.display = 'none';
     }
   });
-  wrapper.addEventListener('mouseleave', function() {
+  wrapper.addEventListener('mouseleave', function () {
     if (tooltip) tooltip.style.display = 'none';
   });
 }

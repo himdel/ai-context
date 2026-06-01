@@ -1,1051 +1,1475 @@
 <!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<title>contexts</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>C</text></svg>">
-<link rel="stylesheet" href="/style.css">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-</head>
-<body>
-
-<div id="sidebar">
-  <div class="sidebar-section" id="conv-section">
-    <h2><span class="toggle">&#x25BC;</span>Conversations <span id="reload-list-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload list">&#x21bb;</span><span id="new-session-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New session">+</span></h2>
-    <div class="search-wrap"><input type="text" id="conv-search" placeholder="Search conversations..."><button id="search-clear" title="Clear search">&times;</button></div>
-    <div class="sidebar-list" id="conversation-list"></div>
-  </div>
-  <div class="sidebar-section collapsed" id="plans-section">
-    <h2><span class="toggle">&#x25BC;</span>Plans
-      <span id="reload-plans-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload plans">&#x21bb;</span><span id="new-plan-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New plan">+<div id="new-plan-picker" class="sidebar-dropdown"></div></span>
-    </h2>
-    <div class="sidebar-list" id="plan-list"></div>
-  </div>
-  <div class="sidebar-section collapsed" id="skills-section">
-    <h2><span class="toggle">&#x25BC;</span>Skills
-      <span id="reload-skills-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload skills">&#x21bb;</span><span id="new-skill-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New skill">+</span>
-    </h2>
-    <div class="sidebar-list" id="skill-list"></div>
-  </div>
-  <div class="sidebar-section collapsed" id="cronjobs-section">
-    <h2><span class="toggle">&#x25BC;</span>Cronjobs
-      <span id="reload-cronjobs-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload cronjobs">&#x21bb;</span><span id="new-cronjob-btn" style="float:right;cursor:pointer;font-size:14px;color:#888;margin-right:8px" title="New cronjob">+</span>
-    </h2>
-    <div class="sidebar-list" id="cronjob-list"></div>
-  </div>
-  <div class="sidebar-section collapsed" id="memories-section">
-    <h2><span class="toggle">&#x25BC;</span>Memory
-      <span id="reload-memories-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload memories">&#x21bb;</span>
-    </h2>
-    <div class="sidebar-list" id="memory-list"></div>
-  </div>
-  <div class="sidebar-section collapsed" id="repos-section">
-    <h2><span class="toggle">&#x25BC;</span>Repos
-      <span id="reload-repos-btn" style="float:right;cursor:pointer;font-size:14px;color:#888" title="Reload repos">&#x21bb;</span>
-    </h2>
-    <div class="sidebar-list" id="repo-list"></div>
-  </div>
-</div>
-
-<div id="main-wrap">
-<div id="main" tabindex="-1" style="outline:none"></div>
-</div>
-
-<script type="module">
-import { esc, formatDuration, formatDate, formatTime, openInEditor, isNearBottom } from '/js/utils.js';
-import { showActivityHome } from '/js/activity.js';
-import { currentForgeRepo, currentForgeOrigin, currentPR, currentCwd, forgeRepoUrl, forgeBranchUrl, setForgeAutolink, setCurrentCwd } from '/js/forge.js';
-import { initRender, initAutolinks, renderMarkdown, renderBlock, renderRichBlocks, taskSubjects, updateStatusBar, isSkillPrompt, renderSkillPrompt, messageToMarkdown } from '/js/render.js';
-import { initMemories, loadMemoriesSidebar, showMemoriesHome, loadMemory } from '/js/memories.js';
-import { initRepos, loadReposSidebar, showReposHome, loadRepo } from '/js/repos.js';
-import { initPlans, loadPlansSidebar, showPlansHome, loadPlan } from '/js/plans.js';
-import { initSkills, loadSkillsSidebar, showSkillsHome, loadSkill, showCreateSkillForm, skillDisplayUrl, loadSkillByUrl, navigateToSkillByName } from '/js/skills.js';
-import { initCronjobs, loadCronjobsSidebar, showCronjobsHome, loadCronjob, showCreateCronjobForm } from '/js/cronjobs.js';
-
-const listEl = document.getElementById('conversation-list');
-const planListEl = document.getElementById('plan-list');
-const skillListEl = document.getElementById('skill-list');
-const cronjobListEl = document.getElementById('cronjob-list');
-const memoryListEl = document.getElementById('memory-list');
-const repoListEl = document.getElementById('repo-list');
-const mainEl = document.getElementById('main');
-const mainWrapEl = document.getElementById('main-wrap');
-const reloadListBtn = document.getElementById('reload-list-btn');
-let activeId = null;
-let activePlanId = null;
-let activeSkillId = null;
-let activeCronjobId = null;
-let activeMemoryId = null;
-let activeRepoPath = null;
-let activeNewScreen = null;
-let currentMessages = null;
-
-var screenSections = {
-  conversation: 'conv-section',
-  plan: 'plans-section',
-  skill: 'skills-section',
-  cronjob: 'cronjobs-section',
-  memory: 'memories-section',
-  repo: 'repos-section',
-};
-
-var screenTypes = {
-  activeId: 'conversation',
-  activePlanId: 'plan',
-  activeSkillId: 'skill',
-  activeCronjobId: 'cronjob',
-  activeMemoryId: 'memory',
-  activeRepoPath: 'repo',
-};
-
-function setActiveScreen(opts) {
-  stopFollowing();
-  activeId = opts.activeId || null;
-  activePlanId = opts.activePlanId || null;
-  activeSkillId = opts.activeSkillId || null;
-  activeCronjobId = opts.activeCronjobId || null;
-  activeMemoryId = opts.activeMemoryId || null;
-  activeRepoPath = opts.activeRepoPath || null;
-  activeNewScreen = opts.activeNewScreen || null;
-
-  var type = opts.activeNewScreen || null;
-  for (var k in screenTypes) {
-    if (opts[k]) { type = screenTypes[k]; break; }
-  }
-  setViewType(type);
-  clearSidebarActive();
-  if (type) {
-    var expandId = screenSections[type];
-    Object.values(screenSections).forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.classList.toggle('collapsed', id !== expandId);
-    });
-  }
-}
-
-function hasActiveScreen() {
-  return !!(activeId || activePlanId || activeSkillId || activeCronjobId || activeMemoryId || activeRepoPath || activeNewScreen);
-}
-
-function clearSidebarActive() {
-  document.querySelectorAll('.conversation-item, .plan-item, .skill-item, .cronjob-item, .memory-item, .repo-item').forEach(el => el.classList.remove('active'));
-}
-
-function setViewType(type) {
-  mainEl.classList.remove('view-conversation', 'view-plan', 'view-skill', 'view-cronjob', 'view-memory', 'view-repo', 'view-activity');
-  if (type) mainEl.classList.add('view-' + type);
-}
-
-// Repo visual identity — deterministic icon + color per repo path
-var RepoIdentity = {
-  _cache: {},
-  _hash: function(str) {
-    var h = 0x811c9dc5;
-    for (var i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return h >>> 0;
-  },
-  _icon: function(hash, hue, size) {
-    var color = 'hsl(' + hue + ',55%,45%)';
-    var bg = 'hsl(' + hue + ',30%,90%)';
-    var bits = hash >>> 8;
-    var rects = '';
-    for (var r = 0; r < 5; r++) {
-      for (var c = 0; c < 3; c++) {
-        if ((bits >> (r * 3 + c)) & 1) {
-          rects += '<rect x="' + c + '" y="' + r + '" width="1" height="1" fill="' + color + '"/>';
-          if (c < 2) rects += '<rect x="' + (4 - c) + '" y="' + r + '" width="1" height="1" fill="' + color + '"/>';
-        }
-      }
-    }
-    return '<span class="repo-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" width="' + size + '" height="' + size + '" style="background:' + bg + ';border-radius:2px">' + rects + '</svg></span>';
-  },
-  get: function(repoPath) {
-    if (!repoPath) return null;
-    if (this._cache[repoPath]) return this._cache[repoPath];
-    var hash = this._hash(repoPath);
-    var hue = (hash & 0xFF) * 360 / 256;
-    var id = {
-      color: 'hsl(' + hue + ',55%,45%)',
-      colorLight: 'hsl(' + hue + ',40%,93%)',
-      colorBorder: 'hsl(' + hue + ',55%,55%)',
-      colorText: 'hsl(' + hue + ',50%,35%)',
-      iconSm: this._icon(hash, hue, 16),
-      iconMd: this._icon(hash, hue, 24),
-    };
-    this._cache[repoPath] = id;
-    return id;
-  }
-};
-
-// Sidebar section accordion
-document.querySelectorAll('.sidebar-section h2').forEach(function(h2) {
-  h2.addEventListener('click', function(e) {
-    if (e.target !== h2 && e.target.closest('span[id]')) return;
-    var section = h2.closest('.sidebar-section');
-    var wasCollapsed = section.classList.contains('collapsed');
-    if (wasCollapsed) {
-      section.classList.remove('collapsed');
-      // Load plans on first expand
-      if (section.id === 'plans-section' && !planListEl.children.length) {
-        loadPlansSidebar();
-      }
-      // Load skills on first expand
-      if (section.id === 'skills-section' && !skillListEl.children.length) {
-        loadSkillsSidebar();
-      }
-      // Load cronjobs on first expand
-      if (section.id === 'cronjobs-section' && !cronjobListEl.children.length) {
-        loadCronjobsSidebar();
-      }
-      // Load memories on first expand
-      if (section.id === 'memories-section' && !memoryListEl.children.length) {
-        loadMemoriesSidebar();
-      }
-      // Load repos on first expand
-      if (section.id === 'repos-section' && !repoListEl.children.length) {
-        loadReposSidebar();
-      }
-    } else {
-      section.classList.add('collapsed');
-    }
-  });
-});
-let followInterval = null;
-let followConvId = null;
-let renderedMsgCount = 0;
-
-// Treat newlines as <br>, make all links open in new tab
-marked.use({
-  breaks: true,
-  hooks: {
-    postprocess: function(html) {
-      return html.replace(/<a href="/g, '<a target="_blank" rel="noopener noreferrer" href="');
-    },
-  },
-});
-
-reloadListBtn.onclick = function(e) {
-  e.stopPropagation();
-  loadSidebar();
-};
-
-document.getElementById('reload-skills-btn').onclick = function(e) {
-  e.stopPropagation();
-  loadSkillsSidebar();
-};
-
-document.getElementById('reload-cronjobs-btn').onclick = function(e) {
-  e.stopPropagation();
-  loadCronjobsSidebar();
-};
-
-document.getElementById('new-cronjob-btn').onclick = function(e) {
-  e.stopPropagation();
-  showCreateCronjobForm();
-};
-
-document.getElementById('reload-memories-btn').onclick = function(e) {
-  e.stopPropagation();
-  loadMemoriesSidebar();
-};
-
-document.getElementById('reload-repos-btn').onclick = function(e) {
-  e.stopPropagation();
-  loadReposSidebar();
-};
-
-function showCreateSessionForm(pushHistory) {
-  setActiveScreen({ activeNewScreen: 'conversation' });
-  if (pushHistory !== false) {
-    history.pushState(null, '', '/conversations/new');
-  }
-  mainEl.innerHTML =
-    '<div class="new-session-form">' +
-      '<h3 style="margin-bottom:12px">New session</h3>' +
-      '<textarea id="ns-prompt" placeholder="Enter your prompt..."></textarea>' +
-      '<input type="text" id="ns-cwd" placeholder="Working directory (optional)">' +
-      '<div class="cwd-buttons" id="ns-cwds"></div>' +
-      '<button id="ns-launch">Launch</button>' +
-      '<span class="form-status" id="ns-status"></span>' +
-    '</div>';
-  document.getElementById('ns-prompt').focus();
-
-  // Populate recent cwds from conversations
-  fetch('/api/conversations/')
-    .then(r => r.json())
-    .then(conversations => {
-      var seen = {};
-      var cwds = [];
-      conversations.forEach(c => {
-        var p = c.project;
-        if (p && !seen[p]) {
-          seen[p] = true;
-          cwds.push(p);
-        }
-      });
-      var container = document.getElementById('ns-cwds');
-      if (!container) return;
-      cwds.forEach(cwd => {
-        var btn = document.createElement('button');
-        btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
-        btn.title = cwd;
-        btn.onclick = function() { document.getElementById('ns-cwd').value = cwd; };
-        container.appendChild(btn);
-      });
-    });
-
-  document.getElementById('ns-launch').onclick = function() {
-    var prompt = document.getElementById('ns-prompt').value.trim();
-    document.getElementById('ns-status').textContent = 'Launching...';
-    fetch('/api/sessions/new/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt: prompt, cwd: document.getElementById('ns-cwd').value.trim()})
-    })
-    .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-    .then(({ok, data}) => {
-      var statusEl = document.getElementById('ns-status');
-      if (!ok) { statusEl.textContent = data.error || 'Error'; return; }
-      statusEl.textContent = 'Launched, waiting for session...';
-      // Poll for the new conversation to appear
-      var knownIds = new Set();
-      document.querySelectorAll('.conversation-item').forEach(el => knownIds.add(el.dataset.id));
-      var attempts = 0;
-      var poll = setInterval(function() {
-        attempts++;
-        if (attempts > 30) { clearInterval(poll); statusEl.textContent = 'Launched (session not yet visible)'; loadSidebar(); return; }
-        fetch('/api/conversations/')
-          .then(r => r.json())
-          .then(conversations => {
-            var newConv = conversations.find(c => !knownIds.has(c.id));
-            if (newConv) {
-              clearInterval(poll);
-              loadSidebar();
-              loadConversation(newConv.id);
-            }
-          });
-      }, 1000);
-    });
-  };
-}
-
-document.getElementById('new-session-btn').onclick = function(e) {
-  e.stopPropagation();
-  showCreateSessionForm();
-};
-
-document.getElementById('reload-plans-btn').onclick = function(e) {
-  e.stopPropagation();
-  loadPlansSidebar();
-};
-
-document.getElementById('new-plan-btn').onclick = function(e) {
-  e.stopPropagation();
-  var picker = document.getElementById('new-plan-picker');
-  if (picker.classList.contains('open')) {
-    picker.classList.remove('open');
-    return;
-  }
-  picker.innerHTML = '';
-  fetch('/api/conversations/')
-    .then(r => r.json())
-    .then(conversations => {
-      var seen = {};
-      var cwds = [];
-      conversations.forEach(c => {
-        var p = c.project;
-        if (p && !seen[p]) {
-          seen[p] = true;
-          cwds.push(p);
-        }
-      });
-      var btnRect = document.getElementById('new-plan-btn').getBoundingClientRect();
-      picker.style.top = (btnRect.bottom + 4) + 'px';
-      picker.style.left = btnRect.left + 'px';
-      if (!cwds.length) {
-        picker.innerHTML = '<button disabled style="color:#999">No repos found</button>';
-        picker.classList.add('open');
-        return;
-      }
-      cwds.forEach(cwd => {
-        var btn = document.createElement('button');
-        btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
-        btn.title = cwd;
-        btn.onclick = function(ev) {
-          ev.stopPropagation();
-          picker.classList.remove('open');
-          btn.textContent = '...';
-          fetch('/api/sessions/new/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({prompt: '/plan', cwd: cwd})
-          })
-          .then(r => r.json())
-          .then(() => {
-            setTimeout(loadPlansSidebar, 2000);
-          });
-        };
-        picker.appendChild(btn);
-      });
-      picker.classList.add('open');
-    });
-};
-document.addEventListener('click', function(e) {
-  var picker = document.getElementById('new-plan-picker');
-  if (picker && !e.target.closest('#new-plan-btn')) picker.classList.remove('open');
-});
-
-document.getElementById('new-skill-btn').onclick = function(e) {
-  e.stopPropagation();
-  showCreateSkillForm();
-};
-
-let homeTab = 'conversations';
-
-var homeTabUrls = {conversations: '/conversations', plans: '/plans', skills: '/skills', cronjobs: '/cronjobs', memory: '/memories', repos: '/repos', activity: '/activity'};
-
-var homeTabViewType = {conversations: 'conversation', plans: 'plan', skills: 'skill', cronjobs: 'cronjob', memory: 'memory', repos: 'repo', activity: 'activity'};
-function showHomeScreen(pushHistory) {
-  setActiveScreen({});
-  setViewType(homeTabViewType[homeTab] || null);
-  if (pushHistory !== false) {
-    history.pushState(null, '', homeTabUrls[homeTab] || '/conversations');
-  }
-  mainEl.innerHTML =
-    '<div class="home-screen">' +
-      '<div class="home-tabs">' +
-        '<div class="home-tab' + (homeTab === 'conversations' ? ' active' : '') + '" data-tab="conversations">Conversations</div>' +
-        '<div class="home-tab' + (homeTab === 'plans' ? ' active' : '') + '" data-tab="plans">Plans</div>' +
-        '<div class="home-tab' + (homeTab === 'skills' ? ' active' : '') + '" data-tab="skills">Skills</div>' +
-        '<div class="home-tab' + (homeTab === 'cronjobs' ? ' active' : '') + '" data-tab="cronjobs">Cronjobs</div>' +
-        '<div class="home-tab' + (homeTab === 'memory' ? ' active' : '') + '" data-tab="memory">Memory</div>' +
-        '<div class="home-tab' + (homeTab === 'repos' ? ' active' : '') + '" data-tab="repos">Repos</div>' +
-        '<div class="home-tab' + (homeTab === 'activity' ? ' active' : '') + '" data-tab="activity">Activity</div>' +
-      '</div>' +
-      '<div class="home-columns" id="home-cols"></div>' +
-    '</div>';
-
-  mainEl.querySelectorAll('.home-tab').forEach(function(tab) {
-    tab.onclick = function() {
-      homeTab = tab.dataset.tab;
-      showHomeScreen();
-    };
-  });
-
-  if (homeTab === 'plans') {
-    showPlansHome();
-  } else if (homeTab === 'skills') {
-    showSkillsHome();
-  } else if (homeTab === 'cronjobs') {
-    showCronjobsHome();
-  } else if (homeTab === 'memory') {
-    showMemoriesHome();
-  } else if (homeTab === 'repos') {
-    showReposHome();
-  } else if (homeTab === 'activity') {
-    showActivityHome();
-  } else {
-    showSessionsHome();
-  }
-}
-
-function showSessionsHome() {
-  fetch('/api/conversations/')
-    .then(r => r.json())
-    .then(conversations => {
-      // Group conversations by repo (project/cwd)
-      var repos = {};
-      var repoOrder = [];
-      conversations.forEach(c => {
-        if (!c.project) return;
-        if (!repos[c.project]) {
-          repos[c.project] = [];
-          repoOrder.push(c.project);
-        }
-        repos[c.project].push(c);
-      });
-
-      var container = document.getElementById('home-cols');
-      if (!container) return;
-
-      repoOrder.forEach(cwd => {
-        var convs = repos[cwd];
-        var short = cwd.replace(/^\/home\/[^/]+\//, '~/');
-        var name = short.split('/').pop();
-
-        var col = document.createElement('div');
-        col.className = 'home-column';
-        var rid = RepoIdentity.get(cwd);
-
-        // Header with repo name and new button
-        var header = document.createElement('div');
-        header.className = 'home-column-header';
-        if (rid) {
-          header.style.background = rid.colorLight;
-          col.style.borderTop = '3px solid ' + rid.colorBorder;
-        }
-        var nameDiv = document.createElement('div');
-        nameDiv.innerHTML = (rid ? rid.iconMd : '') + esc(name) + '<span class="col-path">' + esc(short) + '</span>';
-        nameDiv.title = cwd;
-        header.appendChild(nameDiv);
-
-        var newBtn = document.createElement('button');
-        newBtn.textContent = '+ New';
-        newBtn.onclick = function() {
-          newBtn.textContent = '...';
-          fetch('/api/sessions/new/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({cwd: cwd})
-          })
-          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-          .then(({ok}) => {
-            newBtn.textContent = ok ? 'Launched' : 'Error';
-            setTimeout(() => { newBtn.textContent = '+ New'; }, 2000);
-          });
-        };
-        header.appendChild(newBtn);
-        col.appendChild(header);
-
-        // Split into active and inactive
-        var activeConvs = convs.filter(c => c.active);
-        var inactiveConvs = convs.filter(c => !c.active);
-        var maxInactive = 5;
-
-        var list = document.createElement('div');
-        list.className = 'home-conv-list';
-
-        function addConvItem(c) {
-          var item = document.createElement('div');
-          item.className = 'home-conv-item';
-          var meta = '<div class="conv-meta">' +
-            '<span class="indicator' + (c.active ? ' active' : '') + '"></span>' +
-            '<span>' + esc(formatDate(c.date)) + '</span>' +
-            '</div>';
-          item.innerHTML = meta + '<div>' + esc(c.blurb) + '</div>';
-          item.onclick = function() { loadConversation(c.id); };
-          list.appendChild(item);
-        }
-
-        if (activeConvs.length) {
-          var label = document.createElement('div');
-          label.className = 'home-section-label';
-          label.textContent = 'Active';
-          list.appendChild(label);
-          activeConvs.forEach(addConvItem);
-        }
-
-        if (inactiveConvs.length) {
-          var label = document.createElement('div');
-          label.className = 'home-section-label';
-          label.textContent = 'Recent';
-          list.appendChild(label);
-          inactiveConvs.slice(0, maxInactive).forEach(addConvItem);
-        }
-
-        col.appendChild(list);
-        container.appendChild(col);
-      });
-    });
-}
-
-
-function startFollowing(id, msgCount) {
-  stopFollowing();
-  followConvId = id;
-  renderedMsgCount = msgCount;
-  followInterval = setInterval(pollForUpdates, 5000);
-}
-
-function stopFollowing() {
-  if (followInterval) clearInterval(followInterval);
-  followInterval = null;
-  followConvId = null;
-  renderedMsgCount = 0;
-}
-
-function pollForUpdates() {
-  if (document.hidden) return;
-  if (!followConvId || activeId !== followConvId) {
-    stopFollowing();
-    return;
-  }
-  if (Date.now() - lastSidebarLoad > 20000) loadSidebar();
-
-  fetch('/api/conversations/' + followConvId + '/')
-    .then(r => r.json())
-    .then(data => {
-      if (activeId !== followConvId) return;
-      if (data.messages && data.messages.length > renderedMsgCount) {
-        var wasNear = isNearBottom(mainEl);
-        var newMessages = data.messages.slice(renderedMsgCount);
-        newMessages.forEach(function(m, idx) {
-          var prevMsg = idx === 0 ? data.messages[renderedMsgCount - 1] : newMessages[idx - 1];
-          if (isSkillPrompt(m, prevMsg)) {
-            var msgDivs = mainEl.querySelectorAll('.message');
-            var prevDiv = msgDivs[msgDivs.length - 1];
-            if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
-            return;
-          }
-          var div = document.createElement('div');
-          div.className = 'message new-msg ' + m.role;
-          div._messageData = m;
-          div.innerHTML = '<div class="role"><span>' + esc(m.role) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
-          m.content.forEach(function(block) {
-            div.innerHTML += renderBlock(block);
-          });
-          mainEl.appendChild(div);
-        });
-        renderedMsgCount = data.messages.length;
-        renderRichBlocks();
-        if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
-      }
-      currentMessages = data.messages;
-      updateStatusBar(currentMessages);
-      if (!data.active) {
-        stopFollowing();
-        var indicator = mainEl.querySelector('.follow-indicator');
-        if (indicator) indicator.remove();
-      }
-    })
-    .catch(function() {});
-}
-
-function closeConversation(tab) {
-  currentMessages = null;
-  if (tab) homeTab = tab;
-  showHomeScreen();
-}
-
-function updateFavicon(count) {
-  var canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  var ctx = canvas.getContext('2d');
-
-  // Background circle
-  ctx.beginPath();
-  ctx.arc(32, 32, 30, 0, 2 * Math.PI);
-  ctx.fillStyle = count > 0 ? '#16a34a' : '#999';
-  ctx.fill();
-
-  // Number text
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold ' + (count > 99 ? '28' : count > 9 ? '32' : '38') + 'px system-ui, sans-serif';
-  ctx.fillText(count > 99 ? '99+' : String(count), 32, 34);
-
-  var link = document.querySelector('link[rel="icon"]');
-  if (!link) {
-    link = document.createElement('link');
-    link.rel = 'icon';
-    document.head.appendChild(link);
-  }
-  link.type = 'image/png';
-  link.href = canvas.toDataURL('image/png');
-}
-
-let lastSidebarLoad = 0;
-let searchQuery = '';
-let searchTimer = null;
-
-const searchInput = document.getElementById('conv-search');
-const searchClear = document.getElementById('search-clear');
-searchInput.addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  searchClear.style.display = searchInput.value ? 'block' : 'none';
-  searchTimer = setTimeout(() => {
-    searchQuery = searchInput.value.trim();
-    loadSidebar();
-  }, 300);
-});
-searchClear.addEventListener('click', () => {
-  searchInput.value = '';
-  searchClear.style.display = 'none';
-  searchQuery = '';
-  loadSidebar();
-  searchInput.focus();
-});
-
-function loadSidebar() {
-  lastSidebarLoad = Date.now();
-  const params = searchQuery ? '?q=' + encodeURIComponent(searchQuery) : '';
-  fetch('/api/conversations/' + params)
-    .then(r => r.json())
-    .then(conversations => {
-      updateFavicon(conversations.filter(c => c.active).length);
-      listEl.innerHTML = '';
-      conversations.forEach(c => {
-        const div = document.createElement('div');
-        div.className = 'conversation-item';
-        if (c.active) div.classList.add('active-session');
-        if (c.file_missing) div.classList.add('file-missing');
-        div.dataset.id = c.id;
-        if (c.id === activeId) div.classList.add('active');
-
-        const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
-        const duration = formatDuration(c.date, c.last_timestamp);
-        const rid = RepoIdentity.get(c.project);
-
-        div.innerHTML =
-          '<div class="row">' +
-            '<div class="project"' + (rid ? ' style="color:' + rid.colorText + '"' : '') + '>' + (rid ? rid.iconSm : '') + esc(project) + (c.branch ? ' (' + esc(c.branch) + ')' : '') + '</div>' +
-            '<span class="indicator' + (c.active ? ' active' : '') + '"></span>' +
-          '</div>' +
-          '<div class="row">' +
-            '<div class="date">' + esc(formatDate(c.date)) + (duration ? ', ' + esc(duration) : '') + '</div>' +
-            (c.message_count ? '<span class="badge">' + c.message_count + '</span>' : '') +
-            (c.file_missing ? '<span class="badge badge-missing">log deleted</span>' : '') +
-          '</div>' +
-          '<div class="blurb">' + esc(c.blurb) + '</div>';
-
-        div.onclick = () => loadConversation(c.id);
-        listEl.appendChild(div);
-      });
-    });
-}
-
-loadSidebar();
-
-function handleReturnToPage() {
-  if (Date.now() - lastSidebarLoad > 20000) {
-    loadSidebar();
-    if (!hasActiveScreen()) showHomeScreen(false);
-  }
-}
-
-document.addEventListener('visibilitychange', function() {
-  if (!document.hidden) handleReturnToPage();
-});
-window.addEventListener('focus', handleReturnToPage);
-
-function routeUrl(pathname, pushHistory) {
-  var convNew = /^\/conversations\/new\/?$/.test(pathname);
-  var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
-  var planMatch = pathname.match(/^\/plans\/([^/]+)/);
-  var skillNew = /^\/skills\/new\/?$/.test(pathname);
-  var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
-  var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
-  var repoMatch = pathname.match(/^\/repos\/detail\/(.+)/);
-  var cronjobNew = /^\/cronjobs\/new\/?$/.test(pathname);
-  var cronjobMatch = pathname.match(/^\/cronjobs\/(\d+)/);
-  if (convNew) {
-    showCreateSessionForm(pushHistory);
-  } else if (convMatch) {
-    loadConversation(convMatch[1], pushHistory);
-  } else if (planMatch) {
-    loadPlan(planMatch[1], pushHistory);
-  } else if (skillNew) {
-    showCreateSkillForm(pushHistory);
-  } else if (skillMatch) {
-    loadSkillByUrl(decodeURIComponent(skillMatch[1]), decodeURIComponent(skillMatch[2]), pushHistory);
-  } else if (cronjobNew) {
-    showCreateCronjobForm(null, pushHistory);
-  } else if (cronjobMatch) {
-    loadCronjob(parseInt(cronjobMatch[1]), pushHistory);
-  } else if (repoMatch) {
-    loadRepo(decodeURIComponent(repoMatch[1]), pushHistory);
-  } else if (memoryMatch) {
-    loadMemory(memoryMatch[1], pushHistory);
-  } else if (/^\/cronjobs\b/.test(pathname)) {
-    homeTab = 'cronjobs'; showHomeScreen(pushHistory);
-  } else if (/^\/memories\b/.test(pathname)) {
-    homeTab = 'memory'; showHomeScreen(pushHistory);
-  } else if (/^\/skills\b/.test(pathname)) {
-    homeTab = 'skills'; showHomeScreen(pushHistory);
-  } else if (/^\/plans\b/.test(pathname)) {
-    homeTab = 'plans'; showHomeScreen(pushHistory);
-  } else if (/^\/repos\b/.test(pathname)) {
-    homeTab = 'repos'; showHomeScreen(pushHistory);
-  } else if (/^\/activity\b/.test(pathname)) {
-    homeTab = 'activity'; showHomeScreen(pushHistory);
-  } else {
-    homeTab = 'conversations'; showHomeScreen(pushHistory);
-  }
-}
-
-var sharedDeps = {
-  mainEl, setActiveScreen, closeConversation, RepoIdentity,
-};
-initRender({ mainEl, mainWrapEl });
-initMemories({
-  ...sharedDeps,
-  memoryListEl,
-  getActiveMemoryId: () => activeMemoryId,
-});
-initRepos({
-  ...sharedDeps,
-  repoListEl,
-  getActiveRepoPath: () => activeRepoPath,
-});
-initPlans({
-  ...sharedDeps,
-  planListEl,
-  getActivePlanId: () => activePlanId,
-});
-initSkills({
-  ...sharedDeps,
-  skillListEl,
-  loadConversation: (id) => loadConversation(id),
-  showCreateCronjobForm: (...args) => showCreateCronjobForm(...args),
-  loadCronjob: (...args) => loadCronjob(...args),
-  getActiveSkillId: () => activeSkillId,
-});
-initCronjobs({
-  ...sharedDeps,
-  cronjobListEl,
-  loadConversation: (id) => loadConversation(id),
-  navigateToSkillByName: (name) => navigateToSkillByName(name),
-  getActiveCronjobId: () => activeCronjobId,
-});
-initAutolinks();
-
-// open conversation/plan/skill from URL on initial load, or show home screen
-routeUrl(location.pathname, false);
-
-window.addEventListener('popstate', function(e) {
-  routeUrl(location.pathname, false);
-});
-
-function loadConversation(id, pushHistory) {
-  setActiveScreen({ activeId: id });
-  if (pushHistory !== false) {
-    history.pushState({id: id}, '', '/conversations/' + id);
-  }
-  document.querySelectorAll('.conversation-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.id === id);
-  });
-  mainEl.innerHTML = '<div class="empty">Loading...</div>';
-
-  fetch('/api/conversations/' + id + '/')
-    .then(r => r.json())
-    .then(data => {
-      if (activeId !== id) return;
-      const render = () => {
-        mainEl.innerHTML = '';
-        setCurrentCwd(data.cwd || null);
-
-        const toolbar = document.createElement('div');
-        toolbar.className = 'conversation-toolbar';
-        toolbar.innerHTML = '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="fork-conv" title="Fork and resume in terminal">&#x2442;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
-        const project = data.cwd ? data.cwd.replace(/^\/home\/[^/]+\//, '~/') : '';
-
-        const header = document.createElement('div');
-        header.className = 'conversation-header';
-        var crid = data.cwd ? RepoIdentity.get(data.cwd) : null;
-        if (crid) {
-          header.style.borderLeft = '3px solid ' + crid.colorBorder;
-          header.style.paddingLeft = '12px';
-        }
-        var parts = [];
-
-        if (project && currentForgeRepo) {
-          parts.push('<span>' + (crid ? crid.iconSm : '') + '<a href="' + esc(forgeRepoUrl(currentForgeRepo)) + '" target="_blank" rel="noopener noreferrer">' + esc(project) + '</a></span>');
-        } else if (project) {
-          parts.push('<span>' + (crid ? crid.iconSm : '') + esc(project) + '</span>');
-        }
-        if (data.branch) {
-          if (currentForgeOrigin) {
-            parts.push('<span>branch: <a href="' + esc(forgeBranchUrl(currentForgeOrigin, data.branch)) + '" target="_blank" rel="noopener noreferrer">' + esc(data.branch) + '</a></span>');
-          } else {
-            parts.push('<span>branch: ' + esc(data.branch) + '</span>');
-          }
-        }
-        if (currentPR) {
-          var prLabel = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? 'MR' : 'PR';
-          var prPrefix = currentForgeRepo && currentForgeRepo.type === 'gitlab' ? '!' : '#';
-          parts.push('<span>' + prLabel + ': <a href="' + esc(currentPR.url) + '" target="_blank" rel="noopener noreferrer">' + prPrefix + currentPR.number + '</a>' + (currentPR.state === 'MERGED' ? ' (merged)' : currentPR.state === 'CLOSED' ? ' (closed)' : '') + '</span>');
-        }
-        if (data.message_count) parts.push('<span>' + data.message_count + ' messages</span>');
-        var duration = formatDuration(data.first_timestamp, data.last_timestamp);
-        if (duration) parts.push('<span>' + esc(duration) + '</span>');
-        if (data.model) parts.push('<span>' + esc(data.model) + '</span>');
-        if (data.version) parts.push('<span>claude-code ' + esc(data.version) + '</span>');
-        if (data.file_missing) parts.push('<span class="badge badge-missing">log file deleted — metadata only</span>');
-        header.innerHTML = parts.join('');
-
-        toolbar.querySelector('.scroll-bottom').onclick = function() {
-          mainEl.scrollTop = mainEl.scrollHeight;
-        };
-        toolbar.querySelector('.new-here').onclick = function() {
-          var btn = this;
-          btn.textContent = '...';
-          fetch('/api/sessions/new/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({cwd: data.cwd})
-          })
-          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-          .then(({ok}) => {
-            btn.textContent = ok ? '\u2713' : '\u2717';
-            setTimeout(() => { btn.textContent = '+'; }, 2000);
-          });
-        };
-        if (data.file_missing) {
-          toolbar.querySelector('.resume-conv').style.display = 'none';
-          toolbar.querySelector('.fork-conv').style.display = 'none';
-        }
-        toolbar.querySelector('.resume-conv').onclick = function() {
-          var btn = this;
-          btn.textContent = '...';
-          fetch('/api/sessions/resume/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({conversation_id: id, cwd: data.cwd})
-          })
-          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-          .then(({ok, data: result}) => {
-            btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
-            setTimeout(() => { btn.innerHTML = '&#x25b6;'; }, 2000);
-          });
-        };
-        toolbar.querySelector('.fork-conv').onclick = function() {
-          var btn = this;
-          btn.textContent = '...';
-          fetch('/api/sessions/fork/', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({conversation_id: id, cwd: data.cwd})
-          })
-          .then(r => r.json().then(d => ({ok: r.ok, data: d})))
-          .then(({ok, data: result}) => {
-            btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
-            setTimeout(() => { btn.innerHTML = '&#x2442;'; }, 2000);
-          });
-        };
-        toolbar.querySelector('.reload-conv').onclick = function() { loadConversation(id, false); };
-        toolbar.querySelector('.close-conv').onclick = function() { closeConversation('conversations'); };
-        mainEl.appendChild(toolbar);
-        mainEl.appendChild(header);
-
-        if (data.file_missing) {
-          var notice = document.createElement('div');
-          notice.className = 'file-missing-notice';
-          notice.innerHTML = 'The log file for this conversation has been deleted by Claude Code cleanup. Only cached metadata is available.<br><br>To control how long conversation logs are kept, set <code>cleanupPeriodDays</code> in <code>~/.claude/settings.json</code> <button title="Open in $EDITOR">$EDITOR</button>';
-          notice.querySelector('button').onclick = function() {
-            var home = (data.cwd || '/tmp').replace(/^(\/home\/[^/]+).*/, '$1');
-            openInEditor(home + '/.claude/settings.json');
-          };
-          mainEl.appendChild(notice);
-        }
-
-        for (var k in taskSubjects) delete taskSubjects[k];
-        data.messages.forEach(m => {
-          m.content.forEach(block => {
-            if (block.type === 'tool_use' && block.name === 'TaskCreate' && block.result) {
-              var tm = block.result.match(/Task #(\d+) created successfully: (.+)/);
-              if (tm) taskSubjects[tm[1]] = tm[2];
-            }
-          });
-        });
-
-        data.messages.forEach((m, idx) => {
-          if (isSkillPrompt(m, data.messages[idx - 1])) {
-            var msgDivs = mainEl.querySelectorAll('.message');
-            var prevDiv = msgDivs[msgDivs.length - 1];
-            if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
-            return;
-          }
-          const div = document.createElement('div');
-          div.className = 'message ' + m.role;
-          div._messageData = m;
-          div.innerHTML = '<div class="role"><span>' + esc(m.role) + '</span><span>' + (m.timestamp ? '<span class="msg-time">' + esc(formatTime(m.timestamp)) + '</span>' : '') + '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
-
-          m.content.forEach(block => {
-            div.innerHTML += renderBlock(block);
-          });
-
-          mainEl.appendChild(div);
-        });
-        currentMessages = data.messages;
-        updateStatusBar(currentMessages);
-        renderRichBlocks();
-        mainEl.scrollTop = 0;
-        mainEl.focus();
-
-        if (data.active) {
-          var indicator = document.createElement('span');
-          indicator.className = 'follow-indicator';
-          indicator.textContent = 'Following';
-          toolbar.querySelector('.header-btns').prepend(indicator);
-          startFollowing(id, data.messages.length);
-        }
+  <head>
+    <meta charset="utf-8" />
+    <title>contexts</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>C</text></svg>"
+    />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  </head>
+  <body>
+    <div id="sidebar">
+      <div class="sidebar-section" id="conv-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Conversations
+          <span
+            id="reload-list-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload list"
+            >&#x21bb;</span
+          ><span
+            id="new-session-btn"
+            style="
+              float: right;
+              cursor: pointer;
+              font-size: 14px;
+              color: #888;
+              margin-right: 8px;
+            "
+            title="New session"
+            >+</span
+          >
+        </h2>
+        <div class="search-wrap">
+          <input
+            type="text"
+            id="conv-search"
+            placeholder="Search conversations..."
+          /><button id="search-clear" title="Clear search">&times;</button>
+        </div>
+        <div class="sidebar-list" id="conversation-list"></div>
+      </div>
+      <div class="sidebar-section collapsed" id="plans-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Plans
+          <span
+            id="reload-plans-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload plans"
+            >&#x21bb;</span
+          ><span
+            id="new-plan-btn"
+            style="
+              float: right;
+              cursor: pointer;
+              font-size: 14px;
+              color: #888;
+              margin-right: 8px;
+            "
+            title="New plan"
+            >+
+            <div id="new-plan-picker" class="sidebar-dropdown"></div
+          ></span>
+        </h2>
+        <div class="sidebar-list" id="plan-list"></div>
+      </div>
+      <div class="sidebar-section collapsed" id="skills-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Skills
+          <span
+            id="reload-skills-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload skills"
+            >&#x21bb;</span
+          ><span
+            id="new-skill-btn"
+            style="
+              float: right;
+              cursor: pointer;
+              font-size: 14px;
+              color: #888;
+              margin-right: 8px;
+            "
+            title="New skill"
+            >+</span
+          >
+        </h2>
+        <div class="sidebar-list" id="skill-list"></div>
+      </div>
+      <div class="sidebar-section collapsed" id="cronjobs-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Cronjobs
+          <span
+            id="reload-cronjobs-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload cronjobs"
+            >&#x21bb;</span
+          ><span
+            id="new-cronjob-btn"
+            style="
+              float: right;
+              cursor: pointer;
+              font-size: 14px;
+              color: #888;
+              margin-right: 8px;
+            "
+            title="New cronjob"
+            >+</span
+          >
+        </h2>
+        <div class="sidebar-list" id="cronjob-list"></div>
+      </div>
+      <div class="sidebar-section collapsed" id="memories-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Memory
+          <span
+            id="reload-memories-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload memories"
+            >&#x21bb;</span
+          >
+        </h2>
+        <div class="sidebar-list" id="memory-list"></div>
+      </div>
+      <div class="sidebar-section collapsed" id="repos-section">
+        <h2>
+          <span class="toggle">&#x25BC;</span>Repos
+          <span
+            id="reload-repos-btn"
+            style="float: right; cursor: pointer; font-size: 14px; color: #888"
+            title="Reload repos"
+            >&#x21bb;</span
+          >
+        </h2>
+        <div class="sidebar-list" id="repo-list"></div>
+      </div>
+    </div>
+
+    <div id="main-wrap">
+      <div id="main" tabindex="-1" style="outline: none"></div>
+    </div>
+
+    <script type="module">
+      import {
+        esc,
+        formatDuration,
+        formatDate,
+        formatTime,
+        openInEditor,
+        isNearBottom,
+      } from '/js/utils.js';
+      import { showActivityHome } from '/js/activity.js';
+      import {
+        currentForgeRepo,
+        currentForgeOrigin,
+        currentPR,
+        currentCwd,
+        forgeRepoUrl,
+        forgeBranchUrl,
+        setForgeAutolink,
+        setCurrentCwd,
+      } from '/js/forge.js';
+      import {
+        initRender,
+        initAutolinks,
+        renderMarkdown,
+        renderBlock,
+        renderRichBlocks,
+        taskSubjects,
+        updateStatusBar,
+        isSkillPrompt,
+        renderSkillPrompt,
+        messageToMarkdown,
+      } from '/js/render.js';
+      import {
+        initMemories,
+        loadMemoriesSidebar,
+        showMemoriesHome,
+        loadMemory,
+      } from '/js/memories.js';
+      import {
+        initRepos,
+        loadReposSidebar,
+        showReposHome,
+        loadRepo,
+      } from '/js/repos.js';
+      import {
+        initPlans,
+        loadPlansSidebar,
+        showPlansHome,
+        loadPlan,
+      } from '/js/plans.js';
+      import {
+        initSkills,
+        loadSkillsSidebar,
+        showSkillsHome,
+        loadSkill,
+        showCreateSkillForm,
+        skillDisplayUrl,
+        loadSkillByUrl,
+        navigateToSkillByName,
+      } from '/js/skills.js';
+      import {
+        initCronjobs,
+        loadCronjobsSidebar,
+        showCronjobsHome,
+        loadCronjob,
+        showCreateCronjobForm,
+      } from '/js/cronjobs.js';
+
+      const listEl = document.getElementById('conversation-list');
+      const planListEl = document.getElementById('plan-list');
+      const skillListEl = document.getElementById('skill-list');
+      const cronjobListEl = document.getElementById('cronjob-list');
+      const memoryListEl = document.getElementById('memory-list');
+      const repoListEl = document.getElementById('repo-list');
+      const mainEl = document.getElementById('main');
+      const mainWrapEl = document.getElementById('main-wrap');
+      const reloadListBtn = document.getElementById('reload-list-btn');
+      let activeId = null;
+      let activePlanId = null;
+      let activeSkillId = null;
+      let activeCronjobId = null;
+      let activeMemoryId = null;
+      let activeRepoPath = null;
+      let activeNewScreen = null;
+      let currentMessages = null;
+
+      var screenSections = {
+        conversation: 'conv-section',
+        plan: 'plans-section',
+        skill: 'skills-section',
+        cronjob: 'cronjobs-section',
+        memory: 'memories-section',
+        repo: 'repos-section',
       };
 
-      if (data.cwd) {
-        fetch('/api/github-repo/?path=' + encodeURIComponent(data.cwd) + '&branch=' + encodeURIComponent(data.branch || ''))
-          .then(r => r.json())
-          .then(gh => {
-            setForgeAutolink(gh);
-            render();
-          })
-          .catch(() => { setForgeAutolink(null); render(); });
-      } else {
-        setForgeAutolink(null);
-        render();
+      var screenTypes = {
+        activeId: 'conversation',
+        activePlanId: 'plan',
+        activeSkillId: 'skill',
+        activeCronjobId: 'cronjob',
+        activeMemoryId: 'memory',
+        activeRepoPath: 'repo',
+      };
+
+      function setActiveScreen(opts) {
+        stopFollowing();
+        activeId = opts.activeId || null;
+        activePlanId = opts.activePlanId || null;
+        activeSkillId = opts.activeSkillId || null;
+        activeCronjobId = opts.activeCronjobId || null;
+        activeMemoryId = opts.activeMemoryId || null;
+        activeRepoPath = opts.activeRepoPath || null;
+        activeNewScreen = opts.activeNewScreen || null;
+
+        var type = opts.activeNewScreen || null;
+        for (var k in screenTypes) {
+          if (opts[k]) {
+            type = screenTypes[k];
+            break;
+          }
+        }
+        setViewType(type);
+        clearSidebarActive();
+        if (type) {
+          var expandId = screenSections[type];
+          Object.values(screenSections).forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.toggle('collapsed', id !== expandId);
+          });
+        }
       }
-    });
-}
 
-document.addEventListener('click', function(e) {
-  var copyBtn = e.target.closest('.copy-msg');
-  if (copyBtn) {
-    var msgEl = copyBtn.closest('.message');
-    var md = messageToMarkdown(msgEl);
-    navigator.clipboard.writeText(md).then(function() {
-      copyBtn.textContent = '\u2713';
-      setTimeout(function() { copyBtn.innerHTML = '\u2398'; }, 1500);
-    });
-    return;
-  }
+      function hasActiveScreen() {
+        return !!(
+          activeId ||
+          activePlanId ||
+          activeSkillId ||
+          activeCronjobId ||
+          activeMemoryId ||
+          activeRepoPath ||
+          activeNewScreen
+        );
+      }
 
-  var skillLink = e.target.closest('.skill-link');
-  if (skillLink) {
-    e.preventDefault();
-    var skillName = skillLink.dataset.skill;
-    if (skillName) navigateToSkillByName(skillName);
-    return;
-  }
+      function clearSidebarActive() {
+        document
+          .querySelectorAll(
+            '.conversation-item, .plan-item, .skill-item, .cronjob-item, .memory-item, .repo-item',
+          )
+          .forEach((el) => el.classList.remove('active'));
+      }
 
-  var link = e.target.closest('.git-show-link');
-  if (!link || !currentCwd) return;
-  e.preventDefault();
-  fetch('/api/terminal/run/', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({cmd: ['git', '-c', 'core.pager=less -+F -R', 'show', link.dataset.sha], cwd: currentCwd})
-  });
-});
+      function setViewType(type) {
+        mainEl.classList.remove(
+          'view-conversation',
+          'view-plan',
+          'view-skill',
+          'view-cronjob',
+          'view-memory',
+          'view-repo',
+          'view-activity',
+        );
+        if (type) mainEl.classList.add('view-' + type);
+      }
 
+      // Repo visual identity — deterministic icon + color per repo path
+      var RepoIdentity = {
+        _cache: {},
+        _hash: function (str) {
+          var h = 0x811c9dc5;
+          for (var i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 0x01000193);
+          }
+          return h >>> 0;
+        },
+        _icon: function (hash, hue, size) {
+          var color = 'hsl(' + hue + ',55%,45%)';
+          var bg = 'hsl(' + hue + ',30%,90%)';
+          var bits = hash >>> 8;
+          var rects = '';
+          for (var r = 0; r < 5; r++) {
+            for (var c = 0; c < 3; c++) {
+              if ((bits >> (r * 3 + c)) & 1) {
+                rects +=
+                  '<rect x="' +
+                  c +
+                  '" y="' +
+                  r +
+                  '" width="1" height="1" fill="' +
+                  color +
+                  '"/>';
+                if (c < 2)
+                  rects +=
+                    '<rect x="' +
+                    (4 - c) +
+                    '" y="' +
+                    r +
+                    '" width="1" height="1" fill="' +
+                    color +
+                    '"/>';
+              }
+            }
+          }
+          return (
+            '<span class="repo-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" width="' +
+            size +
+            '" height="' +
+            size +
+            '" style="background:' +
+            bg +
+            ';border-radius:2px">' +
+            rects +
+            '</svg></span>'
+          );
+        },
+        get: function (repoPath) {
+          if (!repoPath) return null;
+          if (this._cache[repoPath]) return this._cache[repoPath];
+          var hash = this._hash(repoPath);
+          var hue = ((hash & 0xff) * 360) / 256;
+          var id = {
+            color: 'hsl(' + hue + ',55%,45%)',
+            colorLight: 'hsl(' + hue + ',40%,93%)',
+            colorBorder: 'hsl(' + hue + ',55%,55%)',
+            colorText: 'hsl(' + hue + ',50%,35%)',
+            iconSm: this._icon(hash, hue, 16),
+            iconMd: this._icon(hash, hue, 24),
+          };
+          this._cache[repoPath] = id;
+          return id;
+        },
+      };
 
-mainEl.addEventListener('click', function(e) {
-  if (!e.target.classList.contains('expand-all')) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const clicked = e.target.closest('details');
-  if (!clicked) return;
+      // Sidebar section accordion
+      document.querySelectorAll('.sidebar-section h2').forEach(function (h2) {
+        h2.addEventListener('click', function (e) {
+          if (e.target !== h2 && e.target.closest('span[id]')) return;
+          var section = h2.closest('.sidebar-section');
+          var wasCollapsed = section.classList.contains('collapsed');
+          if (wasCollapsed) {
+            section.classList.remove('collapsed');
+            // Load plans on first expand
+            if (section.id === 'plans-section' && !planListEl.children.length) {
+              loadPlansSidebar();
+            }
+            // Load skills on first expand
+            if (
+              section.id === 'skills-section' &&
+              !skillListEl.children.length
+            ) {
+              loadSkillsSidebar();
+            }
+            // Load cronjobs on first expand
+            if (
+              section.id === 'cronjobs-section' &&
+              !cronjobListEl.children.length
+            ) {
+              loadCronjobsSidebar();
+            }
+            // Load memories on first expand
+            if (
+              section.id === 'memories-section' &&
+              !memoryListEl.children.length
+            ) {
+              loadMemoriesSidebar();
+            }
+            // Load repos on first expand
+            if (section.id === 'repos-section' && !repoListEl.children.length) {
+              loadReposSidebar();
+            }
+          } else {
+            section.classList.add('collapsed');
+          }
+        });
+      });
+      let followInterval = null;
+      let followConvId = null;
+      let renderedMsgCount = 0;
 
-  const willOpen = !clicked.open;
-  mainEl.querySelectorAll('details').forEach(d => { d.open = willOpen; });
+      // Treat newlines as <br>, make all links open in new tab
+      marked.use({
+        breaks: true,
+        hooks: {
+          postprocess: function (html) {
+            return html.replace(
+              /<a href="/g,
+              '<a target="_blank" rel="noopener noreferrer" href="',
+            );
+          },
+        },
+      });
 
-  e.target.closest('summary').scrollIntoView({ block: 'nearest' });
-});
+      reloadListBtn.onclick = function (e) {
+        e.stopPropagation();
+        loadSidebar();
+      };
 
-mainEl.addEventListener('click', function(e) {
-  var btn = e.target.closest('.rich-toggle');
-  if (!btn) return;
-  var container = btn.closest('.rich-container');
-  var rendered = container.querySelector('.rich-rendered');
-  var source = container.querySelector('.rich-source');
-  var showingSource = source.style.display !== 'none';
-  rendered.style.display = showingSource ? '' : 'none';
-  source.style.display = showingSource ? 'none' : '';
-  btn.textContent = showingSource ? 'Source' : 'Diagram';
-});
-</script>
-</body>
+      document.getElementById('reload-skills-btn').onclick = function (e) {
+        e.stopPropagation();
+        loadSkillsSidebar();
+      };
+
+      document.getElementById('reload-cronjobs-btn').onclick = function (e) {
+        e.stopPropagation();
+        loadCronjobsSidebar();
+      };
+
+      document.getElementById('new-cronjob-btn').onclick = function (e) {
+        e.stopPropagation();
+        showCreateCronjobForm();
+      };
+
+      document.getElementById('reload-memories-btn').onclick = function (e) {
+        e.stopPropagation();
+        loadMemoriesSidebar();
+      };
+
+      document.getElementById('reload-repos-btn').onclick = function (e) {
+        e.stopPropagation();
+        loadReposSidebar();
+      };
+
+      function showCreateSessionForm(pushHistory) {
+        setActiveScreen({ activeNewScreen: 'conversation' });
+        if (pushHistory !== false) {
+          history.pushState(null, '', '/conversations/new');
+        }
+        mainEl.innerHTML =
+          '<div class="new-session-form">' +
+          '<h3 style="margin-bottom:12px">New session</h3>' +
+          '<textarea id="ns-prompt" placeholder="Enter your prompt..."></textarea>' +
+          '<input type="text" id="ns-cwd" placeholder="Working directory (optional)">' +
+          '<div class="cwd-buttons" id="ns-cwds"></div>' +
+          '<button id="ns-launch">Launch</button>' +
+          '<span class="form-status" id="ns-status"></span>' +
+          '</div>';
+        document.getElementById('ns-prompt').focus();
+
+        // Populate recent cwds from conversations
+        fetch('/api/conversations/')
+          .then((r) => r.json())
+          .then((conversations) => {
+            var seen = {};
+            var cwds = [];
+            conversations.forEach((c) => {
+              var p = c.project;
+              if (p && !seen[p]) {
+                seen[p] = true;
+                cwds.push(p);
+              }
+            });
+            var container = document.getElementById('ns-cwds');
+            if (!container) return;
+            cwds.forEach((cwd) => {
+              var btn = document.createElement('button');
+              btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
+              btn.title = cwd;
+              btn.onclick = function () {
+                document.getElementById('ns-cwd').value = cwd;
+              };
+              container.appendChild(btn);
+            });
+          });
+
+        document.getElementById('ns-launch').onclick = function () {
+          var prompt = document.getElementById('ns-prompt').value.trim();
+          document.getElementById('ns-status').textContent = 'Launching...';
+          fetch('/api/sessions/new/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: prompt,
+              cwd: document.getElementById('ns-cwd').value.trim(),
+            }),
+          })
+            .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+            .then(({ ok, data }) => {
+              var statusEl = document.getElementById('ns-status');
+              if (!ok) {
+                statusEl.textContent = data.error || 'Error';
+                return;
+              }
+              statusEl.textContent = 'Launched, waiting for session...';
+              // Poll for the new conversation to appear
+              var knownIds = new Set();
+              document
+                .querySelectorAll('.conversation-item')
+                .forEach((el) => knownIds.add(el.dataset.id));
+              var attempts = 0;
+              var poll = setInterval(function () {
+                attempts++;
+                if (attempts > 30) {
+                  clearInterval(poll);
+                  statusEl.textContent = 'Launched (session not yet visible)';
+                  loadSidebar();
+                  return;
+                }
+                fetch('/api/conversations/')
+                  .then((r) => r.json())
+                  .then((conversations) => {
+                    var newConv = conversations.find(
+                      (c) => !knownIds.has(c.id),
+                    );
+                    if (newConv) {
+                      clearInterval(poll);
+                      loadSidebar();
+                      loadConversation(newConv.id);
+                    }
+                  });
+              }, 1000);
+            });
+        };
+      }
+
+      document.getElementById('new-session-btn').onclick = function (e) {
+        e.stopPropagation();
+        showCreateSessionForm();
+      };
+
+      document.getElementById('reload-plans-btn').onclick = function (e) {
+        e.stopPropagation();
+        loadPlansSidebar();
+      };
+
+      document.getElementById('new-plan-btn').onclick = function (e) {
+        e.stopPropagation();
+        var picker = document.getElementById('new-plan-picker');
+        if (picker.classList.contains('open')) {
+          picker.classList.remove('open');
+          return;
+        }
+        picker.innerHTML = '';
+        fetch('/api/conversations/')
+          .then((r) => r.json())
+          .then((conversations) => {
+            var seen = {};
+            var cwds = [];
+            conversations.forEach((c) => {
+              var p = c.project;
+              if (p && !seen[p]) {
+                seen[p] = true;
+                cwds.push(p);
+              }
+            });
+            var btnRect = document
+              .getElementById('new-plan-btn')
+              .getBoundingClientRect();
+            picker.style.top = btnRect.bottom + 4 + 'px';
+            picker.style.left = btnRect.left + 'px';
+            if (!cwds.length) {
+              picker.innerHTML =
+                '<button disabled style="color:#999">No repos found</button>';
+              picker.classList.add('open');
+              return;
+            }
+            cwds.forEach((cwd) => {
+              var btn = document.createElement('button');
+              btn.textContent = cwd.replace(/^\/home\/[^/]+\//, '~/');
+              btn.title = cwd;
+              btn.onclick = function (ev) {
+                ev.stopPropagation();
+                picker.classList.remove('open');
+                btn.textContent = '...';
+                fetch('/api/sessions/new/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ prompt: '/plan', cwd: cwd }),
+                })
+                  .then((r) => r.json())
+                  .then(() => {
+                    setTimeout(loadPlansSidebar, 2000);
+                  });
+              };
+              picker.appendChild(btn);
+            });
+            picker.classList.add('open');
+          });
+      };
+      document.addEventListener('click', function (e) {
+        var picker = document.getElementById('new-plan-picker');
+        if (picker && !e.target.closest('#new-plan-btn'))
+          picker.classList.remove('open');
+      });
+
+      document.getElementById('new-skill-btn').onclick = function (e) {
+        e.stopPropagation();
+        showCreateSkillForm();
+      };
+
+      let homeTab = 'conversations';
+
+      var homeTabUrls = {
+        conversations: '/conversations',
+        plans: '/plans',
+        skills: '/skills',
+        cronjobs: '/cronjobs',
+        memory: '/memories',
+        repos: '/repos',
+        activity: '/activity',
+      };
+
+      var homeTabViewType = {
+        conversations: 'conversation',
+        plans: 'plan',
+        skills: 'skill',
+        cronjobs: 'cronjob',
+        memory: 'memory',
+        repos: 'repo',
+        activity: 'activity',
+      };
+      function showHomeScreen(pushHistory) {
+        setActiveScreen({});
+        setViewType(homeTabViewType[homeTab] || null);
+        if (pushHistory !== false) {
+          history.pushState(null, '', homeTabUrls[homeTab] || '/conversations');
+        }
+        mainEl.innerHTML =
+          '<div class="home-screen">' +
+          '<div class="home-tabs">' +
+          '<div class="home-tab' +
+          (homeTab === 'conversations' ? ' active' : '') +
+          '" data-tab="conversations">Conversations</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'plans' ? ' active' : '') +
+          '" data-tab="plans">Plans</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'skills' ? ' active' : '') +
+          '" data-tab="skills">Skills</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'cronjobs' ? ' active' : '') +
+          '" data-tab="cronjobs">Cronjobs</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'memory' ? ' active' : '') +
+          '" data-tab="memory">Memory</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'repos' ? ' active' : '') +
+          '" data-tab="repos">Repos</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'activity' ? ' active' : '') +
+          '" data-tab="activity">Activity</div>' +
+          '</div>' +
+          '<div class="home-columns" id="home-cols"></div>' +
+          '</div>';
+
+        mainEl.querySelectorAll('.home-tab').forEach(function (tab) {
+          tab.onclick = function () {
+            homeTab = tab.dataset.tab;
+            showHomeScreen();
+          };
+        });
+
+        if (homeTab === 'plans') {
+          showPlansHome();
+        } else if (homeTab === 'skills') {
+          showSkillsHome();
+        } else if (homeTab === 'cronjobs') {
+          showCronjobsHome();
+        } else if (homeTab === 'memory') {
+          showMemoriesHome();
+        } else if (homeTab === 'repos') {
+          showReposHome();
+        } else if (homeTab === 'activity') {
+          showActivityHome();
+        } else {
+          showSessionsHome();
+        }
+      }
+
+      function showSessionsHome() {
+        fetch('/api/conversations/')
+          .then((r) => r.json())
+          .then((conversations) => {
+            // Group conversations by repo (project/cwd)
+            var repos = {};
+            var repoOrder = [];
+            conversations.forEach((c) => {
+              if (!c.project) return;
+              if (!repos[c.project]) {
+                repos[c.project] = [];
+                repoOrder.push(c.project);
+              }
+              repos[c.project].push(c);
+            });
+
+            var container = document.getElementById('home-cols');
+            if (!container) return;
+
+            repoOrder.forEach((cwd) => {
+              var convs = repos[cwd];
+              var short = cwd.replace(/^\/home\/[^/]+\//, '~/');
+              var name = short.split('/').pop();
+
+              var col = document.createElement('div');
+              col.className = 'home-column';
+              var rid = RepoIdentity.get(cwd);
+
+              // Header with repo name and new button
+              var header = document.createElement('div');
+              header.className = 'home-column-header';
+              if (rid) {
+                header.style.background = rid.colorLight;
+                col.style.borderTop = '3px solid ' + rid.colorBorder;
+              }
+              var nameDiv = document.createElement('div');
+              nameDiv.innerHTML =
+                (rid ? rid.iconMd : '') +
+                esc(name) +
+                '<span class="col-path">' +
+                esc(short) +
+                '</span>';
+              nameDiv.title = cwd;
+              header.appendChild(nameDiv);
+
+              var newBtn = document.createElement('button');
+              newBtn.textContent = '+ New';
+              newBtn.onclick = function () {
+                newBtn.textContent = '...';
+                fetch('/api/sessions/new/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ cwd: cwd }),
+                })
+                  .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+                  .then(({ ok }) => {
+                    newBtn.textContent = ok ? 'Launched' : 'Error';
+                    setTimeout(() => {
+                      newBtn.textContent = '+ New';
+                    }, 2000);
+                  });
+              };
+              header.appendChild(newBtn);
+              col.appendChild(header);
+
+              // Split into active and inactive
+              var activeConvs = convs.filter((c) => c.active);
+              var inactiveConvs = convs.filter((c) => !c.active);
+              var maxInactive = 5;
+
+              var list = document.createElement('div');
+              list.className = 'home-conv-list';
+
+              function addConvItem(c) {
+                var item = document.createElement('div');
+                item.className = 'home-conv-item';
+                var meta =
+                  '<div class="conv-meta">' +
+                  '<span class="indicator' +
+                  (c.active ? ' active' : '') +
+                  '"></span>' +
+                  '<span>' +
+                  esc(formatDate(c.date)) +
+                  '</span>' +
+                  '</div>';
+                item.innerHTML = meta + '<div>' + esc(c.blurb) + '</div>';
+                item.onclick = function () {
+                  loadConversation(c.id);
+                };
+                list.appendChild(item);
+              }
+
+              if (activeConvs.length) {
+                var label = document.createElement('div');
+                label.className = 'home-section-label';
+                label.textContent = 'Active';
+                list.appendChild(label);
+                activeConvs.forEach(addConvItem);
+              }
+
+              if (inactiveConvs.length) {
+                var label = document.createElement('div');
+                label.className = 'home-section-label';
+                label.textContent = 'Recent';
+                list.appendChild(label);
+                inactiveConvs.slice(0, maxInactive).forEach(addConvItem);
+              }
+
+              col.appendChild(list);
+              container.appendChild(col);
+            });
+          });
+      }
+
+      function startFollowing(id, msgCount) {
+        stopFollowing();
+        followConvId = id;
+        renderedMsgCount = msgCount;
+        followInterval = setInterval(pollForUpdates, 5000);
+      }
+
+      function stopFollowing() {
+        if (followInterval) clearInterval(followInterval);
+        followInterval = null;
+        followConvId = null;
+        renderedMsgCount = 0;
+      }
+
+      function pollForUpdates() {
+        if (document.hidden) return;
+        if (!followConvId || activeId !== followConvId) {
+          stopFollowing();
+          return;
+        }
+        if (Date.now() - lastSidebarLoad > 20000) loadSidebar();
+
+        fetch('/api/conversations/' + followConvId + '/')
+          .then((r) => r.json())
+          .then((data) => {
+            if (activeId !== followConvId) return;
+            if (data.messages && data.messages.length > renderedMsgCount) {
+              var wasNear = isNearBottom(mainEl);
+              var newMessages = data.messages.slice(renderedMsgCount);
+              newMessages.forEach(function (m, idx) {
+                var prevMsg =
+                  idx === 0
+                    ? data.messages[renderedMsgCount - 1]
+                    : newMessages[idx - 1];
+                if (isSkillPrompt(m, prevMsg)) {
+                  var msgDivs = mainEl.querySelectorAll('.message');
+                  var prevDiv = msgDivs[msgDivs.length - 1];
+                  if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
+                  return;
+                }
+                var div = document.createElement('div');
+                div.className = 'message new-msg ' + m.role;
+                div._messageData = m;
+                div.innerHTML =
+                  '<div class="role"><span>' +
+                  esc(m.role) +
+                  '</span><span>' +
+                  (m.timestamp
+                    ? '<span class="msg-time">' +
+                      esc(formatTime(m.timestamp)) +
+                      '</span>'
+                    : '') +
+                  '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
+                m.content.forEach(function (block) {
+                  div.innerHTML += renderBlock(block);
+                });
+                mainEl.appendChild(div);
+              });
+              renderedMsgCount = data.messages.length;
+              renderRichBlocks();
+              if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
+            }
+            currentMessages = data.messages;
+            updateStatusBar(currentMessages);
+            if (!data.active) {
+              stopFollowing();
+              var indicator = mainEl.querySelector('.follow-indicator');
+              if (indicator) indicator.remove();
+            }
+          })
+          .catch(function () {});
+      }
+
+      function closeConversation(tab) {
+        currentMessages = null;
+        if (tab) homeTab = tab;
+        showHomeScreen();
+      }
+
+      function updateFavicon(count) {
+        var canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+
+        // Background circle
+        ctx.beginPath();
+        ctx.arc(32, 32, 30, 0, 2 * Math.PI);
+        ctx.fillStyle = count > 0 ? '#16a34a' : '#999';
+        ctx.fill();
+
+        // Number text
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font =
+          'bold ' +
+          (count > 99 ? '28' : count > 9 ? '32' : '38') +
+          'px system-ui, sans-serif';
+        ctx.fillText(count > 99 ? '99+' : String(count), 32, 34);
+
+        var link = document.querySelector('link[rel="icon"]');
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = 'icon';
+          document.head.appendChild(link);
+        }
+        link.type = 'image/png';
+        link.href = canvas.toDataURL('image/png');
+      }
+
+      let lastSidebarLoad = 0;
+      let searchQuery = '';
+      let searchTimer = null;
+
+      const searchInput = document.getElementById('conv-search');
+      const searchClear = document.getElementById('search-clear');
+      searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchClear.style.display = searchInput.value ? 'block' : 'none';
+        searchTimer = setTimeout(() => {
+          searchQuery = searchInput.value.trim();
+          loadSidebar();
+        }, 300);
+      });
+      searchClear.addEventListener('click', () => {
+        searchInput.value = '';
+        searchClear.style.display = 'none';
+        searchQuery = '';
+        loadSidebar();
+        searchInput.focus();
+      });
+
+      function loadSidebar() {
+        lastSidebarLoad = Date.now();
+        const params = searchQuery
+          ? '?q=' + encodeURIComponent(searchQuery)
+          : '';
+        fetch('/api/conversations/' + params)
+          .then((r) => r.json())
+          .then((conversations) => {
+            updateFavicon(conversations.filter((c) => c.active).length);
+            listEl.innerHTML = '';
+            conversations.forEach((c) => {
+              const div = document.createElement('div');
+              div.className = 'conversation-item';
+              if (c.active) div.classList.add('active-session');
+              if (c.file_missing) div.classList.add('file-missing');
+              div.dataset.id = c.id;
+              if (c.id === activeId) div.classList.add('active');
+
+              const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
+              const duration = formatDuration(c.date, c.last_timestamp);
+              const rid = RepoIdentity.get(c.project);
+
+              div.innerHTML =
+                '<div class="row">' +
+                '<div class="project"' +
+                (rid ? ' style="color:' + rid.colorText + '"' : '') +
+                '>' +
+                (rid ? rid.iconSm : '') +
+                esc(project) +
+                (c.branch ? ' (' + esc(c.branch) + ')' : '') +
+                '</div>' +
+                '<span class="indicator' +
+                (c.active ? ' active' : '') +
+                '"></span>' +
+                '</div>' +
+                '<div class="row">' +
+                '<div class="date">' +
+                esc(formatDate(c.date)) +
+                (duration ? ', ' + esc(duration) : '') +
+                '</div>' +
+                (c.message_count
+                  ? '<span class="badge">' + c.message_count + '</span>'
+                  : '') +
+                (c.file_missing
+                  ? '<span class="badge badge-missing">log deleted</span>'
+                  : '') +
+                '</div>' +
+                '<div class="blurb">' +
+                esc(c.blurb) +
+                '</div>';
+
+              div.onclick = () => loadConversation(c.id);
+              listEl.appendChild(div);
+            });
+          });
+      }
+
+      loadSidebar();
+
+      function handleReturnToPage() {
+        if (Date.now() - lastSidebarLoad > 20000) {
+          loadSidebar();
+          if (!hasActiveScreen()) showHomeScreen(false);
+        }
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) handleReturnToPage();
+      });
+      window.addEventListener('focus', handleReturnToPage);
+
+      function routeUrl(pathname, pushHistory) {
+        var convNew = /^\/conversations\/new\/?$/.test(pathname);
+        var convMatch = pathname.match(/^\/conversations\/([^/]+)/);
+        var planMatch = pathname.match(/^\/plans\/([^/]+)/);
+        var skillNew = /^\/skills\/new\/?$/.test(pathname);
+        var skillMatch = pathname.match(/^\/skills\/([^/]+)\/(.+)/);
+        var memoryMatch = pathname.match(/^\/memories\/([^/]+)/);
+        var repoMatch = pathname.match(/^\/repos\/detail\/(.+)/);
+        var cronjobNew = /^\/cronjobs\/new\/?$/.test(pathname);
+        var cronjobMatch = pathname.match(/^\/cronjobs\/(\d+)/);
+        if (convNew) {
+          showCreateSessionForm(pushHistory);
+        } else if (convMatch) {
+          loadConversation(convMatch[1], pushHistory);
+        } else if (planMatch) {
+          loadPlan(planMatch[1], pushHistory);
+        } else if (skillNew) {
+          showCreateSkillForm(pushHistory);
+        } else if (skillMatch) {
+          loadSkillByUrl(
+            decodeURIComponent(skillMatch[1]),
+            decodeURIComponent(skillMatch[2]),
+            pushHistory,
+          );
+        } else if (cronjobNew) {
+          showCreateCronjobForm(null, pushHistory);
+        } else if (cronjobMatch) {
+          loadCronjob(parseInt(cronjobMatch[1]), pushHistory);
+        } else if (repoMatch) {
+          loadRepo(decodeURIComponent(repoMatch[1]), pushHistory);
+        } else if (memoryMatch) {
+          loadMemory(memoryMatch[1], pushHistory);
+        } else if (/^\/cronjobs\b/.test(pathname)) {
+          homeTab = 'cronjobs';
+          showHomeScreen(pushHistory);
+        } else if (/^\/memories\b/.test(pathname)) {
+          homeTab = 'memory';
+          showHomeScreen(pushHistory);
+        } else if (/^\/skills\b/.test(pathname)) {
+          homeTab = 'skills';
+          showHomeScreen(pushHistory);
+        } else if (/^\/plans\b/.test(pathname)) {
+          homeTab = 'plans';
+          showHomeScreen(pushHistory);
+        } else if (/^\/repos\b/.test(pathname)) {
+          homeTab = 'repos';
+          showHomeScreen(pushHistory);
+        } else if (/^\/activity\b/.test(pathname)) {
+          homeTab = 'activity';
+          showHomeScreen(pushHistory);
+        } else {
+          homeTab = 'conversations';
+          showHomeScreen(pushHistory);
+        }
+      }
+
+      var sharedDeps = {
+        mainEl,
+        setActiveScreen,
+        closeConversation,
+        RepoIdentity,
+      };
+      initRender({ mainEl, mainWrapEl });
+      initMemories({
+        ...sharedDeps,
+        memoryListEl,
+        getActiveMemoryId: () => activeMemoryId,
+      });
+      initRepos({
+        ...sharedDeps,
+        repoListEl,
+        getActiveRepoPath: () => activeRepoPath,
+      });
+      initPlans({
+        ...sharedDeps,
+        planListEl,
+        getActivePlanId: () => activePlanId,
+      });
+      initSkills({
+        ...sharedDeps,
+        skillListEl,
+        loadConversation: (id) => loadConversation(id),
+        showCreateCronjobForm: (...args) => showCreateCronjobForm(...args),
+        loadCronjob: (...args) => loadCronjob(...args),
+        getActiveSkillId: () => activeSkillId,
+      });
+      initCronjobs({
+        ...sharedDeps,
+        cronjobListEl,
+        loadConversation: (id) => loadConversation(id),
+        navigateToSkillByName: (name) => navigateToSkillByName(name),
+        getActiveCronjobId: () => activeCronjobId,
+      });
+      initAutolinks();
+
+      // open conversation/plan/skill from URL on initial load, or show home screen
+      routeUrl(location.pathname, false);
+
+      window.addEventListener('popstate', function (e) {
+        routeUrl(location.pathname, false);
+      });
+
+      function loadConversation(id, pushHistory) {
+        setActiveScreen({ activeId: id });
+        if (pushHistory !== false) {
+          history.pushState({ id: id }, '', '/conversations/' + id);
+        }
+        document.querySelectorAll('.conversation-item').forEach((el) => {
+          el.classList.toggle('active', el.dataset.id === id);
+        });
+        mainEl.innerHTML = '<div class="empty">Loading...</div>';
+
+        fetch('/api/conversations/' + id + '/')
+          .then((r) => r.json())
+          .then((data) => {
+            if (activeId !== id) return;
+            const render = () => {
+              mainEl.innerHTML = '';
+              setCurrentCwd(data.cwd || null);
+
+              const toolbar = document.createElement('div');
+              toolbar.className = 'conversation-toolbar';
+              toolbar.innerHTML =
+                '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="fork-conv" title="Fork and resume in terminal">&#x2442;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
+              const project = data.cwd
+                ? data.cwd.replace(/^\/home\/[^/]+\//, '~/')
+                : '';
+
+              const header = document.createElement('div');
+              header.className = 'conversation-header';
+              var crid = data.cwd ? RepoIdentity.get(data.cwd) : null;
+              if (crid) {
+                header.style.borderLeft = '3px solid ' + crid.colorBorder;
+                header.style.paddingLeft = '12px';
+              }
+              var parts = [];
+
+              if (project && currentForgeRepo) {
+                parts.push(
+                  '<span>' +
+                    (crid ? crid.iconSm : '') +
+                    '<a href="' +
+                    esc(forgeRepoUrl(currentForgeRepo)) +
+                    '" target="_blank" rel="noopener noreferrer">' +
+                    esc(project) +
+                    '</a></span>',
+                );
+              } else if (project) {
+                parts.push(
+                  '<span>' +
+                    (crid ? crid.iconSm : '') +
+                    esc(project) +
+                    '</span>',
+                );
+              }
+              if (data.branch) {
+                if (currentForgeOrigin) {
+                  parts.push(
+                    '<span>branch: <a href="' +
+                      esc(forgeBranchUrl(currentForgeOrigin, data.branch)) +
+                      '" target="_blank" rel="noopener noreferrer">' +
+                      esc(data.branch) +
+                      '</a></span>',
+                  );
+                } else {
+                  parts.push('<span>branch: ' + esc(data.branch) + '</span>');
+                }
+              }
+              if (currentPR) {
+                var prLabel =
+                  currentForgeRepo && currentForgeRepo.type === 'gitlab'
+                    ? 'MR'
+                    : 'PR';
+                var prPrefix =
+                  currentForgeRepo && currentForgeRepo.type === 'gitlab'
+                    ? '!'
+                    : '#';
+                parts.push(
+                  '<span>' +
+                    prLabel +
+                    ': <a href="' +
+                    esc(currentPR.url) +
+                    '" target="_blank" rel="noopener noreferrer">' +
+                    prPrefix +
+                    currentPR.number +
+                    '</a>' +
+                    (currentPR.state === 'MERGED'
+                      ? ' (merged)'
+                      : currentPR.state === 'CLOSED'
+                        ? ' (closed)'
+                        : '') +
+                    '</span>',
+                );
+              }
+              if (data.message_count)
+                parts.push('<span>' + data.message_count + ' messages</span>');
+              var duration = formatDuration(
+                data.first_timestamp,
+                data.last_timestamp,
+              );
+              if (duration) parts.push('<span>' + esc(duration) + '</span>');
+              if (data.model)
+                parts.push('<span>' + esc(data.model) + '</span>');
+              if (data.version)
+                parts.push(
+                  '<span>claude-code ' + esc(data.version) + '</span>',
+                );
+              if (data.file_missing)
+                parts.push(
+                  '<span class="badge badge-missing">log file deleted — metadata only</span>',
+                );
+              header.innerHTML = parts.join('');
+
+              toolbar.querySelector('.scroll-bottom').onclick = function () {
+                mainEl.scrollTop = mainEl.scrollHeight;
+              };
+              toolbar.querySelector('.new-here').onclick = function () {
+                var btn = this;
+                btn.textContent = '...';
+                fetch('/api/sessions/new/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ cwd: data.cwd }),
+                })
+                  .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+                  .then(({ ok }) => {
+                    btn.textContent = ok ? '\u2713' : '\u2717';
+                    setTimeout(() => {
+                      btn.textContent = '+';
+                    }, 2000);
+                  });
+              };
+              if (data.file_missing) {
+                toolbar.querySelector('.resume-conv').style.display = 'none';
+                toolbar.querySelector('.fork-conv').style.display = 'none';
+              }
+              toolbar.querySelector('.resume-conv').onclick = function () {
+                var btn = this;
+                btn.textContent = '...';
+                fetch('/api/sessions/resume/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ conversation_id: id, cwd: data.cwd }),
+                })
+                  .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+                  .then(({ ok, data: result }) => {
+                    btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
+                    setTimeout(() => {
+                      btn.innerHTML = '&#x25b6;';
+                    }, 2000);
+                  });
+              };
+              toolbar.querySelector('.fork-conv').onclick = function () {
+                var btn = this;
+                btn.textContent = '...';
+                fetch('/api/sessions/fork/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ conversation_id: id, cwd: data.cwd }),
+                })
+                  .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
+                  .then(({ ok, data: result }) => {
+                    btn.innerHTML = ok ? '&#x2713;' : '&#x2717;';
+                    setTimeout(() => {
+                      btn.innerHTML = '&#x2442;';
+                    }, 2000);
+                  });
+              };
+              toolbar.querySelector('.reload-conv').onclick = function () {
+                loadConversation(id, false);
+              };
+              toolbar.querySelector('.close-conv').onclick = function () {
+                closeConversation('conversations');
+              };
+              mainEl.appendChild(toolbar);
+              mainEl.appendChild(header);
+
+              if (data.file_missing) {
+                var notice = document.createElement('div');
+                notice.className = 'file-missing-notice';
+                notice.innerHTML =
+                  'The log file for this conversation has been deleted by Claude Code cleanup. Only cached metadata is available.<br><br>To control how long conversation logs are kept, set <code>cleanupPeriodDays</code> in <code>~/.claude/settings.json</code> <button title="Open in $EDITOR">$EDITOR</button>';
+                notice.querySelector('button').onclick = function () {
+                  var home = (data.cwd || '/tmp').replace(
+                    /^(\/home\/[^/]+).*/,
+                    '$1',
+                  );
+                  openInEditor(home + '/.claude/settings.json');
+                };
+                mainEl.appendChild(notice);
+              }
+
+              for (var k in taskSubjects) delete taskSubjects[k];
+              data.messages.forEach((m) => {
+                m.content.forEach((block) => {
+                  if (
+                    block.type === 'tool_use' &&
+                    block.name === 'TaskCreate' &&
+                    block.result
+                  ) {
+                    var tm = block.result.match(
+                      /Task #(\d+) created successfully: (.+)/,
+                    );
+                    if (tm) taskSubjects[tm[1]] = tm[2];
+                  }
+                });
+              });
+
+              data.messages.forEach((m, idx) => {
+                if (isSkillPrompt(m, data.messages[idx - 1])) {
+                  var msgDivs = mainEl.querySelectorAll('.message');
+                  var prevDiv = msgDivs[msgDivs.length - 1];
+                  if (prevDiv) prevDiv.innerHTML += renderSkillPrompt(m);
+                  return;
+                }
+                const div = document.createElement('div');
+                div.className = 'message ' + m.role;
+                div._messageData = m;
+                div.innerHTML =
+                  '<div class="role"><span>' +
+                  esc(m.role) +
+                  '</span><span>' +
+                  (m.timestamp
+                    ? '<span class="msg-time">' +
+                      esc(formatTime(m.timestamp)) +
+                      '</span>'
+                    : '') +
+                  '<span class="copy-msg" title="Copy as markdown">&#x2398;</span></span></div>';
+
+                m.content.forEach((block) => {
+                  div.innerHTML += renderBlock(block);
+                });
+
+                mainEl.appendChild(div);
+              });
+              currentMessages = data.messages;
+              updateStatusBar(currentMessages);
+              renderRichBlocks();
+              mainEl.scrollTop = 0;
+              mainEl.focus();
+
+              if (data.active) {
+                var indicator = document.createElement('span');
+                indicator.className = 'follow-indicator';
+                indicator.textContent = 'Following';
+                toolbar.querySelector('.header-btns').prepend(indicator);
+                startFollowing(id, data.messages.length);
+              }
+            };
+
+            if (data.cwd) {
+              fetch(
+                '/api/github-repo/?path=' +
+                  encodeURIComponent(data.cwd) +
+                  '&branch=' +
+                  encodeURIComponent(data.branch || ''),
+              )
+                .then((r) => r.json())
+                .then((gh) => {
+                  setForgeAutolink(gh);
+                  render();
+                })
+                .catch(() => {
+                  setForgeAutolink(null);
+                  render();
+                });
+            } else {
+              setForgeAutolink(null);
+              render();
+            }
+          });
+      }
+
+      document.addEventListener('click', function (e) {
+        var copyBtn = e.target.closest('.copy-msg');
+        if (copyBtn) {
+          var msgEl = copyBtn.closest('.message');
+          var md = messageToMarkdown(msgEl);
+          navigator.clipboard.writeText(md).then(function () {
+            copyBtn.textContent = '\u2713';
+            setTimeout(function () {
+              copyBtn.innerHTML = '\u2398';
+            }, 1500);
+          });
+          return;
+        }
+
+        var skillLink = e.target.closest('.skill-link');
+        if (skillLink) {
+          e.preventDefault();
+          var skillName = skillLink.dataset.skill;
+          if (skillName) navigateToSkillByName(skillName);
+          return;
+        }
+
+        var link = e.target.closest('.git-show-link');
+        if (!link || !currentCwd) return;
+        e.preventDefault();
+        fetch('/api/terminal/run/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cmd: [
+              'git',
+              '-c',
+              'core.pager=less -+F -R',
+              'show',
+              link.dataset.sha,
+            ],
+            cwd: currentCwd,
+          }),
+        });
+      });
+
+      mainEl.addEventListener('click', function (e) {
+        if (!e.target.classList.contains('expand-all')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const clicked = e.target.closest('details');
+        if (!clicked) return;
+
+        const willOpen = !clicked.open;
+        mainEl.querySelectorAll('details').forEach((d) => {
+          d.open = willOpen;
+        });
+
+        e.target.closest('summary').scrollIntoView({ block: 'nearest' });
+      });
+
+      mainEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('.rich-toggle');
+        if (!btn) return;
+        var container = btn.closest('.rich-container');
+        var rendered = container.querySelector('.rich-rendered');
+        var source = container.querySelector('.rich-source');
+        var showingSource = source.style.display !== 'none';
+        rendered.style.display = showingSource ? '' : 'none';
+        source.style.display = showingSource ? 'none' : '';
+        btn.textContent = showingSource ? 'Source' : 'Diagram';
+      });
+    </script>
+  </body>
 </html>

@@ -18,10 +18,12 @@ export function initCronjobs(deps) {
 
 export function loadCronjobsSidebar() {
   fetch('/api/cronjobs/')
-    .then(function(r) { return r.json(); })
-    .then(function(cronjobs) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (cronjobs) {
       cronjobListEl.innerHTML = '';
-      cronjobs.forEach(function(cj) {
+      cronjobs.forEach(function (cj) {
         var div = document.createElement('div');
         div.className = 'cronjob-item';
         div.dataset.id = cj.id;
@@ -29,13 +31,29 @@ export function loadCronjobsSidebar() {
 
         var repoShort = cj.repo.replace(/^\/home\/[^/]+\//, '~/');
         var rid = RepoIdentity.get(cj.repo);
-        var nextInfo = cj.next_run_at ? ' <span style="color:#666">' + esc(timeUntil(cj.next_run_at)) + '</span>' : '';
+        var nextInfo = cj.next_run_at
+          ? ' <span style="color:#666">' +
+            esc(timeUntil(cj.next_run_at)) +
+            '</span>'
+          : '';
         div.innerHTML =
-          '<div class="cronjob-schedule">' + esc(cj.schedule_summary) + (cj.enabled ? nextInfo : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
-          '<div class="cronjob-name">/' + esc(cj.skill_name) + '</div>' +
-          '<div class="cronjob-repo">' + (rid ? rid.iconSm : '') + esc(repoShort) + '</div>';
+          '<div class="cronjob-schedule">' +
+          esc(cj.schedule_summary) +
+          (cj.enabled
+            ? nextInfo
+            : ' <span style="color:#dc2626">(off)</span>') +
+          '</div>' +
+          '<div class="cronjob-name">/' +
+          esc(cj.skill_name) +
+          '</div>' +
+          '<div class="cronjob-repo">' +
+          (rid ? rid.iconSm : '') +
+          esc(repoShort) +
+          '</div>';
 
-        div.onclick = function() { loadCronjob(cj.id); };
+        div.onclick = function () {
+          loadCronjob(cj.id);
+        };
         cronjobListEl.appendChild(div);
       });
     });
@@ -43,22 +61,28 @@ export function loadCronjobsSidebar() {
 
 export function showCronjobsHome() {
   fetch('/api/cronjobs/')
-    .then(function(r) { return r.json(); })
-    .then(function(cronjobs) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (cronjobs) {
       var colsEl = document.getElementById('home-cols');
       if (!cronjobs.length) {
-        colsEl.innerHTML = '<div style="color:#888;padding:24px">No cronjobs yet. Create one from a skill detail view or click + in the sidebar.</div>';
+        colsEl.innerHTML =
+          '<div style="color:#888;padding:24px">No cronjobs yet. Create one from a skill detail view or click + in the sidebar.</div>';
         return;
       }
       var repos = {};
       var repoOrder = [];
-      cronjobs.forEach(function(cj) {
+      cronjobs.forEach(function (cj) {
         var key = cj.repo || 'other';
-        if (!repos[key]) { repos[key] = []; repoOrder.push(key); }
+        if (!repos[key]) {
+          repos[key] = [];
+          repoOrder.push(key);
+        }
         repos[key].push(cj);
       });
       colsEl.innerHTML = '';
-      repoOrder.forEach(function(repo) {
+      repoOrder.forEach(function (repo) {
         var col = document.createElement('div');
         col.className = 'home-column';
         var rid = RepoIdentity.get(repo);
@@ -67,14 +91,26 @@ export function showCronjobsHome() {
           col.style.borderColor = rid.colorBorder;
           col.style.background = rid.colorLight;
         }
-        col.innerHTML = '<div class="home-column-header">' + (rid ? rid.iconMd : '') + '<strong>' + esc(short) + '</strong></div>';
-        repos[repo].forEach(function(cj) {
+        col.innerHTML =
+          '<div class="home-column-header">' +
+          (rid ? rid.iconMd : '') +
+          '<strong>' +
+          esc(short) +
+          '</strong></div>';
+        repos[repo].forEach(function (cj) {
           var item = document.createElement('div');
           item.className = 'home-conv-item';
           item.innerHTML =
-            '<div style="font-size:11px;color:#888">' + esc(cj.schedule_summary) + (cj.enabled ? '' : ' <span style="color:#dc2626">(off)</span>') + '</div>' +
-            '<div>/' + esc(cj.skill_name) + '</div>';
-          item.onclick = function() { loadCronjob(cj.id); };
+            '<div style="font-size:11px;color:#888">' +
+            esc(cj.schedule_summary) +
+            (cj.enabled ? '' : ' <span style="color:#dc2626">(off)</span>') +
+            '</div>' +
+            '<div>/' +
+            esc(cj.skill_name) +
+            '</div>';
+          item.onclick = function () {
+            loadCronjob(cj.id);
+          };
           col.appendChild(item);
         });
         colsEl.appendChild(col);
@@ -87,15 +123,17 @@ export function loadCronjob(cronjobId, pushHistory) {
   if (pushHistory !== false) {
     history.pushState(null, '', '/cronjobs/' + cronjobId);
   }
-  document.querySelectorAll('.cronjob-item').forEach(function(el) {
+  document.querySelectorAll('.cronjob-item').forEach(function (el) {
     el.classList.toggle('active', el.dataset.id == cronjobId);
   });
   if (!cronjobListEl.children.length) loadCronjobsSidebar();
 
   mainEl.innerHTML = '<div class="empty">Loading...</div>';
   fetch('/api/cronjobs/' + cronjobId + '/')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (data) {
       if (getActiveCronjobId() !== cronjobId) return;
       mainEl.innerHTML = '';
 
@@ -105,17 +143,29 @@ export function loadCronjob(cronjobId, pushHistory) {
       closeBtn.className = 'close-conv';
       closeBtn.innerHTML = '&#x2715;';
       closeBtn.title = 'Close';
-      closeBtn.onclick = function() { closeConversation('cronjobs'); };
+      closeBtn.onclick = function () {
+        closeConversation('cronjobs');
+      };
       toolbar.appendChild(closeBtn);
       mainEl.appendChild(toolbar);
 
       var header = document.createElement('div');
       header.className = 'conversation-header';
       var repoShort = data.repo.replace(/^\/home\/[^/]+\//, '~/');
-      var nextRunInfo = data.next_run_at ? ' (next: ' + timeUntil(data.next_run_at) + ')' : '';
-      header.innerHTML = '<span style="font-size:18px;font-weight:700">/' + esc(data.skill_name) + '</span>' +
-        '<span style="font-size:13px;color:#888">' + esc(data.schedule_summary) + nextRunInfo + '</span>' +
-        '<span style="font-size:13px;color:#888">' + esc(repoShort) + '</span>';
+      var nextRunInfo = data.next_run_at
+        ? ' (next: ' + timeUntil(data.next_run_at) + ')'
+        : '';
+      header.innerHTML =
+        '<span style="font-size:18px;font-weight:700">/' +
+        esc(data.skill_name) +
+        '</span>' +
+        '<span style="font-size:13px;color:#888">' +
+        esc(data.schedule_summary) +
+        nextRunInfo +
+        '</span>' +
+        '<span style="font-size:13px;color:#888">' +
+        esc(repoShort) +
+        '</span>';
       mainEl.appendChild(header);
 
       var view = document.createElement('div');
@@ -130,13 +180,22 @@ export function loadCronjob(cronjobId, pushHistory) {
       var skillSelect = document.createElement('select');
       skillSelect.innerHTML = '<option value="">Loading...</option>';
       fetch('/api/skills/')
-        .then(function(r) { return r.json(); })
-        .then(function(skills) {
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (skills) {
           skillSelect.innerHTML = '';
-          skills.forEach(function(s) {
+          skills.forEach(function (s) {
             var opt = document.createElement('option');
             opt.value = s.name;
-            opt.textContent = '/' + s.name + ' (' + (s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/')) + ')';
+            opt.textContent =
+              '/' +
+              s.name +
+              ' (' +
+              (s.scope === 'global'
+                ? 'global'
+                : s.scope.replace(/^\/home\/[^/]+\//, '~/')) +
+              ')';
             if (s.name === data.skill_name) opt.selected = true;
             skillSelect.appendChild(opt);
           });
@@ -146,8 +205,9 @@ export function loadCronjob(cronjobId, pushHistory) {
       var skillLink = document.createElement('a');
       skillLink.href = '#';
       skillLink.textContent = 'View skill';
-      skillLink.style.cssText = 'font-size:11px;color:#4338ca;font-weight:normal';
-      skillLink.onclick = function(e) {
+      skillLink.style.cssText =
+        'font-size:11px;color:#4338ca;font-weight:normal';
+      skillLink.onclick = function (e) {
         e.preventDefault();
         navigateToSkillByName(data.skill_name);
       };
@@ -160,10 +220,12 @@ export function loadCronjob(cronjobId, pushHistory) {
       var repoSelect = document.createElement('select');
       repoSelect.innerHTML = '<option value="">Loading...</option>';
       fetch('/api/repos/')
-        .then(function(r) { return r.json(); })
-        .then(function(repos) {
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (repos) {
           repoSelect.innerHTML = '';
-          repos.forEach(function(repo) {
+          repos.forEach(function (repo) {
             var opt = document.createElement('option');
             opt.value = repo;
             opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');
@@ -203,17 +265,19 @@ export function loadCronjob(cronjobId, pushHistory) {
       var presets = document.createElement('div');
       presets.className = 'schedule-presets';
       var presetDefs = [
-        {label: 'Daily 9am', value: '0 9 * * *'},
-        {label: 'Daily 6pm', value: '0 18 * * *'},
-        {label: 'Weekdays 9am', value: '0 9 * * 1-5'},
-        {label: 'Mon 9am', value: '0 9 * * 1'},
-        {label: 'Every hour', value: '0 * * * *'},
+        { label: 'Daily 9am', value: '0 9 * * *' },
+        { label: 'Daily 6pm', value: '0 18 * * *' },
+        { label: 'Weekdays 9am', value: '0 9 * * 1-5' },
+        { label: 'Mon 9am', value: '0 9 * * 1' },
+        { label: 'Every hour', value: '0 * * * *' },
       ];
-      presetDefs.forEach(function(p) {
+      presetDefs.forEach(function (p) {
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = p.label;
-        btn.onclick = function() { cronInput.value = p.value; };
+        btn.onclick = function () {
+          cronInput.value = p.value;
+        };
         presets.appendChild(btn);
       });
       schedLabel.appendChild(presets);
@@ -240,59 +304,74 @@ export function loadCronjob(cronjobId, pushHistory) {
 
       var saveBtn = document.createElement('button');
       saveBtn.textContent = 'Save';
-      saveBtn.onclick = function() {
+      saveBtn.onclick = function () {
         saveBtn.textContent = '...';
         fetch('/api/cronjobs/' + cronjobId + '/', {
           method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             skill_name: skillSelect.value || data.skill_name,
             repo: repoSelect.value || data.repo,
             params: paramsInput.value,
             cron_expression: cronInput.value,
             enabled: enabledCheck.checked,
-          })
+          }),
         })
-        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
-        .then(function(resp) {
-          if (resp.ok) {
-            saveBtn.textContent = 'Saved';
-            loadCronjobsSidebar();
-            setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
-          } else {
-            saveBtn.textContent = resp.data.error || 'Error';
-            setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
-          }
-        });
+          .then(function (r) {
+            return r.json().then(function (d) {
+              return { ok: r.ok, data: d };
+            });
+          })
+          .then(function (resp) {
+            if (resp.ok) {
+              saveBtn.textContent = 'Saved';
+              loadCronjobsSidebar();
+              setTimeout(function () {
+                saveBtn.textContent = 'Save';
+              }, 2000);
+            } else {
+              saveBtn.textContent = resp.data.error || 'Error';
+              setTimeout(function () {
+                saveBtn.textContent = 'Save';
+              }, 2000);
+            }
+          });
       };
       actions.appendChild(saveBtn);
 
       var runNowBtn = document.createElement('button');
       runNowBtn.textContent = 'Run Now';
-      runNowBtn.onclick = function() {
+      runNowBtn.onclick = function () {
         runNowBtn.textContent = '...';
         fetch('/api/cronjobs/' + cronjobId + '/run/', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'}
+          headers: { 'Content-Type': 'application/json' },
         })
-        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
-        .then(function(resp) {
-          runNowBtn.textContent = resp.ok ? 'Launched' : 'Error';
-          setTimeout(function() { runNowBtn.textContent = 'Run Now'; }, 2000);
-        });
+          .then(function (r) {
+            return r.json().then(function (d) {
+              return { ok: r.ok, data: d };
+            });
+          })
+          .then(function (resp) {
+            runNowBtn.textContent = resp.ok ? 'Launched' : 'Error';
+            setTimeout(function () {
+              runNowBtn.textContent = 'Run Now';
+            }, 2000);
+          });
       };
       actions.appendChild(runNowBtn);
 
       var deleteBtn = document.createElement('button');
       deleteBtn.textContent = 'Delete';
       deleteBtn.style.cssText = 'color:#dc2626;border-color:#fca5a5';
-      deleteBtn.onclick = function() {
+      deleteBtn.onclick = function () {
         if (!confirm('Delete this cronjob?')) return;
-        fetch('/api/cronjobs/' + cronjobId + '/', {method: 'DELETE'})
-          .then(function() {
+        fetch('/api/cronjobs/' + cronjobId + '/', { method: 'DELETE' }).then(
+          function () {
             loadCronjobsSidebar();
             closeConversation('cronjobs');
-          });
+          },
+        );
       };
       actions.appendChild(deleteBtn);
 
@@ -304,23 +383,39 @@ export function loadCronjob(cronjobId, pushHistory) {
       runsSection.innerHTML = '<h4>Previous runs</h4>';
 
       if (!data.runs || !data.runs.length) {
-        runsSection.innerHTML += '<div style="color:#888;font-size:13px">No runs yet</div>';
+        runsSection.innerHTML +=
+          '<div style="color:#888;font-size:13px">No runs yet</div>';
       } else {
-        data.runs.forEach(function(run) {
+        data.runs.forEach(function (run) {
           var item = document.createElement('div');
           item.className = 'cronjob-run-item';
-          var badgeClass = run.trigger_type === 'manual' ? 'badge-manual' : 'badge-scheduled';
+          var badgeClass =
+            run.trigger_type === 'manual' ? 'badge-manual' : 'badge-scheduled';
           var convLink = run.conversation_id
-            ? '<a href="/conversations/' + esc(run.conversation_id) + '" style="color:#4338ca;font-size:12px">' + esc(run.conversation_id.substring(0, 8)) + '...</a>'
+            ? '<a href="/conversations/' +
+              esc(run.conversation_id) +
+              '" style="color:#4338ca;font-size:12px">' +
+              esc(run.conversation_id.substring(0, 8)) +
+              '...</a>'
             : '<span style="color:#aaa;font-size:12px">no conversation linked</span>';
           item.innerHTML =
-            '<span>' + esc(formatDate(run.triggered_at)) + '</span>' +
-            '<span class="badge ' + badgeClass + '">' + esc(run.trigger_type) + '</span>' +
-            '<span>' + convLink + '</span>';
+            '<span>' +
+            esc(formatDate(run.triggered_at)) +
+            '</span>' +
+            '<span class="badge ' +
+            badgeClass +
+            '">' +
+            esc(run.trigger_type) +
+            '</span>' +
+            '<span>' +
+            convLink +
+            '</span>';
           if (run.conversation_id) {
             item.style.cursor = 'pointer';
-            item.onclick = function(e) {
-              if (e.target.tagName === 'A') { e.preventDefault(); }
+            item.onclick = function (e) {
+              if (e.target.tagName === 'A') {
+                e.preventDefault();
+              }
               loadConversation(run.conversation_id);
             };
           }
@@ -349,13 +444,16 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   closeBtn.className = 'close-conv';
   closeBtn.innerHTML = '&#x2715;';
   closeBtn.title = 'Close';
-  closeBtn.onclick = function() { closeConversation('cronjobs'); };
+  closeBtn.onclick = function () {
+    closeConversation('cronjobs');
+  };
   toolbar.appendChild(closeBtn);
   mainEl.appendChild(toolbar);
 
   var header = document.createElement('div');
   header.className = 'conversation-header';
-  header.innerHTML = '<span style="font-size:18px;font-weight:700">New Cronjob</span>';
+  header.innerHTML =
+    '<span style="font-size:18px;font-weight:700">New Cronjob</span>';
   mainEl.appendChild(header);
 
   var view = document.createElement('div');
@@ -369,13 +467,22 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   var skillSelect = document.createElement('select');
   skillSelect.innerHTML = '<option value="">Loading...</option>';
   fetch('/api/skills/')
-    .then(function(r) { return r.json(); })
-    .then(function(skills) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (skills) {
       skillSelect.innerHTML = '';
-      skills.forEach(function(s) {
+      skills.forEach(function (s) {
         var opt = document.createElement('option');
         opt.value = s.name;
-        opt.textContent = '/' + s.name + ' (' + (s.scope === 'global' ? 'global' : s.scope.replace(/^\/home\/[^/]+\//, '~/')) + ')';
+        opt.textContent =
+          '/' +
+          s.name +
+          ' (' +
+          (s.scope === 'global'
+            ? 'global'
+            : s.scope.replace(/^\/home\/[^/]+\//, '~/')) +
+          ')';
         if (prefilledName && s.name === prefilledName) opt.selected = true;
         skillSelect.appendChild(opt);
       });
@@ -389,10 +496,12 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   var repoSelect = document.createElement('select');
   repoSelect.innerHTML = '<option value="">Loading...</option>';
   fetch('/api/repos/')
-    .then(function(r) { return r.json(); })
-    .then(function(repos) {
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (repos) {
       repoSelect.innerHTML = '';
-      repos.forEach(function(repo) {
+      repos.forEach(function (repo) {
         var opt = document.createElement('option');
         opt.value = repo;
         opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');
@@ -423,17 +532,19 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   var presets = document.createElement('div');
   presets.className = 'schedule-presets';
   var presetDefs = [
-    {label: 'Daily 9am', value: '0 9 * * *'},
-    {label: 'Daily 6pm', value: '0 18 * * *'},
-    {label: 'Weekdays 9am', value: '0 9 * * 1-5'},
-    {label: 'Mon 9am', value: '0 9 * * 1'},
-    {label: 'Every hour', value: '0 * * * *'},
+    { label: 'Daily 9am', value: '0 9 * * *' },
+    { label: 'Daily 6pm', value: '0 18 * * *' },
+    { label: 'Weekdays 9am', value: '0 9 * * 1-5' },
+    { label: 'Mon 9am', value: '0 9 * * 1' },
+    { label: 'Every hour', value: '0 * * * *' },
   ];
-  presetDefs.forEach(function(p) {
+  presetDefs.forEach(function (p) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = p.label;
-    btn.onclick = function() { cronInput.value = p.value; };
+    btn.onclick = function () {
+      cronInput.value = p.value;
+    };
     presets.appendChild(btn);
   });
   schedLabel.appendChild(presets);
@@ -451,40 +562,50 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
 
   var createBtn = document.createElement('button');
   createBtn.textContent = 'Create';
-  createBtn.onclick = function() {
+  createBtn.onclick = function () {
     if (!skillSelect.value || !repoSelect.value || !cronInput.value) {
       statusSpan.textContent = 'Fill in all required fields';
-      setTimeout(function() { statusSpan.textContent = ''; }, 2000);
+      setTimeout(function () {
+        statusSpan.textContent = '';
+      }, 2000);
       return;
     }
     createBtn.textContent = '...';
     fetch('/api/cronjobs/', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         skill_name: skillSelect.value,
         repo: repoSelect.value,
         params: paramsInput.value,
         cron_expression: cronInput.value,
-      })
+      }),
     })
-    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
-    .then(function(resp) {
-      if (resp.ok) {
-        loadCronjobsSidebar();
-        loadCronjob(resp.data.id);
-      } else {
-        createBtn.textContent = 'Create';
-        statusSpan.textContent = resp.data.error || 'Error';
-        setTimeout(function() { statusSpan.textContent = ''; }, 2000);
-      }
-    });
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { ok: r.ok, data: d };
+        });
+      })
+      .then(function (resp) {
+        if (resp.ok) {
+          loadCronjobsSidebar();
+          loadCronjob(resp.data.id);
+        } else {
+          createBtn.textContent = 'Create';
+          statusSpan.textContent = resp.data.error || 'Error';
+          setTimeout(function () {
+            statusSpan.textContent = '';
+          }, 2000);
+        }
+      });
   };
   actions.appendChild(createBtn);
 
   var cancelBtn = document.createElement('button');
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.onclick = function() { closeConversation('cronjobs'); };
+  cancelBtn.onclick = function () {
+    closeConversation('cronjobs');
+  };
   actions.appendChild(cancelBtn);
 
   actions.appendChild(statusSpan);
