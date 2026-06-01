@@ -341,24 +341,25 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
 .rich-rendered .abcjs-container { text-align: left; }
 .rich-rendered .abcjs-audio { margin-top: 4px; }
 /* shared markdown element styles — add new markdown containers here */
-.block.text code, .agent-prompt code,
+.block.text code, .agent-prompt code, .agent-result-body code,
 .skill-prompt-body code, .tool-output code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
-.block.text pre code, .agent-prompt pre code,
+.block.text pre code, .agent-prompt pre code, .agent-result-body pre code,
 .skill-prompt-body pre code, .tool-output pre code { background: none; padding: 0; }
 .block.text ul, .block.text ol,
 .agent-prompt ul, .agent-prompt ol,
+.agent-result-body ul, .agent-result-body ol,
 .skill-prompt-body ul, .skill-prompt-body ol,
 .tool-output ul, .tool-output ol,
 .plan-content ul, .plan-content ol { margin: 0.5em 0; padding-left: 1.5em; }
-.block.text blockquote, .agent-prompt blockquote,
+.block.text blockquote, .agent-prompt blockquote, .agent-result-body blockquote,
 .skill-prompt-body blockquote, .tool-output blockquote { border-left: 3px solid #ddd; padding-left: 12px; color: #666; margin: 0.5em 0; }
-.block.text table, .agent-prompt table,
+.block.text table, .agent-prompt table, .agent-result-body table,
 .skill-prompt-body table, .tool-output table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
-.block.text th, .block.text td, .agent-prompt th, .agent-prompt td,
+.block.text th, .block.text td, .agent-prompt th, .agent-prompt td, .agent-result-body th, .agent-result-body td,
 .skill-prompt-body th, .skill-prompt-body td, .tool-output th, .tool-output td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
-.block.text th, .agent-prompt th,
+.block.text th, .agent-prompt th, .agent-result-body th,
 .skill-prompt-body th, .tool-output th { background: #f4f4f4; font-weight: 600; }
-.block.text tr:nth-child(even), .agent-prompt tr:nth-child(even),
+.block.text tr:nth-child(even), .agent-prompt tr:nth-child(even), .agent-result-body tr:nth-child(even),
 .skill-prompt-body tr:nth-child(even), .tool-output tr:nth-child(even) { background: #f0f0f0; }
 /* .block.text-only styles */
 .block.text h1, .block.text h2, .block.text h3 { margin: 0.75em 0 0.25em; }
@@ -488,6 +489,25 @@ body { font-family: system-ui, sans-serif; display: flex; height: 100vh; }
   max-height: 300px;
   overflow-y: auto;
   margin-top: 4px;
+}
+
+.agent-result {
+  margin-top: 6px;
+  border: 1px solid #d0d8f0;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+.agent-result > summary {
+  font-size: 12px;
+  color: #15803d;
+  padding: 4px 10px;
+}
+.agent-result .agent-result-body {
+  padding: 8px 12px;
+  border-top: 1px solid #e0e8f0;
+  font-size: 13px;
+  max-height: 600px;
+  overflow-y: auto;
 }
 
 details > summary {
