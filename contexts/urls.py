@@ -10,10 +10,12 @@ def serve_with_index(request, path=""):
     if full_path.is_dir():
         path = path.rstrip("/") + "/index.html"
     try:
-        return serve(request, path, document_root=doc_root)
+        response = serve(request, path, document_root=doc_root)
     except Http404:
         # SPA fallback — serve index.html for client-side routes
-        return serve(request, "index.html", document_root=doc_root)
+        response = serve(request, "index.html", document_root=doc_root)
+    response["Cache-Control"] = "no-cache"
+    return response
 
 
 urlpatterns = [
