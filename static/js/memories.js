@@ -1,6 +1,7 @@
 import { esc, openInEditor } from '/js/utils.js';
+import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 
-let memoryListEl, mainEl, setActiveScreen, closeConversation, renderMarkdown, renderRichBlocks, RepoIdentity;
+let memoryListEl, mainEl, setActiveScreen, closeConversation, RepoIdentity;
 let getActiveMemoryId;
 
 export function initMemories(deps) {
@@ -8,8 +9,6 @@ export function initMemories(deps) {
   mainEl = deps.mainEl;
   setActiveScreen = deps.setActiveScreen;
   closeConversation = deps.closeConversation;
-  renderMarkdown = deps.renderMarkdown;
-  renderRichBlocks = deps.renderRichBlocks;
   RepoIdentity = deps.RepoIdentity;
   getActiveMemoryId = deps.getActiveMemoryId;
 }

@@ -1,6 +1,7 @@
 import { esc, openInEditor } from '/js/utils.js';
+import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 
-let repoListEl, mainEl, setActiveScreen, closeConversation, renderMarkdown, renderRichBlocks, RepoIdentity;
+let repoListEl, mainEl, setActiveScreen, closeConversation, RepoIdentity;
 let getActiveRepoPath;
 
 export function initRepos(deps) {
@@ -8,8 +9,6 @@ export function initRepos(deps) {
   mainEl = deps.mainEl;
   setActiveScreen = deps.setActiveScreen;
   closeConversation = deps.closeConversation;
-  renderMarkdown = deps.renderMarkdown;
-  renderRichBlocks = deps.renderRichBlocks;
   RepoIdentity = deps.RepoIdentity;
   getActiveRepoPath = deps.getActiveRepoPath;
 }
