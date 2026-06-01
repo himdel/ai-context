@@ -537,6 +537,46 @@ function renderToolInput(name, input) {
     skip = ['query'];
     main = '<code>' + esc(input.query || '') + '</code>';
   }
+  if (name === 'Workflow') {
+    var wfHtml = '';
+    var meta = null;
+    var script = input.script || '';
+    if (script) {
+      var metaMatch = script.match(/export\s+const\s+meta\s*=\s*(\{[\s\S]*?\n\})/);
+      if (metaMatch) {
+        try {
+          var cleaned = metaMatch[1]
+            .replace(/,(\s*[}\]])/g, '$1')
+            .replace(/'/g, '"')
+            .replace(/([{,])\s*(\w+)\s*:/g, '$1 "$2":');
+          meta = JSON.parse(cleaned);
+        } catch (e) { /* fall through */ }
+      }
+    }
+    var wfName = (meta && meta.name) || input.name || '';
+    var wfDesc = (meta && meta.description) || input.description || '';
+    if (wfName) wfHtml += '<strong>' + esc(wfName) + '</strong>';
+    if (wfDesc) wfHtml += (wfName ? ' &mdash; ' : '') + '<span style="color:#888">' + esc(wfDesc) + '</span>';
+    if (meta && meta.phases && meta.phases.length) {
+      wfHtml += '<ol style="margin:4px 0 2px 20px;padding:0;font-size:12px;color:#555">';
+      meta.phases.forEach(function(p) {
+        wfHtml += '<li><strong>' + esc(p.title || '') + '</strong>' +
+          (p.detail ? ' &mdash; ' + esc(p.detail) : '') + '</li>';
+      });
+      wfHtml += '</ol>';
+    }
+    if (script) {
+      var lines = script.split('\n').length;
+      wfHtml += '<details class="write-content"><summary style="color:#888;font-size:11px;cursor:pointer">script (' + lines + ' lines)</summary>' +
+        '<pre style="margin:4px 0 0;background:#f5f5f5;padding:6px 8px;border-radius:3px;max-height:300px;overflow-y:auto;white-space:pre-wrap">' + esc(script) + '</pre></details>';
+    }
+    var wfExtra = {};
+    var hasWfExtra = false;
+    var wfSkip = ['script', 'name', 'description', 'title'];
+    for (var k in input) { if (wfSkip.indexOf(k) === -1) { wfExtra[k] = input[k]; hasWfExtra = true; } }
+    if (hasWfExtra) wfHtml += '<div style="margin-top:4px;color:#888;font-size:11px">' + esc(JSON.stringify(wfExtra, null, 2)) + '</div>';
+    return wfHtml;
+  }
   if (main === null && name.indexOf('mcp__') === 0) {
     skip = ['cloudId', 'responseContentFormat', 'contentFormat'];
     if (input.issueIdOrKey) {
