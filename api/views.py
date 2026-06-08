@@ -1589,55 +1589,66 @@ def _parse_memory_frontmatter(text):
 
 
 def _is_valid_memory_path(path):
-    """Ensure path is under a memory/ dir within CLAUDE_DIR/projects/."""
+    """Ensure path is under a memory/ dir within CLAUDE_DIR/projects/ or CLAUDE_DIR/memory/."""
     try:
         resolved = path.resolve()
     except (OSError, ValueError):
         return False
+    global_memory = (settings.CLAUDE_DIR / "memory").resolve()
+    if str(resolved).startswith(str(global_memory) + "/"):
+        return True
     projects = (settings.CLAUDE_DIR / "projects").resolve()
     if not str(resolved).startswith(str(projects) + "/"):
         return False
     return "/memory/" in str(resolved)
 
 
+def _scan_memory_dir(memory_dir, project_label):
+    """Scan a memory directory and return a list of memory dicts."""
+    results = []
+    if not memory_dir.is_dir():
+        return results
+    for md_file in sorted(memory_dir.glob("*.md")):
+        try:
+            text = md_file.read_text()
+            mtime = md_file.stat().st_mtime
+        except OSError:
+            continue
+        fm = _parse_memory_frontmatter(text)
+        is_index = md_file.name == "MEMORY.md"
+        results.append(
+            {
+                "id": _path_id(md_file),
+                "name": "Memory Index" if is_index else (fm["name"] or md_file.stem),
+                "type": "index" if is_index else fm["type"],
+                "description": fm["description"],
+                "conversation_id": fm["originSessionId"],
+                "project": project_label,
+                "path": str(md_file),
+                "modified": datetime.fromtimestamp(mtime).isoformat(),
+            }
+        )
+    return results
+
+
 @api_view(["GET"])
 def memories_list(request):
-    projects_dir = settings.CLAUDE_DIR / "projects"
-    if not projects_dir.is_dir():
-        return Response([])
-
     results = []
-    for project_dir in projects_dir.iterdir():
-        if not project_dir.is_dir():
-            continue
-        memory_dir = project_dir / "memory"
-        if not memory_dir.is_dir():
-            continue
 
-        project_path = _project_dir_to_cwd(project_dir)
+    # Global memories (~/.claude/memory/)
+    global_memory_dir = settings.CLAUDE_DIR / "memory"
+    results.extend(_scan_memory_dir(global_memory_dir, "(global)"))
 
-        for md_file in sorted(memory_dir.glob("*.md")):
-            try:
-                text = md_file.read_text()
-                mtime = md_file.stat().st_mtime
-            except OSError:
+    # Per-project memories (~/.claude/projects/*/memory/)
+    projects_dir = settings.CLAUDE_DIR / "projects"
+    if projects_dir.is_dir():
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
                 continue
-
-            fm = _parse_memory_frontmatter(text)
-            is_index = md_file.name == "MEMORY.md"
-            results.append(
-                {
-                    "id": _path_id(md_file),
-                    "name": "Memory Index"
-                    if is_index
-                    else (fm["name"] or md_file.stem),
-                    "type": "index" if is_index else fm["type"],
-                    "description": fm["description"],
-                    "conversation_id": fm["originSessionId"],
-                    "project": project_path or project_dir.name,
-                    "path": str(md_file),
-                    "modified": datetime.fromtimestamp(mtime).isoformat(),
-                }
+            memory_dir = project_dir / "memory"
+            project_path = _project_dir_to_cwd(project_dir)
+            results.extend(
+                _scan_memory_dir(memory_dir, project_path or project_dir.name)
             )
 
     results.sort(key=lambda x: x["modified"], reverse=True)
@@ -1673,8 +1684,13 @@ def memory_detail(request, memory_id):
     fm = _parse_memory_frontmatter(text)
     is_index = path.name == "MEMORY.md"
 
-    project_dir = path.parent.parent
-    project_path = _project_dir_to_cwd(project_dir)
+    global_memory = (settings.CLAUDE_DIR / "memory").resolve()
+    if str(path.resolve()).startswith(str(global_memory) + "/"):
+        project_label = "(global)"
+    else:
+        project_dir = path.parent.parent
+        project_path = _project_dir_to_cwd(project_dir)
+        project_label = project_path or project_dir.name
 
     return Response(
         {
@@ -1683,7 +1699,7 @@ def memory_detail(request, memory_id):
             "type": "index" if is_index else fm["type"],
             "description": fm["description"],
             "conversation_id": fm["originSessionId"],
-            "project": project_path or project_dir.name,
+            "project": project_label,
             "content": text,
             "path": str(path),
             "modified": datetime.fromtimestamp(mtime).isoformat(),
