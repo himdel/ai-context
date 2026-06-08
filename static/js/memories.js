@@ -21,6 +21,7 @@ export function loadMemoriesSidebar() {
       memoriesList.forEach((m) => {
         var div = document.createElement('div');
         div.className = 'memory-item';
+        if (m.empty) div.classList.add('memory-empty');
         div.dataset.id = m.id;
         if (m.id === getActiveMemoryId()) div.classList.add('active');
 
@@ -105,6 +106,7 @@ export function showMemoriesHome() {
         memories.forEach(function (m) {
           var item = document.createElement('div');
           item.className = 'home-conv-item';
+          if (m.empty) item.classList.add('memory-empty');
           var typeClass = m.type ? ' memory-type-' + m.type : '';
           var meta = '<div class="conv-meta">';
           if (m.type)

@@ -1772,6 +1772,10 @@ details > summary {
   border: 1px solid #ca8a04;
 }
 
+.memory-empty {
+  opacity: 0.45;
+}
+
 #memories-section h2 {
   border-left: 3px solid #d97706;
 }

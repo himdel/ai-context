@@ -1616,18 +1616,24 @@ def _scan_memory_dir(memory_dir, project_label):
             continue
         fm = _parse_memory_frontmatter(text)
         is_index = md_file.name == "MEMORY.md"
-        results.append(
-            {
-                "id": _path_id(md_file),
-                "name": "Memory Index" if is_index else (fm["name"] or md_file.stem),
-                "type": "index" if is_index else fm["type"],
-                "description": fm["description"],
-                "conversation_id": fm["originSessionId"],
-                "project": project_label,
-                "path": str(md_file),
-                "modified": datetime.fromtimestamp(mtime).isoformat(),
-            }
-        )
+        body = text
+        if body.startswith("---"):
+            end = body.find("\n---", 3)
+            if end != -1:
+                body = body[end + 4 :]
+        entry = {
+            "id": _path_id(md_file),
+            "name": "Memory Index" if is_index else (fm["name"] or md_file.stem),
+            "type": "index" if is_index else fm["type"],
+            "description": fm["description"],
+            "conversation_id": fm["originSessionId"],
+            "project": project_label,
+            "path": str(md_file),
+            "modified": datetime.fromtimestamp(mtime).isoformat(),
+        }
+        if is_index:
+            entry["empty"] = not body.strip()
+        results.append(entry)
     return results
 
 
