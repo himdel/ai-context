@@ -816,6 +816,30 @@ def _cron_summary(expr):
     return expr
 
 
+def _conversation_skill(conversation_id):
+    """Return the skill name from a conversation's first user message, or ''."""
+    jsonl_file = _find_conversation(conversation_id)
+    if not jsonl_file:
+        return ""
+    try:
+        with open(jsonl_file) as f:
+            for line in f:
+                data = json.loads(line)
+                msg = data.get("message", {})
+                if msg.get("role") != "user":
+                    continue
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    m = re.search(
+                        r"<command-message>([\w-]+)</command-message>", content
+                    )
+                    return m.group(1) if m else ""
+                return ""
+    except (json.JSONDecodeError, OSError):
+        pass
+    return ""
+
+
 def _resolve_run_conversations(runs):
     sessions_dir = settings.CLAUDE_DIR / "sessions"
     if not sessions_dir.is_dir():
@@ -823,15 +847,37 @@ def _resolve_run_conversations(runs):
     unresolved = [r for r in runs if r.pid and not r.conversation_id]
     if not unresolved:
         return
-    pid_to_session = {}
+
+    sessions = []
     for f in sessions_dir.glob("*.json"):
         try:
             data = json.loads(f.read_text())
-            pid_to_session[data.get("pid")] = data.get("sessionId", "")
+            sessions.append(data)
         except (json.JSONDecodeError, OSError):
             pass
+
+    # Build PID lookup (direct match for claude processes)
+    pid_to_session = {s.get("pid"): s.get("sessionId", "") for s in sessions}
+
     for run in unresolved:
         session_id = pid_to_session.get(run.pid, "")
+        if not session_id:
+            # The stored PID is the terminal wrapper; claude runs as a child
+            # with a different PID. Match by cwd + startedAt timestamp instead.
+            run_ts = run.triggered_at.timestamp() * 1000
+            repo = run.cronjob.repo if run.cronjob_id else ""
+            skill = run.cronjob.skill_name if run.cronjob_id else ""
+            for s in sessions:
+                started = s.get("startedAt", 0)
+                cwd = s.get("cwd", "")
+                sid = s.get("sessionId", "")
+                if (
+                    cwd == repo
+                    and abs(started - run_ts) < 10_000
+                    and (not skill or _conversation_skill(sid) == skill)
+                ):
+                    session_id = sid
+                    break
         if session_id:
             run.conversation_id = session_id
             run.save(update_fields=["conversation_id"])
@@ -1782,10 +1828,18 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
                     if "<task-notification>" in content:
                         continue
                     cleaned = re.sub(r"<([\w-]+)>[^<]*</\1>", "", content).strip()
+                    if not blurb and role == "user":
+                        if cleaned:
+                            blurb = cleaned[:200]
+                        else:
+                            # Skill/cronjob invocations: extract command name from XML tag
+                            m = re.search(
+                                r"<command-message>([\w-]+)</command-message>", content
+                            )
+                            if m:
+                                blurb = f"/{m.group(1)}"
                     if not cleaned:
                         continue
-                    if not blurb and role == "user":
-                        blurb = cleaned[:200]
                     text_parts.append(cleaned)
                 elif isinstance(content, list):
                     for block in content:
