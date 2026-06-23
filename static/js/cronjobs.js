@@ -225,14 +225,20 @@ export function loadCronjob(cronjobId, pushHistory) {
         })
         .then(function (repos) {
           repoSelect.innerHTML = '';
-          repos.forEach(function (repo) {
+          repos.forEach(function (entry) {
+            var repo = entry.path || entry;
+            if (entry.exists === false) return;
             var opt = document.createElement('option');
             opt.value = repo;
             opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');
             if (repo === data.repo) opt.selected = true;
             repoSelect.appendChild(opt);
           });
-          if (!repos.includes(data.repo)) {
+          if (
+            !repos.some(function (e) {
+              return (e.path || e) === data.repo;
+            })
+          ) {
             var opt = document.createElement('option');
             opt.value = data.repo;
             opt.textContent = data.repo.replace(/^\/home\/[^/]+\//, '~/');
@@ -501,7 +507,9 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
     })
     .then(function (repos) {
       repoSelect.innerHTML = '';
-      repos.forEach(function (repo) {
+      repos.forEach(function (entry) {
+        var repo = entry.path || entry;
+        if (entry.exists === false) return;
         var opt = document.createElement('option');
         opt.value = repo;
         opt.textContent = repo.replace(/^\/home\/[^/]+\//, '~/');

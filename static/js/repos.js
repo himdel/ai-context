@@ -19,9 +19,12 @@ export function loadReposSidebar() {
     .then((r) => r.json())
     .then((repos) => {
       repoListEl.innerHTML = '';
-      repos.forEach((repo) => {
+      repos.forEach((entry) => {
+        var repo = entry.path || entry;
+        var exists = entry.exists !== false;
         var div = document.createElement('div');
         div.className = 'repo-item';
+        if (!exists) div.classList.add('repo-stale');
         div.dataset.path = repo;
         if (repo === getActiveRepoPath()) div.classList.add('active');
 
@@ -52,7 +55,10 @@ export function showReposHome() {
       var container = document.getElementById('home-cols');
       if (!container) return;
 
-      repos.forEach(function (repo) {
+      repos.forEach(function (entry) {
+        var repo = entry.path || entry;
+        var exists = entry.exists !== false;
+        if (!exists) return;
         var short = repo.replace(/^\/home\/[^/]+\//, '~/');
         var name = short.split('/').pop();
         var rid = RepoIdentity.get(repo);

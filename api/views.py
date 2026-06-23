@@ -1013,7 +1013,29 @@ def cronjob_run(request, cronjob_id):
 
 @api_view(["GET"])
 def repos_list(request):
-    return Response(_discover_repos())
+    from django.db.models import Max
+    from api.models import ConversationIndex
+
+    repo_activity = dict(
+        ConversationIndex.objects.exclude(project="")
+        .values_list("project")
+        .annotate(latest=Max("last_timestamp"))
+        .values_list("project", "latest")
+    )
+
+    repos = _discover_repos()
+    result = []
+    for repo in repos:
+        exists = Path(repo).is_dir()
+        result.append(
+            {
+                "path": repo,
+                "exists": exists,
+                "last_active": repo_activity.get(repo, ""),
+            }
+        )
+    result.sort(key=lambda r: (r["exists"], r["last_active"]), reverse=True)
+    return Response(result)
 
 
 @api_view(["GET"])

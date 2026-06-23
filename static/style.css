@@ -1822,6 +1822,13 @@ details > summary {
   font-size: 11px;
   color: #888;
 }
+.repo-item.repo-stale {
+  opacity: 0.45;
+  border-left-color: #ccc;
+}
+.repo-item.repo-stale:hover {
+  opacity: 0.65;
+}
 #repos-section h2 {
   border-left: 3px solid #6366f1;
 }
