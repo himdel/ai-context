@@ -51,4 +51,10 @@ urlpatterns = [
     path("repos/git-info", views.repo_git_info),
     path("repos/branch-pr/", views.repo_branch_pr),
     path("repos/branch-pr", views.repo_branch_pr),
+    path("repos/git-fetch/", views.repo_git_fetch),
+    path("repos/git-fetch", views.repo_git_fetch),
+    path("repos/delete-branch/", views.repo_delete_branch),
+    path("repos/delete-branch", views.repo_delete_branch),
+    path("repos/cleanup-branches/", views.repo_cleanup_branches),
+    path("repos/cleanup-branches", views.repo_cleanup_branches),
 ]

@@ -111,9 +111,17 @@ def _find_pr_for_branch(forge, branch, path):
 
     cached = ForgePR.objects.filter(repo=repo, branch=branch).first()
     if cached:
-        if cached.number is None:
-            return None
-        return {"number": cached.number, "url": cached.url, "state": cached.state}
+        age = datetime.now(timezone.utc) - cached.cached_at
+        if age.total_seconds() < 2 * 86400:
+            if cached.number is None:
+                return None
+            return {
+                "number": cached.number,
+                "url": cached.url,
+                "state": cached.state,
+                "cached_at": cached.cached_at.isoformat(),
+            }
+        cached.delete()
 
     try:
         remote_branches = subprocess.check_output(
@@ -134,13 +142,16 @@ def _find_pr_for_branch(forge, branch, path):
         pr = _find_mr_gitlab(repo, branch, forge["base_url"])
 
     if pr:
-        ForgePR.objects.create(
+        ForgePR.objects.update_or_create(
             repo=repo,
             branch=branch,
-            number=pr["number"],
-            url=pr["url"],
-            state=pr["state"],
+            defaults={
+                "number": pr["number"],
+                "url": pr["url"],
+                "state": pr["state"],
+            },
         )
+        pr["cached_at"] = datetime.now(timezone.utc).isoformat()
 
     return pr
 
@@ -1340,6 +1351,17 @@ def _list_worktrees(path):
         except (subprocess.CalledProcessError, FileNotFoundError):
             wt["tracking"] = None
 
+    from api.models import ConversationIndex
+
+    for wt in worktrees:
+        convos = ConversationIndex.objects.filter(
+            project__startswith=wt["path"]
+        ).order_by("-last_timestamp")[:5]
+        wt["conversations"] = [
+            {"id": c.conversation_id, "blurb": c.blurb, "date": c.last_timestamp}
+            for c in convos
+        ]
+
     return worktrees
 
 
@@ -1553,7 +1575,12 @@ def repo_git_info(request):
 
         repo_slug = forge_info["repo"]
         cached_prs = {
-            pr.branch: {"number": pr.number, "url": pr.url, "state": pr.state}
+            pr.branch: {
+                "number": pr.number,
+                "url": pr.url,
+                "state": pr.state,
+                "cached_at": pr.cached_at.isoformat() if pr.cached_at else None,
+            }
             for pr in ForgePR.objects.filter(repo=repo_slug)
             if pr.number is not None
         }
@@ -1687,10 +1714,150 @@ def repo_branch_pr(request):
                     "state": pr["state"],
                 },
             )
+            pr["cached_at"] = datetime.now(timezone.utc).isoformat()
     else:
         pr = _find_pr_for_branch(forge, branch, path)
 
     return Response({"branch": branch, "pr": pr})
+
+
+@api_view(["POST"])
+def repo_git_fetch(request):
+    repo = request.data.get("repo", "")
+    if not repo or not Path(repo).is_dir():
+        return Response({"error": "invalid repo path"}, status=400)
+
+    path = str(Path(repo).resolve())
+    try:
+        subprocess.check_output(
+            ["git", "-C", path, "fetch", "--all", "--prune"],
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=30,
+        )
+        return Response({"status": "ok"})
+    except subprocess.TimeoutExpired:
+        return Response({"error": "fetch timed out"}, status=504)
+    except subprocess.CalledProcessError as e:
+        return Response({"error": e.output or "fetch failed"}, status=500)
+    except FileNotFoundError:
+        return Response({"error": "git not found"}, status=500)
+
+
+@api_view(["POST"])
+def repo_delete_branch(request):
+    repo = request.data.get("repo", "")
+    branch = request.data.get("branch", "")
+    force = request.data.get("force", False)
+    if not repo or not branch:
+        return Response({"error": "repo and branch required"}, status=400)
+
+    path = str(Path(repo).resolve())
+
+    try:
+        head = subprocess.check_output(
+            ["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Response({"error": "not a git repo"}, status=400)
+
+    if branch == head:
+        return Response({"error": "cannot delete current branch"}, status=400)
+
+    default = _detect_default_branch(path)
+    if branch == default:
+        return Response({"error": "cannot delete default branch"}, status=400)
+
+    flag = "-D" if force else "-d"
+    try:
+        subprocess.check_output(
+            ["git", "-C", path, "branch", flag, branch],
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        return Response({"status": "ok", "branch": branch})
+    except subprocess.CalledProcessError as e:
+        return Response({"error": e.output.strip() or "delete failed"}, status=400)
+
+
+@api_view(["POST"])
+def repo_cleanup_branches(request):
+    repo = request.data.get("repo", "")
+    if not repo or not Path(repo).is_dir():
+        return Response({"error": "invalid repo path"}, status=400)
+
+    path = str(Path(repo).resolve())
+
+    try:
+        subprocess.check_output(
+            ["git", "-C", path, "fetch", "--all", "--prune"],
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=30,
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
+        pass
+
+    default = _detect_default_branch(path)
+
+    remote_default = None
+    for remote in ("upstream", "origin"):
+        candidate = f"refs/remotes/{remote}/{default}"
+        try:
+            subprocess.check_output(
+                ["git", "-C", path, "rev-parse", "--verify", candidate],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            remote_default = f"{remote}/{default}"
+            break
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+
+    if not remote_default:
+        return Response({"error": f"no remote ref for {default}"}, status=400)
+
+    try:
+        merged_output = subprocess.check_output(
+            ["git", "-C", path, "branch", "--merged", remote_default],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Response({"error": "failed to list merged branches"}, status=500)
+
+    try:
+        head = subprocess.check_output(
+            ["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        head = ""
+
+    deleted = []
+    skipped = []
+    for line in merged_output.splitlines():
+        name = line.strip().lstrip("* ")
+        if not name or name == head or name == default:
+            continue
+        try:
+            subprocess.check_output(
+                ["git", "-C", path, "branch", "-d", name],
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            deleted.append(name)
+        except subprocess.CalledProcessError:
+            skipped.append(name)
+
+    return Response({"deleted": deleted, "skipped": skipped})
 
 
 def _build_plan_conversation_map():

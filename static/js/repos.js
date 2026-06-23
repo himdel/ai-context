@@ -3,7 +3,7 @@ import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 import { forgeBranchUrl, forgePrUrl, forgeRepoUrl } from '/js/forge.js';
 
 let repoListEl, mainEl, setActiveScreen, closeConversation, RepoIdentity;
-let getActiveRepoPath;
+let getActiveRepoPath, loadConversation;
 
 export function initRepos(deps) {
   repoListEl = deps.repoListEl;
@@ -12,6 +12,7 @@ export function initRepos(deps) {
   closeConversation = deps.closeConversation;
   RepoIdentity = deps.RepoIdentity;
   getActiveRepoPath = deps.getActiveRepoPath;
+  loadConversation = deps.loadConversation;
 }
 
 export function loadReposSidebar() {
@@ -174,6 +175,7 @@ export function loadRepo(repoPath, pushHistory) {
     toolbar.className = 'conversation-toolbar';
     toolbar.innerHTML =
       '<span class="header-btns">' +
+      '<span class="toolbar-btn fetch-btn" title="Fetch remotes &amp; refresh">Fetch</span>' +
       '<span class="toolbar-btn reload-btn" title="Refresh">&#x21bb;</span>' +
       '<span class="close-conv" title="Close">&times;</span>' +
       '</span>';
@@ -182,6 +184,23 @@ export function loadRepo(repoPath, pushHistory) {
     };
     toolbar.querySelector('.reload-btn').onclick = function () {
       loadRepo(repoPath, false);
+    };
+    var fetchBtn = toolbar.querySelector('.fetch-btn');
+    fetchBtn.onclick = function () {
+      fetchBtn.textContent = 'Fetching...';
+      fetchBtn.style.pointerEvents = 'none';
+      fetch('/api/repos/git-fetch/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: repoPath }),
+      })
+        .then(function () {
+          loadRepo(repoPath, false);
+        })
+        .catch(function () {
+          fetchBtn.textContent = 'Fetch';
+          fetchBtn.style.pointerEvents = '';
+        });
     };
     mainEl.appendChild(toolbar);
 
@@ -325,6 +344,28 @@ function renderGitInfo(gi, repoPath) {
         });
       };
 
+      if (wt.conversations && wt.conversations.length > 0) {
+        var convList = document.createElement('div');
+        convList.className = 'git-wt-conversations';
+        wt.conversations.forEach(function (c) {
+          var link = document.createElement('div');
+          link.className = 'git-wt-conv-link';
+          var dateStr = c.date ? c.date.substring(0, 10) : '';
+          link.innerHTML =
+            '<span class="git-wt-conv-date">' +
+            esc(dateStr) +
+            '</span>' +
+            '<span class="git-wt-conv-blurb">' +
+            esc(c.blurb || c.id) +
+            '</span>';
+          link.onclick = function () {
+            if (loadConversation) loadConversation(c.id);
+          };
+          convList.appendChild(link);
+        });
+        item.appendChild(convList);
+      }
+
       wtList.appendChild(item);
     });
 
@@ -353,6 +394,42 @@ function renderGitInfo(gi, repoPath) {
       checkBranchPRs(gi, repoPath, brSection, checkPrsBtn);
     };
     brSummary.appendChild(checkPrsBtn);
+
+    var cleanupBtn = document.createElement('button');
+    cleanupBtn.className = 'git-check-prs-btn';
+    cleanupBtn.textContent = 'Clean up';
+    cleanupBtn.onclick = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      cleanupBtn.disabled = true;
+      cleanupBtn.textContent = 'Cleaning...';
+      fetch('/api/repos/cleanup-branches/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: repoPath }),
+      })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          if (data.deleted && data.deleted.length > 0) {
+            cleanupBtn.textContent =
+              'Deleted ' + data.deleted.length + ' branches';
+            loadRepo(repoPath, false);
+          } else {
+            cleanupBtn.textContent = 'Nothing to clean';
+          }
+          cleanupBtn.disabled = false;
+          setTimeout(function () {
+            cleanupBtn.textContent = 'Clean up';
+          }, 3000);
+        })
+        .catch(function () {
+          cleanupBtn.textContent = 'Clean up';
+          cleanupBtn.disabled = false;
+        });
+    };
+    brSummary.appendChild(cleanupBtn);
     brSection.appendChild(brSummary);
 
     var brList = document.createElement('div');
@@ -434,6 +511,14 @@ function renderGitInfo(gi, repoPath) {
         }
       }
 
+      var deleteHtml = '';
+      if (!b.is_default && !b.is_head) {
+        deleteHtml =
+          '<span class="git-branch-actions">' +
+          '<button class="git-branch-delete-btn" title="Delete branch">&times;</button>' +
+          '</span>';
+      }
+
       row.innerHTML =
         '<span class="git-branch-head">' +
         esc(headMarker) +
@@ -452,7 +537,16 @@ function renderGitInfo(gi, repoPath) {
         '</span>' +
         '<span class="git-branch-date">' +
         esc(dateStr) +
-        '</span>';
+        '</span>' +
+        deleteHtml;
+
+      var delBtn = row.querySelector('.git-branch-delete-btn');
+      if (delBtn) {
+        delBtn.onclick = function (e) {
+          e.stopPropagation();
+          deleteBranch(b, repoPath, row);
+        };
+      }
 
       brList.appendChild(row);
     });
@@ -507,17 +601,77 @@ function renderPrBadge(pr, forge) {
     stateClass = ' open';
   }
 
+  var staleClass = '';
+  if (pr.cached_at) {
+    var ageHours =
+      (Date.now() - new Date(pr.cached_at).getTime()) / (60 * 60 * 1000);
+    if (ageHours > 24) staleClass = ' stale-old';
+    else if (ageHours > 6) staleClass = ' stale-mid';
+    else if (ageHours > 1) staleClass = ' stale-recent';
+  }
+
   return (
     '<a href="' +
     esc(pr.url) +
     '" target="_blank" rel="noopener noreferrer" class="git-pr-badge' +
     stateClass +
+    staleClass +
     '">' +
     prPrefix +
     pr.number +
     stateSuffix +
     '</a>'
   );
+}
+
+function deleteBranch(b, repoPath, row) {
+  var prState = b.pr && b.pr.state;
+  var isMerged =
+    (prState && (prState === 'MERGED' || prState === 'merged')) ||
+    (b.tracking &&
+      b.track_status &&
+      !/ahead/.test(b.track_status) &&
+      /behind/.test(b.track_status));
+  var isSafe =
+    isMerged ||
+    (b.tracking && !b.track_status) ||
+    (b.tracking &&
+      b.track_status &&
+      !/ahead/.test(b.track_status) &&
+      !/behind/.test(b.track_status));
+
+  var force = false;
+  if (!isSafe) {
+    var reason;
+    if (prState && (prState === 'CLOSED' || prState === 'closed')) {
+      reason = 'PR was closed without merging. Delete branch "' + b.name + '"?';
+      force = true;
+    } else if (!b.tracking) {
+      reason = 'Branch "' + b.name + '" was never pushed. Delete?';
+      force = true;
+    } else {
+      reason =
+        'Branch "' + b.name + '" may not be fully merged. Delete anyway?';
+      force = true;
+    }
+    if (!confirm(reason)) return;
+  }
+
+  fetch('/api/repos/delete-branch/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo: repoPath, branch: b.name, force: force }),
+  })
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (data) {
+      if (data.status === 'ok') {
+        row.remove();
+      } else {
+        alert(data.error || 'Failed to delete branch');
+      }
+    });
 }
 
 function checkBranchPRs(gi, repoPath, brSection, btn) {

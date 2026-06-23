@@ -7,6 +7,7 @@ class ForgePR(models.Model):
     number = models.IntegerField(null=True)
     url = models.URLField(null=True)
     state = models.CharField(max_length=20, null=True)
+    cached_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ("repo", "branch")

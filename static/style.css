@@ -1970,6 +1970,30 @@ details > summary {
   background: #eee;
   border-color: #bbb;
 }
+.git-wt-conversations {
+  padding: 2px 0 2px 20px;
+  font-family: sans-serif;
+}
+.git-wt-conv-link {
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+  cursor: pointer;
+  font-size: 11px;
+  color: #666;
+}
+.git-wt-conv-link:hover {
+  color: #2563eb;
+}
+.git-wt-conv-date {
+  color: #999;
+  flex-shrink: 0;
+}
+.git-wt-conv-blurb {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Branches */
 .git-branch-list {
@@ -2045,6 +2069,15 @@ details > summary {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
 }
+.git-pr-badge.stale-recent {
+  opacity: 0.85;
+}
+.git-pr-badge.stale-mid {
+  opacity: 0.6;
+}
+.git-pr-badge.stale-old {
+  opacity: 0.4;
+}
 .git-branch-issues {
   display: flex;
   gap: 4px;
@@ -2065,6 +2098,28 @@ details > summary {
   color: #888;
   font-size: 11px;
   white-space: nowrap;
+}
+.git-branch-actions {
+  flex-shrink: 0;
+}
+.git-branch-delete-btn {
+  visibility: hidden;
+  font-size: 12px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  color: #999;
+  line-height: 16px;
+}
+.git-branch-row:hover .git-branch-delete-btn {
+  visibility: visible;
+}
+.git-branch-delete-btn:hover {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
 }
 .git-check-prs-btn {
   margin-left: auto;
