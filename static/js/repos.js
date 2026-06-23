@@ -523,9 +523,7 @@ function renderGitInfo(gi, repoPath) {
         var prState = b.pr && b.pr.state;
         var isSafe =
           b.merged ||
-          (prState && (prState === 'MERGED' || prState === 'merged')) ||
-          (b.tracking && !b.track_status) ||
-          (b.tracking && b.track_status && !/ahead/.test(b.track_status));
+          (prState && (prState === 'MERGED' || prState === 'merged'));
         var delClass = isSafe ? 'safe' : 'warn';
         deleteHtml =
           '<span class="git-branch-actions">' +
@@ -642,19 +640,8 @@ function renderPrBadge(pr, forge) {
 
 function deleteBranch(b, repoPath, row) {
   var prState = b.pr && b.pr.state;
-  var isMerged =
-    (prState && (prState === 'MERGED' || prState === 'merged')) ||
-    (b.tracking &&
-      b.track_status &&
-      !/ahead/.test(b.track_status) &&
-      /behind/.test(b.track_status));
   var isSafe =
-    isMerged ||
-    (b.tracking && !b.track_status) ||
-    (b.tracking &&
-      b.track_status &&
-      !/ahead/.test(b.track_status) &&
-      !/behind/.test(b.track_status));
+    b.merged || (prState && (prState === 'MERGED' || prState === 'merged'));
 
   var force = false;
   if (!isSafe) {
