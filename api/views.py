@@ -1076,6 +1076,492 @@ def repo_claude_files(request):
     return Response(files)
 
 
+def _detect_default_branch(path):
+    for remote in ("upstream", "origin"):
+        try:
+            ref = subprocess.check_output(
+                ["git", "-C", path, "symbolic-ref", f"refs/remotes/{remote}/HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            return ref.split("/")[-1]
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+    for name in ("main", "master", "devel"):
+        try:
+            subprocess.check_output(
+                ["git", "-C", path, "rev-parse", "--verify", name],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            return name
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+    return None
+
+
+def _get_head_info(path, default_branch):
+    try:
+        branch = subprocess.check_output(
+            ["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+    try:
+        sha = subprocess.check_output(
+            ["git", "-C", path, "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        sha = ""
+
+    try:
+        status_output = subprocess.check_output(
+            ["git", "-C", path, "status", "--porcelain"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        status_output = ""
+    dirty_lines = (
+        [line for line in status_output.splitlines() if line.strip()]
+        if status_output
+        else []
+    )
+
+    tracking = None
+    if branch != "HEAD":
+        try:
+            tracking = (
+                subprocess.check_output(
+                    [
+                        "git",
+                        "-C",
+                        path,
+                        "for-each-ref",
+                        "--format=%(upstream:short)",
+                        f"refs/heads/{branch}",
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                ).strip()
+                or None
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    compare_ref = tracking
+    if not compare_ref and branch != "HEAD" and branch == default_branch:
+        for remote in ("upstream", "origin"):
+            ref = f"{remote}/{branch}"
+            try:
+                subprocess.check_output(
+                    ["git", "-C", path, "rev-parse", "--verify", ref],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                compare_ref = ref
+                tracking = ref
+                break
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
+
+    remote_status = None
+    if compare_ref:
+        try:
+            counts = subprocess.check_output(
+                [
+                    "git",
+                    "-C",
+                    path,
+                    "rev-list",
+                    "--left-right",
+                    "--count",
+                    f"{branch}...{compare_ref}",
+                ],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            ahead, behind = counts.split()
+            ahead, behind = int(ahead), int(behind)
+            if ahead == 0 and behind == 0:
+                remote_status = "up to date"
+            elif ahead > 0 and behind > 0:
+                remote_status = f"diverged (ahead {ahead}, behind {behind})"
+            elif ahead > 0:
+                remote_status = f"ahead {ahead}"
+            else:
+                remote_status = f"behind {behind}"
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            pass
+
+    is_default = branch == default_branch
+
+    return {
+        "branch": branch,
+        "sha": sha,
+        "dirty_count": len(dirty_lines),
+        "dirty_files": dirty_lines,
+        "default_branch": default_branch,
+        "is_default": is_default,
+        "remote_status": remote_status,
+        "tracking": tracking,
+    }
+
+
+def _list_worktrees(path):
+    worktrees = []
+    seen_paths = set()
+    main_path = None
+
+    try:
+        output = subprocess.check_output(
+            ["git", "-C", path, "worktree", "list", "--porcelain"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        current = {}
+        for line in output.splitlines():
+            if line.startswith("worktree "):
+                if current and current.get("path"):
+                    if main_path is None:
+                        main_path = current["path"]
+                    elif current["path"] != main_path:
+                        current["source"] = "git"
+                        worktrees.append(current)
+                        seen_paths.add(current["path"])
+                current = {"path": line[9:]}
+            elif line.startswith("HEAD "):
+                current["sha"] = line[5:][:7]
+            elif line.startswith("branch "):
+                current["branch"] = line[7:].split("/")[-1]
+            elif line == "detached":
+                current["branch"] = "(detached)"
+            elif not line.strip() and current:
+                pass
+        if current and current.get("path"):
+            if main_path is None:
+                main_path = current["path"]
+            elif current["path"] != main_path:
+                current["source"] = "git"
+                worktrees.append(current)
+                seen_paths.add(current["path"])
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    claude_wt_dir = Path(path) / ".claude" / "worktrees"
+    if claude_wt_dir.is_dir():
+        for child in sorted(claude_wt_dir.iterdir()):
+            if child.is_dir() and str(child) not in seen_paths:
+                wt = {"path": str(child), "source": "claude"}
+                try:
+                    wt["branch"] = subprocess.check_output(
+                        ["git", "-C", str(child), "rev-parse", "--abbrev-ref", "HEAD"],
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                    ).strip()
+                    wt["sha"] = subprocess.check_output(
+                        ["git", "-C", str(child), "rev-parse", "--short", "HEAD"],
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                    ).strip()
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    wt["branch"] = child.name
+                    wt["sha"] = ""
+                worktrees.append(wt)
+            elif child.is_dir():
+                for wt in worktrees:
+                    if wt["path"] == str(child):
+                        wt["source"] = "claude"
+                        break
+
+    for wt in worktrees:
+        try:
+            status = subprocess.check_output(
+                ["git", "-C", wt["path"], "status", "--porcelain"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            wt["dirty_count"] = (
+                len([line for line in status.splitlines() if line.strip()])
+                if status
+                else 0
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            wt["dirty_count"] = -1
+
+        try:
+            branch = wt.get("branch", "")
+            if branch and branch != "(detached)":
+                wt["tracking"] = (
+                    subprocess.check_output(
+                        [
+                            "git",
+                            "-C",
+                            wt["path"],
+                            "for-each-ref",
+                            "--format=%(upstream:short)",
+                            f"refs/heads/{branch}",
+                        ],
+                        stderr=subprocess.DEVNULL,
+                        text=True,
+                    ).strip()
+                    or None
+                )
+            else:
+                wt["tracking"] = None
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            wt["tracking"] = None
+
+    return worktrees
+
+
+def _list_branches(path):
+    fmt = "%(refname:short)|%(objectname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)|%(committerdate:iso)"
+    try:
+        output = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                path,
+                "for-each-ref",
+                "--sort=-committerdate",
+                "--format",
+                fmt,
+                "refs/heads/",
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    remote_refs = set()
+    try:
+        remote_output = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                path,
+                "for-each-ref",
+                "--format=%(refname:short)",
+                "refs/remotes/",
+            ],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        remote_refs = {r.strip() for r in remote_output.splitlines() if r.strip()}
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    branches = []
+    for line in output.strip().splitlines():
+        parts = line.split("|", 5)
+        if len(parts) < 6:
+            continue
+        name, sha, tracking, track_status, head_marker, date = parts
+        tracking = tracking or None
+
+        if not tracking:
+            for remote in ("origin", "upstream"):
+                candidate = f"{remote}/{name}"
+                if candidate in remote_refs:
+                    tracking = candidate
+                    break
+
+        branches.append(
+            {
+                "name": name,
+                "sha": sha,
+                "tracking": tracking,
+                "track_status": track_status.strip() or None,
+                "is_head": head_marker.strip() == "*",
+                "is_default": False,
+                "last_commit_date": date.strip(),
+                "pr": None,
+                "issues": [],
+            }
+        )
+    return branches
+
+
+def _detect_branch_issues(path, branch, default_branch, autolinks):
+    issues = []
+    seen = set()
+
+    prefix_patterns = []
+    for prefix, url_template in autolinks:
+        if "/" not in prefix:
+            escaped = re.escape(prefix)
+            prefix_patterns.append(
+                (prefix, url_template, re.compile(escaped + r"(\d+)", re.IGNORECASE))
+            )
+
+    for prefix, url_template, pattern in prefix_patterns:
+        for m in pattern.finditer(branch):
+            key = prefix.upper() + m.group(1)
+            if key not in seen:
+                seen.add(key)
+                issues.append(
+                    {
+                        "key": key,
+                        "url": url_template.replace("{id}", m.group(1)),
+                        "source": "branch_name",
+                    }
+                )
+
+    branch_squashed = re.sub(r"[-_]", "", branch.lower())
+    for prefix, url_template, pattern in prefix_patterns:
+        prefix_squashed = re.sub(r"[-_]", "", prefix.lower())
+        for m in re.finditer(re.escape(prefix_squashed) + r"(\d+)", branch_squashed):
+            key = prefix.upper() + m.group(1)
+            if key not in seen:
+                seen.add(key)
+                issues.append(
+                    {
+                        "key": key,
+                        "url": url_template.replace("{id}", m.group(1)),
+                        "source": "branch_name",
+                    }
+                )
+
+    if default_branch:
+        try:
+            log_output = subprocess.check_output(
+                [
+                    "git",
+                    "-C",
+                    path,
+                    "log",
+                    f"{default_branch}..{branch}",
+                    "--format=%s%n%b",
+                    "-n",
+                    "20",
+                ],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            for prefix, url_template, pattern in prefix_patterns:
+                for m in pattern.finditer(log_output):
+                    key = prefix.upper() + m.group(1)
+                    if key not in seen:
+                        seen.add(key)
+                        issues.append(
+                            {
+                                "key": key,
+                                "url": url_template.replace("{id}", m.group(1)),
+                                "source": "commit",
+                            }
+                        )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    return issues
+
+
+@api_view(["GET"])
+def repo_git_info(request):
+    repo = request.query_params.get("repo", "")
+    if not repo or not Path(repo).is_dir():
+        return Response({"error": "invalid repo path"}, status=400)
+
+    path = str(Path(repo).resolve())
+
+    try:
+        subprocess.check_output(
+            ["git", "-C", path, "rev-parse", "--git-dir"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Response({"error": "not a git repository"}, status=400)
+
+    default_branch = _detect_default_branch(path)
+    head = _get_head_info(path, default_branch)
+    worktrees = _list_worktrees(path)
+    branches = _list_branches(path)
+
+    for b in branches:
+        b["is_default"] = b["name"] == default_branch
+
+    upstream = _parse_forge_remote(path, "upstream")
+    origin = _parse_forge_remote(path, "origin")
+
+    autolinks = getattr(settings, "AUTOLINKS", [])
+    for i, b in enumerate(branches):
+        if not b["is_default"] and i < 20:
+            b["issues"] = _detect_branch_issues(
+                path, b["name"], default_branch, autolinks
+            )
+
+    forge_info = upstream or origin
+    if forge_info:
+        from api.models import ForgePR
+
+        repo_slug = forge_info["repo"]
+        cached_prs = {
+            pr.branch: {"number": pr.number, "url": pr.url, "state": pr.state}
+            for pr in ForgePR.objects.filter(repo=repo_slug)
+            if pr.number is not None
+        }
+        for b in branches:
+            if b["name"] in cached_prs:
+                b["pr"] = cached_prs[b["name"]]
+
+    pr_branch_re = re.compile(r"^pr[/-]?(\d+)$", re.IGNORECASE)
+    for b in branches:
+        if not b["pr"]:
+            m = pr_branch_re.match(b["name"])
+            if m and forge_info:
+                pr_num = int(m.group(1))
+                pr_type = forge_info["type"]
+                if pr_type == "gitlab":
+                    pr_path = "/-/merge_requests/"
+                elif pr_type == "gitea":
+                    pr_path = "/pulls/"
+                else:
+                    pr_path = "/pull/"
+                b["pr"] = {
+                    "number": pr_num,
+                    "url": forge_info["base_url"]
+                    + "/"
+                    + forge_info["repo"]
+                    + pr_path
+                    + str(pr_num),
+                    "state": None,
+                }
+
+    return Response(
+        {
+            "head": head,
+            "worktrees": worktrees,
+            "branches": branches,
+            "forge": {"upstream": upstream, "origin": origin},
+            "default_branch": default_branch,
+        }
+    )
+
+
+@api_view(["GET"])
+def repo_branch_pr(request):
+    repo = request.query_params.get("repo", "")
+    branch = request.query_params.get("branch", "")
+    if not repo or not branch:
+        return Response({"error": "repo and branch required"}, status=400)
+
+    path = str(Path(repo).resolve())
+    upstream = _parse_forge_remote(path, "upstream")
+    origin = _parse_forge_remote(path, "origin")
+    forge = upstream or origin
+    pr = _find_pr_for_branch(forge, branch, path)
+
+    return Response({"branch": branch, "pr": pr})
+
+
 def _build_plan_conversation_map():
     """Scan all JSONL files to map plan filenames to originating conversations."""
     plan_map = {}  # plan_stem -> {conversation_id, cwd, branch, timestamp}

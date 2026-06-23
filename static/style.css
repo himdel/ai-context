@@ -1829,6 +1829,208 @@ details > summary {
   border-left: 3px solid #6366f1;
 }
 
+/* Git info sections */
+.git-info-container {
+  padding: 0 16px 8px;
+}
+.git-info-section {
+  margin-bottom: 8px;
+}
+.git-section-header {
+  font-size: 13px;
+  color: #555;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.git-head-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+}
+.git-head-branch {
+  font-weight: 600;
+}
+.git-head-branch a {
+  color: #4338ca;
+  text-decoration: none;
+}
+.git-head-branch a:hover {
+  text-decoration: underline;
+}
+.git-status-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.git-status-badge.clean {
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.git-status-badge.dirty {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+.git-remote-status {
+  font-size: 11px;
+  color: #888;
+}
+.git-remote-ok {
+  color: #15803d;
+}
+.git-remote-warn {
+  color: #b45309;
+}
+
+/* Worktrees */
+.git-worktree-list {
+  padding: 4px 0;
+}
+.git-worktree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.git-wt-branch {
+  font-weight: 600;
+  min-width: 120px;
+}
+.git-wt-source {
+  font-size: 10px;
+  color: #6366f1;
+  background: #eef2ff;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+.git-wt-path {
+  color: #888;
+  font-size: 11px;
+}
+
+/* Branches */
+.git-branch-list {
+  padding: 4px 0;
+}
+.git-branch-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 12px;
+  font-family: monospace;
+  font-size: 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.git-branch-row:last-child {
+  border-bottom: none;
+}
+.git-branch-head {
+  width: 14px;
+  flex-shrink: 0;
+  color: #15803d;
+  font-weight: 700;
+}
+.git-branch-name {
+  min-width: 160px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-branch-name a {
+  color: #4338ca;
+  text-decoration: none;
+}
+.git-branch-name a:hover {
+  text-decoration: underline;
+}
+.git-branch-tracking {
+  min-width: 160px;
+  color: #888;
+  font-size: 11px;
+}
+.git-not-pushed {
+  color: #b45309;
+}
+.git-branch-pr {
+  min-width: 80px;
+}
+.git-pr-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.git-pr-badge.open {
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.git-pr-badge.merged {
+  color: #7c3aed;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+}
+.git-pr-badge.closed {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+.git-branch-issues {
+  display: flex;
+  gap: 4px;
+}
+.git-issue-link {
+  font-size: 11px;
+  color: #4338ca;
+  text-decoration: none;
+  padding: 1px 4px;
+  background: #eef2ff;
+  border-radius: 2px;
+}
+.git-issue-link:hover {
+  background: #e0e7ff;
+}
+.git-branch-date {
+  margin-left: auto;
+  color: #888;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.git-check-prs-btn {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  border: 1px solid #c7d2fe;
+  border-radius: 3px;
+  background: #eef2ff;
+  color: #4f46e5;
+  cursor: pointer;
+  font-weight: 600;
+}
+.git-check-prs-btn:hover {
+  background: #e0e7ff;
+}
+.git-check-prs-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .claude-file-tree {
   padding: 0 16px;
 }

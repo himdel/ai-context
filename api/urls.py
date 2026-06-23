@@ -47,4 +47,8 @@ urlpatterns = [
     path("repos", views.repos_list),
     path("repos/claude-files/", views.repo_claude_files),
     path("repos/claude-files", views.repo_claude_files),
+    path("repos/git-info/", views.repo_git_info),
+    path("repos/git-info", views.repo_git_info),
+    path("repos/branch-pr/", views.repo_branch_pr),
+    path("repos/branch-pr", views.repo_branch_pr),
 ]

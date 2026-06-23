@@ -19,7 +19,7 @@ function forgeCommitUrl(f, sha) {
   if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/commit/' + sha;
   return forgeRepoUrl(f) + '/commit/' + sha;
 }
-function forgePrUrl(f, id) {
+export function forgePrUrl(f, id) {
   if (f.type === 'gitlab') return forgeRepoUrl(f) + '/-/merge_requests/' + id;
   if (f.type === 'gitea') return forgeRepoUrl(f) + '/pulls/' + id;
   return forgeRepoUrl(f) + '/pull/' + id;
