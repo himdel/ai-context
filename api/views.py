@@ -1308,13 +1308,14 @@ def _list_worktrees(path):
                 stderr=subprocess.DEVNULL,
                 text=True,
             ).strip()
-            wt["dirty_count"] = (
-                len([line for line in status.splitlines() if line.strip()])
-                if status
-                else 0
+            dirty_lines = (
+                [line for line in status.splitlines() if line.strip()] if status else []
             )
+            wt["dirty_count"] = len(dirty_lines)
+            wt["dirty_files"] = dirty_lines
         except (subprocess.CalledProcessError, FileNotFoundError):
             wt["dirty_count"] = -1
+            wt["dirty_files"] = []
 
         try:
             branch = wt.get("branch", "")
@@ -1394,6 +1395,32 @@ def _list_branches(path):
                 if candidate in remote_refs:
                     tracking = candidate
                     break
+
+        if tracking and not track_status.strip():
+            try:
+                counts = subprocess.check_output(
+                    [
+                        "git",
+                        "-C",
+                        path,
+                        "rev-list",
+                        "--left-right",
+                        "--count",
+                        f"{name}...{tracking}",
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                ).strip()
+                ahead, behind = counts.split()
+                ahead, behind = int(ahead), int(behind)
+                if ahead > 0 and behind > 0:
+                    track_status = f"[ahead {ahead}, behind {behind}]"
+                elif ahead > 0:
+                    track_status = f"[ahead {ahead}]"
+                elif behind > 0:
+                    track_status = f"[behind {behind}]"
+            except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+                pass
 
         branches.append(
             {
@@ -1568,10 +1595,76 @@ def repo_git_info(request):
     )
 
 
+def _find_pr_by_number(forge, pr_number):
+    if not forge:
+        return None
+
+    repo = forge["repo"]
+    forge_type = forge["type"]
+
+    if forge_type == "github":
+        cmd = [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "number,url,state",
+        ]
+        try:
+            out = subprocess.check_output(
+                cmd, stderr=subprocess.DEVNULL, text=True
+            ).strip()
+            logger.info("ran %s, exit 0", cmd)
+            data = json.loads(out)
+            if data:
+                return {
+                    "number": data["number"],
+                    "url": data["url"],
+                    "state": data["state"],
+                }
+        except subprocess.CalledProcessError as e:
+            logger.info("ran %s, exit %d", cmd, e.returncode)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+    elif forge_type == "gitlab":
+        cmd = [
+            "glab",
+            "mr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "-F",
+            "json",
+        ]
+        try:
+            out = subprocess.check_output(
+                cmd, stderr=subprocess.DEVNULL, text=True
+            ).strip()
+            logger.info("ran %s, exit 0", cmd)
+            data = json.loads(out)
+            if data:
+                return {
+                    "number": data.get("iid", data.get("number", pr_number)),
+                    "url": data.get("web_url", data.get("url", "")),
+                    "state": data.get("state", ""),
+                }
+        except subprocess.CalledProcessError as e:
+            logger.info("ran %s, exit %d", cmd, e.returncode)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    return None
+
+
 @api_view(["GET"])
 def repo_branch_pr(request):
     repo = request.query_params.get("repo", "")
     branch = request.query_params.get("branch", "")
+    pr_number = request.query_params.get("pr_number", "")
     if not repo or not branch:
         return Response({"error": "repo and branch required"}, status=400)
 
@@ -1579,7 +1672,23 @@ def repo_branch_pr(request):
     upstream = _parse_forge_remote(path, "upstream")
     origin = _parse_forge_remote(path, "origin")
     forge = upstream or origin
-    pr = _find_pr_for_branch(forge, branch, path)
+
+    if pr_number:
+        pr = _find_pr_by_number(forge, pr_number)
+        if pr:
+            from api.models import ForgePR
+
+            ForgePR.objects.update_or_create(
+                repo=forge["repo"] if forge else "",
+                branch=branch,
+                defaults={
+                    "number": pr["number"],
+                    "url": pr["url"],
+                    "state": pr["state"],
+                },
+            )
+    else:
+        pr = _find_pr_for_branch(forge, branch, path)
 
     return Response({"branch": branch, "pr": pr})
 

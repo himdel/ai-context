@@ -245,15 +245,7 @@ function renderGitInfo(gi, repoPath) {
       branchHtml = esc(branchText);
     }
 
-    var dirtyHtml;
-    if (gi.head.dirty_count === 0) {
-      dirtyHtml = '<span class="git-status-badge clean">clean</span>';
-    } else {
-      dirtyHtml =
-        '<span class="git-status-badge dirty">' +
-        gi.head.dirty_count +
-        ' dirty</span>';
-    }
+    var dirtyHtml = renderDirtyBadge(gi.head.dirty_count, gi.head.dirty_files);
 
     var remoteHtml = '';
     if (gi.head.tracking) {
@@ -301,22 +293,17 @@ function renderGitInfo(gi, repoPath) {
       item.className = 'git-worktree-item';
 
       var shortPath = wt.path.replace(/^\/home\/[^/]+\//, '~/');
-      var dirtyBadge;
-      if (wt.dirty_count === 0) {
-        dirtyBadge = '<span class="git-status-badge clean">clean</span>';
-      } else if (wt.dirty_count < 0) {
-        dirtyBadge = '<span class="git-status-badge">?</span>';
-      } else {
-        dirtyBadge =
-          '<span class="git-status-badge dirty">' +
-          wt.dirty_count +
-          ' dirty</span>';
-      }
+      var dirtyBadge = renderDirtyBadge(wt.dirty_count, wt.dirty_files);
 
       var sourceLabel =
         wt.source === 'claude'
           ? '<span class="git-wt-source">claude</span>'
           : '';
+
+      var actionsHtml =
+        '<span class="git-wt-actions">' +
+        '<button class="git-wt-term-btn" title="Open terminal here">$</button>' +
+        '</span>';
 
       item.innerHTML =
         '<span class="git-wt-branch">' +
@@ -326,7 +313,17 @@ function renderGitInfo(gi, repoPath) {
         sourceLabel +
         '<span class="git-wt-path">' +
         esc(shortPath) +
-        '</span>';
+        '</span>' +
+        actionsHtml;
+
+      item.querySelector('.git-wt-term-btn').onclick = function (e) {
+        e.stopPropagation();
+        fetch('/api/terminal/run/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cmd: ['bash'], cwd: wt.path }),
+        });
+      };
 
       wtList.appendChild(item);
     });
@@ -467,6 +464,31 @@ function renderGitInfo(gi, repoPath) {
   return container;
 }
 
+function renderDirtyBadge(count, files) {
+  if (count === 0) {
+    return '<span class="git-status-badge clean">clean</span>';
+  }
+  if (count < 0) {
+    return '<span class="git-status-badge">?</span>';
+  }
+  if (!files || !files.length) {
+    return '<span class="git-status-badge dirty">' + count + ' dirty</span>';
+  }
+  return (
+    '<details class="git-dirty-details">' +
+    '<summary class="git-status-badge dirty">' +
+    count +
+    ' dirty</summary>' +
+    '<div class="git-dirty-files">' +
+    files
+      .map(function (f) {
+        return '<div>' + esc(f) + '</div>';
+      })
+      .join('') +
+    '</div></details>'
+  );
+}
+
 function renderPrBadge(pr, forge) {
   if (!pr || !pr.number) return '';
 
@@ -479,6 +501,8 @@ function renderPrBadge(pr, forge) {
   } else if (pr.state === 'CLOSED' || pr.state === 'closed') {
     stateClass = ' closed';
     stateSuffix = ' closed';
+  } else if (pr.state === null) {
+    stateClass = ' unknown';
   } else {
     stateClass = ' open';
   }
@@ -498,7 +522,9 @@ function renderPrBadge(pr, forge) {
 
 function checkBranchPRs(gi, repoPath, brSection, btn) {
   var candidates = gi.branches.filter(function (b) {
-    return !b.is_default && b.tracking && !b.pr;
+    return (
+      !b.is_default && ((!b.pr && b.tracking) || (b.pr && b.pr.state === null))
+    );
   });
 
   if (candidates.length === 0) {
@@ -525,12 +551,17 @@ function checkBranchPRs(gi, repoPath, brSection, btn) {
     var b = candidates[done];
     btn.textContent = 'Checking ' + (done + 1) + '/' + candidates.length;
 
-    fetch(
+    var url =
       '/api/repos/branch-pr/?repo=' +
-        encodeURIComponent(repoPath) +
-        '&branch=' +
-        encodeURIComponent(b.name),
-    )
+      encodeURIComponent(repoPath) +
+      '&branch=' +
+      encodeURIComponent(b.name);
+
+    if (b.pr && b.pr.number && b.pr.state === null) {
+      url += '&pr_number=' + encodeURIComponent(b.pr.number);
+    }
+
+    fetch(url)
       .then((r) => r.json())
       .then(function (data) {
         if (data.pr) {

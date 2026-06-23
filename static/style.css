@@ -1890,6 +1890,29 @@ details > summary {
   background: #fef2f2;
   border: 1px solid #fecaca;
 }
+.git-dirty-details {
+  display: inline;
+  position: relative;
+}
+.git-dirty-details > summary {
+  cursor: pointer;
+}
+.git-dirty-details[open] > summary {
+  border-radius: 3px 3px 0 0;
+}
+.git-dirty-files {
+  position: absolute;
+  z-index: 5;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0 4px 4px 4px;
+  padding: 4px 8px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
 .git-remote-status {
   font-size: 11px;
   color: #888;
@@ -1927,6 +1950,25 @@ details > summary {
 .git-wt-path {
   color: #888;
   font-size: 11px;
+}
+.git-wt-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.git-wt-term-btn {
+  font-size: 11px;
+  padding: 0 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fafafa;
+  cursor: pointer;
+  font-family: monospace;
+  line-height: 18px;
+}
+.git-wt-term-btn:hover {
+  background: #eee;
+  border-color: #bbb;
 }
 
 /* Branches */
@@ -1997,6 +2039,11 @@ details > summary {
   color: #dc2626;
   background: #fef2f2;
   border: 1px solid #fecaca;
+}
+.git-pr-badge.unknown {
+  color: #6b7280;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
 }
 .git-branch-issues {
   display: flex;
