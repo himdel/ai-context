@@ -36,6 +36,11 @@ and starting new sessions.
 ### Repos
 - Browse CLAUDE.md files per repo (parent dirs, root, subdirs, global)
 - Expandable inline preview with metadata, open in $EDITOR
+- Git status: current branch, dirty files, remote tracking, ahead/behind
+- Local branches with PR links, Jira issue detection, commit dates
+- Worktrees listing with dirty state, terminal button, conversation links
+- Fetch & Refresh, PR state lookup, branch cleanup (bulk + per-branch)
+- Stale/missing repos grayed out, sorted by recent activity
 
 ### Cronjobs
 - Schedule skills to run on cron with per-repo targeting
