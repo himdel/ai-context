@@ -1365,7 +1365,7 @@ def _list_worktrees(path):
     return worktrees
 
 
-def _list_branches(path):
+def _list_branches(path, default_branch=None):
     fmt = "%(refname:short)|%(objectname:short)|%(upstream:short)|%(upstream:track)|%(HEAD)|%(committerdate:iso)"
     try:
         output = subprocess.check_output(
@@ -1402,6 +1402,29 @@ def _list_branches(path):
         remote_refs = {r.strip() for r in remote_output.splitlines() if r.strip()}
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
+
+    merged_names = set()
+    if default_branch:
+        remote_default = None
+        for remote in ("upstream", "origin"):
+            candidate = f"{remote}/{default_branch}"
+            if candidate in remote_refs:
+                remote_default = candidate
+                break
+        if remote_default:
+            try:
+                merged_output = subprocess.check_output(
+                    ["git", "-C", path, "branch", "--merged", remote_default],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                merged_names = {
+                    line.strip().lstrip("* ")
+                    for line in merged_output.splitlines()
+                    if line.strip()
+                }
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
 
     branches = []
     for line in output.strip().splitlines():
@@ -1452,6 +1475,7 @@ def _list_branches(path):
                 "track_status": track_status.strip() or None,
                 "is_head": head_marker.strip() == "*",
                 "is_default": False,
+                "merged": name in merged_names,
                 "last_commit_date": date.strip(),
                 "pr": None,
                 "issues": [],
@@ -1554,7 +1578,7 @@ def repo_git_info(request):
     default_branch = _detect_default_branch(path)
     head = _get_head_info(path, default_branch)
     worktrees = _list_worktrees(path)
-    branches = _list_branches(path)
+    branches = _list_branches(path, default_branch)
 
     for b in branches:
         b["is_default"] = b["name"] == default_branch

@@ -2112,13 +2112,23 @@ details > summary {
   border-radius: 3px;
   background: none;
   cursor: pointer;
-  color: #999;
   line-height: 16px;
+}
+.git-branch-delete-btn.safe {
+  color: #9ca3af;
+}
+.git-branch-delete-btn.warn {
+  color: #dc2626;
 }
 .git-branch-row:hover .git-branch-delete-btn {
   visibility: visible;
 }
-.git-branch-delete-btn:hover {
+.git-branch-delete-btn.safe:hover {
+  color: #6b7280;
+  border-color: #d1d5db;
+  background: #f3f4f6;
+}
+.git-branch-delete-btn.warn:hover {
   color: #dc2626;
   border-color: #fecaca;
   background: #fef2f2;

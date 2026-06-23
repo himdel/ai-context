@@ -429,6 +429,13 @@ function renderGitInfo(gi, repoPath) {
           cleanupBtn.disabled = false;
         });
     };
+    var hasMerged = gi.branches.some(function (b) {
+      return b.merged && !b.is_default && !b.is_head;
+    });
+    if (!hasMerged) {
+      cleanupBtn.disabled = true;
+      cleanupBtn.title = 'No merged branches to clean up';
+    }
     brSummary.appendChild(cleanupBtn);
     brSection.appendChild(brSummary);
 
@@ -513,9 +520,18 @@ function renderGitInfo(gi, repoPath) {
 
       var deleteHtml = '';
       if (!b.is_default && !b.is_head) {
+        var prState = b.pr && b.pr.state;
+        var isSafe =
+          b.merged ||
+          (prState && (prState === 'MERGED' || prState === 'merged')) ||
+          (b.tracking && !b.track_status) ||
+          (b.tracking && b.track_status && !/ahead/.test(b.track_status));
+        var delClass = isSafe ? 'safe' : 'warn';
         deleteHtml =
           '<span class="git-branch-actions">' +
-          '<button class="git-branch-delete-btn" title="Delete branch">&times;</button>' +
+          '<button class="git-branch-delete-btn ' +
+          delClass +
+          '" title="Delete branch">&times;</button>' +
           '</span>';
       }
 
