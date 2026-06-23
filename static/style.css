@@ -1852,6 +1852,8 @@ details > summary {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: fit-content;
+  max-width: 100%;
 }
 .git-head-bar {
   display: flex;
@@ -2122,7 +2124,6 @@ details > summary {
   background: #fef2f2;
 }
 .git-check-prs-btn {
-  margin-left: auto;
   padding: 2px 10px;
   font-size: 11px;
   border: 1px solid #c7d2fe;
