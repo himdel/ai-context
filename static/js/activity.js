@@ -29,12 +29,14 @@ export function showActivityHome() {
           })
           .then(function (newData) {
             renderHeatmap(container, newData.days);
+            renderLineChart(container, newData.days);
           });
       };
       controls.appendChild(select);
       container.appendChild(controls);
 
       renderHeatmap(container, data.days);
+      renderLineChart(container, data.days);
     });
 }
 
@@ -195,4 +197,192 @@ function renderHeatmap(container, days) {
   wrapper.addEventListener('mouseleave', function () {
     if (tooltip) tooltip.style.display = 'none';
   });
+}
+
+function computeAvg(counts, windowSize) {
+  var half = Math.floor(windowSize / 2);
+  var result = [];
+  for (var i = 0; i < counts.length; i++) {
+    var lo = Math.max(0, i - half);
+    var hi = Math.min(counts.length - 1, i + half);
+    var sum = 0;
+    for (var j = lo; j <= hi; j++) sum += counts[j];
+    result.push(sum / (hi - lo + 1));
+  }
+  return result;
+}
+
+function renderLineChart(container, days) {
+  var existing = container.querySelector('.linechart-wrapper');
+  if (existing) existing.remove();
+
+  var countMap = {};
+  days.forEach(function (d) {
+    countMap[d.date] = d.count;
+  });
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - 52 * 7);
+  var startDow = (startDate.getDay() + 6) % 7;
+  startDate.setDate(startDate.getDate() - startDow);
+
+  var dailyData = [];
+  var d = new Date(startDate);
+  while (d <= today) {
+    var ds =
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0');
+    dailyData.push({ date: ds, count: countMap[ds] || 0 });
+    d.setDate(d.getDate() + 1);
+  }
+
+  var rawCounts = dailyData.map(function (d) {
+    return d.count;
+  });
+  var maxCount = Math.max.apply(null, rawCounts);
+  var yMax = Math.ceil(maxCount * 1.1) || 1;
+
+  var numWeeks = Math.ceil(dailyData.length / 7);
+  var paddingLeft = 30;
+  var paddingTop = 5;
+  var paddingBottom = 18;
+  var cssWidth = paddingLeft + numWeeks * 16 - 2;
+  var cssHeight = 160;
+  var chartWidth = cssWidth - paddingLeft;
+  var chartHeight = cssHeight - paddingTop - paddingBottom;
+
+  var dpr = window.devicePixelRatio || 1;
+  var canvas = document.createElement('canvas');
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var gridLines = 4;
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (var g = 0; g <= gridLines; g++) {
+    var gy = paddingTop + chartHeight - (g / gridLines) * chartHeight;
+    var val = Math.round((g / gridLines) * yMax);
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, gy);
+    ctx.lineTo(cssWidth, gy);
+    ctx.stroke();
+    ctx.fillText(val, paddingLeft - 4, gy);
+  }
+
+  var windows = [
+    { size: 30, color: 'rgba(0,0,0,0.12)', width: 3 },
+    { size: 14, color: 'rgba(0,0,0,0.22)', width: 2.5 },
+    { size: 7, color: 'rgba(0,0,0,0.35)', width: 2 },
+    { size: 5, color: 'rgba(0,0,0,0.45)', width: 1.5 },
+    { size: 3, color: 'rgba(0,0,0,0.6)', width: 1.2 },
+    { size: 2, color: 'rgba(0,0,0,0.75)', width: 1 },
+    { size: 1, color: 'rgba(0,0,0,1.0)', width: 1 },
+  ];
+
+  for (var w = 0; w < windows.length; w++) {
+    var avg = computeAvg(rawCounts, windows[w].size);
+    ctx.beginPath();
+    ctx.strokeStyle = windows[w].color;
+    ctx.lineWidth = windows[w].width;
+    ctx.lineJoin = 'round';
+    for (var i = 0; i < avg.length; i++) {
+      var x = paddingLeft + (i / (avg.length - 1)) * chartWidth;
+      var y = paddingTop + chartHeight - (avg[i] / yMax) * chartHeight;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  var monthNames = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  ctx.fillStyle = '#888';
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  var lastMonth = -1;
+  for (var i = 0; i < dailyData.length; i++) {
+    var m = parseInt(dailyData[i].date.slice(5, 7), 10) - 1;
+    if (m !== lastMonth) {
+      lastMonth = m;
+      var mx = paddingLeft + (i / (dailyData.length - 1)) * chartWidth;
+      ctx.fillText(monthNames[m], mx, cssHeight - paddingBottom + 4);
+    }
+  }
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'linechart-wrapper';
+  wrapper.appendChild(canvas);
+
+  var hoverLine = document.createElement('div');
+  hoverLine.className = 'linechart-hover-line';
+  hoverLine.style.height = paddingTop + chartHeight + 'px';
+  wrapper.appendChild(hoverLine);
+
+  var hoverTooltip = document.createElement('div');
+  hoverTooltip.className = 'linechart-tooltip';
+  wrapper.appendChild(hoverTooltip);
+
+  canvas.addEventListener('mousemove', function (e) {
+    var rect = canvas.getBoundingClientRect();
+    var mouseX = e.clientX - rect.left;
+    var mouseY = e.clientY - rect.top;
+
+    if (mouseX < paddingLeft || mouseX > paddingLeft + chartWidth) {
+      hoverLine.style.display = 'none';
+      hoverTooltip.style.display = 'none';
+      return;
+    }
+
+    var dayIndex = Math.round(
+      ((mouseX - paddingLeft) / chartWidth) * (dailyData.length - 1),
+    );
+    dayIndex = Math.max(0, Math.min(dailyData.length - 1, dayIndex));
+    var dayX = paddingLeft + (dayIndex / (dailyData.length - 1)) * chartWidth;
+
+    hoverLine.style.display = 'block';
+    hoverLine.style.left = dayX + 'px';
+
+    var day = dailyData[dayIndex];
+    hoverTooltip.style.display = 'block';
+    hoverTooltip.textContent =
+      day.count + ' message' + (day.count === 1 ? '' : 's') + ' on ' + day.date;
+
+    var tooltipLeft = dayX + 8;
+    if (tooltipLeft + 160 > cssWidth) tooltipLeft = dayX - 168;
+    hoverTooltip.style.left = tooltipLeft + 'px';
+    hoverTooltip.style.top = Math.max(0, mouseY - 20) + 'px';
+  });
+
+  canvas.addEventListener('mouseleave', function () {
+    hoverLine.style.display = 'none';
+    hoverTooltip.style.display = 'none';
+  });
+
+  container.appendChild(wrapper);
 }

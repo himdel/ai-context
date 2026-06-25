@@ -1267,6 +1267,35 @@ details > summary {
 .view-activity .home-columns {
   flex-direction: column;
 }
+.linechart-wrapper {
+  position: relative;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.linechart-wrapper canvas {
+  display: block;
+}
+.linechart-hover-line {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  display: none;
+}
+.linechart-tooltip {
+  position: absolute;
+  background: #24292f;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  display: none;
+}
 
 .plan-detail-view {
   max-width: 800px;
