@@ -686,8 +686,18 @@ def _find_conversation(conversation_id):
 
 
 def _clean_env():
-    """Return os.environ without virtualenv pollution, plus DISPLAY."""
-    strip = {"VIRTUAL_ENV", "DJANGO_SETTINGS_MODULE"}
+    """Return os.environ without virtualenv/Claude-child pollution, plus DISPLAY."""
+    strip = {
+        "VIRTUAL_ENV",
+        "DJANGO_SETTINGS_MODULE",
+        # Prevent spawned Claude from thinking it's a child/subagent session —
+        # without this it skips creating session files and conversation logs.
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDECODE",
+        "AI_AGENT",
+    }
     env = {k: v for k, v in os.environ.items() if k not in strip}
     # Strip the venv bin dir from PATH
     venv = os.environ.get("VIRTUAL_ENV")
@@ -851,21 +861,35 @@ def _conversation_skill(conversation_id):
     return ""
 
 
+def _jsonl_first_timestamp(jsonl_file):
+    """Return the first timestamp (ms epoch) from a JSONL conversation file."""
+    try:
+        with open(jsonl_file) as f:
+            for line in f:
+                ts = json.loads(line).get("timestamp", "")
+                if ts:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    return dt.timestamp() * 1000
+                break
+    except (json.JSONDecodeError, OSError, ValueError):
+        pass
+    return 0
+
+
 def _resolve_run_conversations(runs):
     sessions_dir = settings.CLAUDE_DIR / "sessions"
-    if not sessions_dir.is_dir():
-        return
     unresolved = [r for r in runs if r.pid and not r.conversation_id]
     if not unresolved:
         return
 
     sessions = []
-    for f in sessions_dir.glob("*.json"):
-        try:
-            data = json.loads(f.read_text())
-            sessions.append(data)
-        except (json.JSONDecodeError, OSError):
-            pass
+    if sessions_dir.is_dir():
+        for f in sessions_dir.glob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                sessions.append(data)
+            except (json.JSONDecodeError, OSError):
+                pass
 
     # Build PID lookup (direct match for claude processes)
     pid_to_session = {s.get("pid"): s.get("sessionId", "") for s in sessions}
@@ -889,6 +913,25 @@ def _resolve_run_conversations(runs):
                 ):
                     session_id = sid
                     break
+
+        if not session_id:
+            # Session files are ephemeral — fall back to scanning persisted
+            # JSONL conversation files by timestamp + skill match.
+            repo = run.cronjob.repo if run.cronjob_id else ""
+            skill = run.cronjob.skill_name if run.cronjob_id else ""
+            if repo:
+                project_dir_name = repo.replace("/", "-").lstrip("-")
+                project_dir = settings.CLAUDE_DIR / "projects" / f"-{project_dir_name}"
+                if project_dir.is_dir():
+                    run_ts = run.triggered_at.timestamp() * 1000
+                    for jsonl_file in project_dir.glob("*.jsonl"):
+                        first_ts = _jsonl_first_timestamp(jsonl_file)
+                        if first_ts and abs(first_ts - run_ts) < 30_000:
+                            cid = jsonl_file.stem
+                            if not skill or _conversation_skill(cid) == skill:
+                                session_id = cid
+                                break
+
         if session_id:
             run.conversation_id = session_id
             run.save(update_fields=["conversation_id"])
