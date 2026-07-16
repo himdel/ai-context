@@ -45,7 +45,14 @@ def _active_session_ids():
 
 @api_view(["GET"])
 def index(request):
-    return Response({"status": "ok"})
+    instance = os.environ.get("CONTEXTS_INSTANCE", "")
+    return Response(
+        {
+            "status": "ok",
+            "instance": instance,
+            "claude_dir": str(settings.CLAUDE_DIR),
+        }
+    )
 
 
 @api_view(["GET"])

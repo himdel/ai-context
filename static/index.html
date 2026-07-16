@@ -220,6 +220,8 @@
       const mainEl = document.getElementById('main');
       const mainWrapEl = document.getElementById('main-wrap');
       const reloadListBtn = document.getElementById('reload-list-btn');
+      let instanceHue = null;
+      let lastFaviconCount = 0;
       let activeId = null;
       let activePlanId = null;
       let activeSkillId = null;
@@ -906,15 +908,21 @@
       }
 
       function updateFavicon(count) {
+        lastFaviconCount = count;
         var canvas = document.createElement('canvas');
         canvas.width = 64;
         canvas.height = 64;
         var ctx = canvas.getContext('2d');
 
+        var active =
+          instanceHue !== null ? 'hsl(' + instanceHue + ',55%,45%)' : '#16a34a';
+        var inactive =
+          instanceHue !== null ? 'hsl(' + instanceHue + ',35%,55%)' : '#999';
+
         // Background circle
         ctx.beginPath();
         ctx.arc(32, 32, 30, 0, 2 * Math.PI);
-        ctx.fillStyle = count > 0 ? '#16a34a' : '#999';
+        ctx.fillStyle = count > 0 ? active : inactive;
         ctx.fill();
 
         // Number text
@@ -1125,6 +1133,17 @@
         getActiveCronjobId: () => activeCronjobId,
       });
       initAutolinks();
+
+      fetch('/api/')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.instance) {
+            document.title = 'contexts (' + data.instance + ')';
+          }
+          var hash = RepoIdentity._hash(data.claude_dir || '');
+          instanceHue = ((hash & 0xff) * 360) / 256;
+          updateFavicon(lastFaviconCount);
+        });
 
       // open conversation/plan/skill from URL on initial load, or show home screen
       routeUrl(location.pathname, false);
