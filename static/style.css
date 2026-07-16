@@ -678,6 +678,14 @@ body {
   font-weight: 400;
   color: #888;
 }
+.read-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  margin-top: 8px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
 .edit-diff {
   font-family: monospace;
   font-size: 12px;

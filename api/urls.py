@@ -57,4 +57,6 @@ urlpatterns = [
     path("repos/delete-branch", views.repo_delete_branch),
     path("repos/cleanup-branches/", views.repo_cleanup_branches),
     path("repos/cleanup-branches", views.repo_cleanup_branches),
+    path("file/", views.local_file),
+    path("file", views.local_file),
 ]

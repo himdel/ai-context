@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import mimetypes
 import os
 import re
 import subprocess
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from django.conf import settings
+from django.http import FileResponse
 from croniter import croniter
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -2770,3 +2772,23 @@ def _ensure_index(jsonl_file, conversation_id, project_name):
 
     parsed.pop("searchable_text", None)
     return parsed
+
+
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+
+
+@api_view(["GET"])
+def local_file(request):
+    file_path = request.query_params.get("path", "")
+    if not file_path:
+        return Response({"error": "path is required"}, status=400)
+
+    p = Path(file_path)
+    if p.suffix.lower() not in _IMAGE_EXTENSIONS:
+        return Response({"error": "only image files are supported"}, status=400)
+
+    if not p.is_file():
+        return Response({"error": "file not found"}, status=404)
+
+    content_type = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
+    return FileResponse(open(p, "rb"), content_type=content_type)

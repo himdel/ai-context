@@ -548,15 +548,22 @@ function renderToolInput(name, input) {
   var skip = [];
   if (name === 'Read') {
     skip = ['file_path', 'offset', 'limit'];
+    var filePath = input.file_path || '';
+    var isImage = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(filePath);
     main =
       '<div class="edit-file">' +
-      esc(input.file_path || '') +
+      esc(filePath) +
       '</div>' +
       (input.offset || input.limit
         ? '<span style="color:#888;font-size:11px">' +
           (input.offset ? ':' + input.offset : '') +
           (input.limit ? ' (' + input.limit + ' lines)' : '') +
           '</span>'
+        : '') +
+      (isImage
+        ? '<img class="read-image-preview" src="/api/file/?path=' +
+          encodeURIComponent(filePath) +
+          '" onerror="this.style.display=\'none\'">'
         : '');
   }
   if (name === 'Bash') {
