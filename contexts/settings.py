@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 import os
 import re
@@ -95,7 +96,17 @@ CLAUDE_DIR = Path.home() / ".claude"
 TERMINAL_CMD = ["rxvt-unicode", "-e"]
 TERMINAL_DISPLAY = ":0"
 
+_instance = os.environ.get("CONTEXTS_INSTANCE", "")
+if _instance:
+    DATABASES["default"]["NAME"] = BASE_DIR / f"db_{_instance}.sqlite3"
+
+_local_module = (
+    f"contexts.settings_local_{_instance}" if _instance else "contexts.settings_local"
+)
 try:
-    from contexts.settings_local import *  # noqa: F401, F403
+    _mod = importlib.import_module(_local_module)
+    for _k in dir(_mod):
+        if _k.isupper():
+            globals()[_k] = getattr(_mod, _k)
 except ImportError:
     pass
