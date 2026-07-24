@@ -81,7 +81,7 @@ make
 ```
 
 ```
-open http://localhost:8042
+open http://localhost:8062
 ```
 
 Tweak `contexts/settings_local.py` if your terminal is not `rxvt-unicode`, X display not `:0`, etc.
@@ -104,13 +104,13 @@ Then run it alongside the default instance:
 
 ```
 make migrate-personal   # creates db_personal.sqlite3
-make run-personal       # runs on port 8043
+make run-personal       # runs on port 8063
 ```
 
-The default `make run` is unchanged (port 8042, `settings_local.py`).
+The default `make run` is unchanged (port 8062, `settings_local.py`).
 
-You can override the port with `PORT=8044 make run-personal`, or use the env
-vars directly: `CONTEXTS_INSTANCE=personal PORT=8044 make run`.
+You can override the port with `PORT=8064 make run-personal`, or use the env
+vars directly: `CONTEXTS_INSTANCE=personal PORT=8064 make run`.
 
 Each instance gets its own database (`db_<name>.sqlite3`) and loads its own
 settings file (`contexts/settings_local_<name>.py`). Both `settings_local*.py`

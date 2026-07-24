@@ -1,5 +1,5 @@
 run:
-	uv run python manage.py runserver 127.0.0.1:$${PORT:-8042}
+	uv run python manage.py runserver 127.0.0.1:$${PORT:-8062}
 
 lint:
 	uv run ruff check
@@ -18,7 +18,7 @@ reindex:
 	DJANGO_SETTINGS_MODULE=contexts.settings uv run python -c "import django; django.setup(); from api.models import ConversationIndex; ConversationIndex.objects.all().update(file_mtime=0); print('Reset', ConversationIndex.objects.count(), 'index entries')"
 
 run-%:
-	CONTEXTS_INSTANCE=$* PORT=$${PORT:-8043} $(MAKE) run
+	CONTEXTS_INSTANCE=$* PORT=$${PORT:-8063} $(MAKE) run
 
 migrate-%:
 	CONTEXTS_INSTANCE=$* uv run python manage.py migrate
