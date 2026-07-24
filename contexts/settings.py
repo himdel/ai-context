@@ -90,6 +90,7 @@ LOGGING = {
 
 # Path to the Claude Code data directory (~/.claude).
 CLAUDE_DIR = Path.home() / ".claude"
+CLAUDE_CMD = "claude"
 
 # Terminal emulator command for launching Claude Code sessions from the UI.
 # The prompt or --resume args are appended to this list.

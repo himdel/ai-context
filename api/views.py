@@ -756,7 +756,8 @@ def session_new(request):
     else:
         cwd = str(Path.home())
 
-    return _spawn_in_terminal(["claude", prompt] if prompt else ["claude"], cwd)
+    cmd = settings.CLAUDE_CMD
+    return _spawn_in_terminal([cmd, prompt] if prompt else [cmd], cwd)
 
 
 @api_view(["POST"])
@@ -784,7 +785,7 @@ def session_resume(request):
     if not cwd or not Path(cwd).is_dir():
         cwd = str(Path.home())
 
-    return _spawn_in_terminal(["claude", "--resume", conversation_id], cwd)
+    return _spawn_in_terminal([settings.CLAUDE_CMD, "--resume", conversation_id], cwd)
 
 
 @api_view(["POST"])
@@ -810,7 +811,7 @@ def session_fork(request):
         cwd = str(Path.home())
 
     return _spawn_in_terminal(
-        ["claude", "--resume", conversation_id, "--fork-session"], cwd
+        [settings.CLAUDE_CMD, "--resume", conversation_id, "--fork-session"], cwd
     )
 
 
@@ -985,7 +986,7 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
     if not Path(cj.repo).is_dir():
         return Response({"error": "repo directory not found"}, status=400)
 
-    result = _spawn_in_terminal(["claude", prompt], cj.repo)
+    result = _spawn_in_terminal([settings.CLAUDE_CMD, prompt], cj.repo)
 
     pid = result.data.get("pid") if result.status_code == 200 else None
     CronJobRun.objects.create(cronjob=cj, trigger_type=trigger_type, pid=pid)
@@ -2112,7 +2113,7 @@ def plan_execute(request, plan_id):
         cwd = str(Path.home())
 
     prompt = f"Execute the plan in {plan_file}"
-    return _spawn_in_terminal(["claude", prompt], cwd)
+    return _spawn_in_terminal([settings.CLAUDE_CMD, prompt], cwd)
 
 
 def _path_id(path):
