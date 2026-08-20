@@ -11,6 +11,7 @@ and starting new sessions.
 ## Features
 
 ### Conversations
+
 - Full-text search with SQLite-backed index
 - Markdown rendering with syntax highlighting, Mermaid diagrams
 - Rich code blocks: LaTeX, Graphviz, Vega-Lite, GeoJSON, ABC notation (with audio), Markmap, PlantUML
@@ -19,21 +20,26 @@ and starting new sessions.
 - Resume, fork, or start new sessions from the UI
 - Active session indicator, status bar with running tasks and agents
 - Deleted logs stay visible from DB cache, live tailing for active sessions
+- Estimated cost per conversation (list + detail), computed from transcript token usage
 
 ### Plans
+
 - Grouped by repo, linked back to originating conversation
 - Full markdown rendering with Execute button to launch a new session
 
 ### Skills
+
 - Browse commands, skills, and saved workflows
 - Create, edit, and delete with frontmatter metadata and syntax highlighting
 - Open in $EDITOR, run with repo chooser, recent invocations
 
 ### Memory
+
 - Browse, edit, and delete persistent memory items ($EDITOR support)
 - MEMORY.md index with navigable links, linked to originating conversations
 
 ### Repos
+
 - Browse CLAUDE.md files per repo (parent dirs, root, subdirs, global)
 - Expandable inline preview with metadata, open in $EDITOR
 - Git status: current branch, dirty files, remote tracking, ahead/behind
@@ -43,30 +49,40 @@ and starting new sessions.
 - Stale/missing repos grayed out, sorted by recent activity
 
 ### Cronjobs
+
 - Schedule skills to run on cron with per-repo targeting
 - Next run preview, manual "Run Now", run history with conversation links
 - Create cronjobs directly from a skill's detail page
 
 ### Git & forge integration
+
 - GitHub, GitLab, and Gitea/Codeberg support
 - PR/MR detection for current branch, autolinks for issues and Jira references
 - Clickable commit SHAs, deterministic repo icon + color tint
 
+### Activity & Costs
+
+- Activity heatmap and usage line chart with layered running averages
+- Per-day message counts and estimated cost in tooltips, filterable by repo
+- Costs tab: estimated cost per repo with proportional bars and a running total
+- Cost estimates are self-contained (derived from token usage in the transcripts)
+
 ### Home screen
+
 - Conversations grouped by repo with active/recent sections
-- Tabs for Conversations, Plans, Skills, Cronjobs, Memory, Repos, Activity
-- Activity heatmap, new session launcher, SPA with direct URL routing
+- Tabs for Conversations, Plans, Skills, Cronjobs, Memory, Repos, Activity, Costs
+- New session launcher, SPA with direct URL routing
 
 ## Screenshots
 
 ![](./screenshots/conversation.png)
 
-| Home | Skill |
-|---|---|
+| Home                        | Skill                        |
+| --------------------------- | ---------------------------- |
 | ![](./screenshots/home.png) | ![](./screenshots/skill.png) |
 
-| Plan | Memory |
-|---|---|
+| Plan                        | Memory                        |
+| --------------------------- | ----------------------------- |
 | ![](./screenshots/plan.png) | ![](./screenshots/memory.png) |
 
 ![](./screenshots/tasks.png)
@@ -86,6 +102,22 @@ open http://localhost:8062
 
 Tweak `contexts/settings_local.py` if your terminal is not `rxvt-unicode`, X display not `:0`, etc.
 See `contexts/settings.py` for all available settings.
+
+### Database migrations
+
+After pulling changes that alter the models (or when the server complains about
+unapplied migrations), run `make migrate` to bring the local SQLite database up
+to date. For extra instances, use `make migrate-<name>` (e.g. `make migrate-personal`).
+
+When you change anything in `api/models.py`, generate a migration and apply it:
+
+```
+uv run python manage.py makemigrations
+make migrate
+```
+
+The DB doubles as a cache of parsed transcripts; run `make reindex` to force a
+lazy re-parse if a new field needs backfilling from the logs.
 
 ### Multiple instances
 
