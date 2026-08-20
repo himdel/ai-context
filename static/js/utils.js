@@ -80,6 +80,22 @@ export function formatDuration(startIso, endIso) {
   }
 }
 
+export function formatCost(usd) {
+  const n = Number(usd);
+  if (!isFinite(n) || n <= 0) return '';
+  if (n < 0.01) return '<$0.01';
+  if (n < 1) return '$' + n.toFixed(2);
+  if (n < 100) return '$' + n.toFixed(2);
+  return '$' + Math.round(n);
+}
+
+export function formatTokens(n) {
+  const v = Number(n) || 0;
+  if (v < 1000) return String(v);
+  if (v < 1000000) return (v / 1000).toFixed(v < 10000 ? 1 : 0) + 'k';
+  return (v / 1000000).toFixed(1) + 'M';
+}
+
 export function formatDate(iso) {
   try {
     const d = new Date(iso);

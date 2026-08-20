@@ -1,3 +1,5 @@
+import { formatCost } from '/js/utils.js';
+
 export function showActivityHome() {
   fetch('/api/stats/')
     .then(function (r) {
@@ -20,6 +22,9 @@ export function showActivityHome() {
         opt.textContent = p.replace(/^\/home\/[^/]+\//, '~/');
         select.appendChild(opt);
       });
+      var totalEl = document.createElement('span');
+      totalEl.className = 'activity-total';
+
       select.onchange = function () {
         var url = '/api/stats/';
         if (select.value) url += '?repo=' + encodeURIComponent(select.value);
@@ -28,16 +33,98 @@ export function showActivityHome() {
             return r.json();
           })
           .then(function (newData) {
+            renderTotal(totalEl, newData.total_cost);
             renderHeatmap(container, newData.days);
             renderLineChart(container, newData.days);
           });
       };
       controls.appendChild(select);
+      controls.appendChild(totalEl);
       container.appendChild(controls);
 
+      renderTotal(totalEl, data.total_cost);
       renderHeatmap(container, data.days);
       renderLineChart(container, data.days);
     });
+}
+
+export function showCostsHome() {
+  fetch('/api/stats/')
+    .then(function (r) {
+      return r.json();
+    })
+    .then(function (data) {
+      var container = document.getElementById('home-cols');
+      if (!container) return;
+
+      renderRepoCosts(container, data.repo_costs, data.total_cost);
+    });
+}
+
+function renderTotal(el, totalCost) {
+  var cost = formatCost(totalCost);
+  el.textContent = cost ? 'Total: ~' + cost : '';
+}
+
+function renderRepoCosts(container, repoCosts, totalCost) {
+  var existing = container.querySelector('.repo-costs-wrapper');
+  if (existing) existing.remove();
+  if (!repoCosts || !repoCosts.length) return;
+
+  var withCost = repoCosts.filter(function (r) {
+    return r.cost > 0;
+  });
+  if (!withCost.length) return;
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'repo-costs-wrapper';
+  var heading = document.createElement('div');
+  heading.className = 'repo-costs-heading';
+  heading.textContent = 'Estimated cost per repo';
+  wrapper.appendChild(heading);
+
+  var maxCost = withCost[0].cost || 1;
+  withCost.forEach(function (r) {
+    var row = document.createElement('div');
+    row.className = 'repo-cost-row';
+    var name = r.project.replace(/^\/home\/[^/]+\//, '~/');
+    var pct = Math.max(2, Math.round((r.cost / maxCost) * 100));
+    row.innerHTML =
+      '<span class="repo-cost-name" title="' +
+      escAttr(r.project) +
+      '">' +
+      escHtml(name) +
+      '</span>' +
+      '<span class="repo-cost-bar"><span class="repo-cost-bar-fill" style="width:' +
+      pct +
+      '%"></span></span>' +
+      '<span class="repo-cost-value">~' +
+      formatCost(r.cost) +
+      '</span>';
+    wrapper.appendChild(row);
+  });
+
+  var totalRow = document.createElement('div');
+  totalRow.className = 'repo-cost-row repo-cost-total';
+  totalRow.innerHTML =
+    '<span class="repo-cost-name">Total</span>' +
+    '<span class="repo-cost-bar"></span>' +
+    '<span class="repo-cost-value">~' +
+    (formatCost(totalCost) || '$0') +
+    '</span>';
+  wrapper.appendChild(totalRow);
+
+  container.appendChild(wrapper);
+}
+
+function escHtml(s) {
+  return String(s).replace(/[&<>]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c];
+  });
+}
+
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;');
 }
 
 function renderHeatmap(container, days) {
@@ -45,8 +132,10 @@ function renderHeatmap(container, days) {
   if (existing) existing.remove();
 
   var countMap = {};
+  var costMap = {};
   days.forEach(function (d) {
     countMap[d.date] = d.count;
+    costMap[d.date] = d.cost || 0;
   });
 
   var counts = days
@@ -181,8 +270,14 @@ function renderHeatmap(container, days) {
     }
     var count = cell.dataset.count;
     var date = cell.dataset.date;
+    var cost = formatCost(costMap[date]);
     tooltip.textContent =
-      count + ' message' + (count === '1' ? '' : 's') + ' on ' + date;
+      count +
+      ' message' +
+      (count === '1' ? '' : 's') +
+      (cost ? ' · ~' + cost : '') +
+      ' on ' +
+      date;
     tooltip.style.display = 'block';
     var rect = cell.getBoundingClientRect();
     tooltip.style.left =
@@ -217,8 +312,10 @@ function renderLineChart(container, days) {
   if (existing) existing.remove();
 
   var countMap = {};
+  var costMap = {};
   days.forEach(function (d) {
     countMap[d.date] = d.count;
+    costMap[d.date] = d.cost || 0;
   });
 
   var today = new Date();
@@ -237,7 +334,11 @@ function renderLineChart(container, days) {
       String(d.getMonth() + 1).padStart(2, '0') +
       '-' +
       String(d.getDate()).padStart(2, '0');
-    dailyData.push({ date: ds, count: countMap[ds] || 0 });
+    dailyData.push({
+      date: ds,
+      count: countMap[ds] || 0,
+      cost: costMap[ds] || 0,
+    });
     d.setDate(d.getDate() + 1);
   }
 
@@ -369,9 +470,15 @@ function renderLineChart(container, days) {
     hoverLine.style.left = dayX + 'px';
 
     var day = dailyData[dayIndex];
+    var dayCost = formatCost(day.cost);
     hoverTooltip.style.display = 'block';
     hoverTooltip.textContent =
-      day.count + ' message' + (day.count === 1 ? '' : 's') + ' on ' + day.date;
+      day.count +
+      ' message' +
+      (day.count === 1 ? '' : 's') +
+      (dayCost ? ' · ~' + dayCost : '') +
+      ' on ' +
+      day.date;
 
     var tooltipLeft = dayX + 8;
     if (tooltipLeft + 160 > cssWidth) tooltipLeft = dayX - 168;

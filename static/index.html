@@ -149,10 +149,12 @@
         formatDuration,
         formatDate,
         formatTime,
+        formatCost,
+        formatTokens,
         openInEditor,
         isNearBottom,
       } from '/js/utils.js';
-      import { showActivityHome } from '/js/activity.js';
+      import { showActivityHome, showCostsHome } from '/js/activity.js';
       import {
         currentForgeRepo,
         currentForgeOrigin,
@@ -306,6 +308,7 @@
           'view-memory',
           'view-repo',
           'view-activity',
+          'view-costs',
         );
         if (type) mainEl.classList.add('view-' + type);
       }
@@ -645,6 +648,7 @@
         memory: '/memories',
         repos: '/repos',
         activity: '/activity',
+        costs: '/costs',
       };
 
       var homeTabViewType = {
@@ -655,6 +659,7 @@
         memory: 'memory',
         repos: 'repo',
         activity: 'activity',
+        costs: 'costs',
       };
       function showHomeScreen(pushHistory) {
         setActiveScreen({});
@@ -686,6 +691,9 @@
           '<div class="home-tab' +
           (homeTab === 'activity' ? ' active' : '') +
           '" data-tab="activity">Activity</div>' +
+          '<div class="home-tab' +
+          (homeTab === 'costs' ? ' active' : '') +
+          '" data-tab="costs">Costs</div>' +
           '</div>' +
           '<div class="home-columns" id="home-cols"></div>' +
           '</div>';
@@ -709,6 +717,8 @@
           showReposHome();
         } else if (homeTab === 'activity') {
           showActivityHome();
+        } else if (homeTab === 'costs') {
+          showCostsHome();
         } else {
           showSessionsHome();
         }
@@ -1007,8 +1017,18 @@
                 esc(formatDate(c.date)) +
                 (duration ? ', ' + esc(duration) : '') +
                 '</div>' +
-                (c.message_count
-                  ? '<span class="badge">' + c.message_count + '</span>'
+                (c.message_count || formatCost(c.cost_usd)
+                  ? '<span class="badge badge-stats" title="messages | estimated cost">' +
+                    (c.message_count
+                      ? '<span>' + c.message_count + '</span>'
+                      : '') +
+                    (c.message_count && formatCost(c.cost_usd)
+                      ? '<span class="badge-div"></span>'
+                      : '') +
+                    (formatCost(c.cost_usd)
+                      ? '<span>' + formatCost(c.cost_usd) + '</span>'
+                      : '') +
+                    '</span>'
                   : '') +
                 (c.file_missing
                   ? '<span class="badge badge-missing">log deleted</span>'
@@ -1087,6 +1107,9 @@
           showHomeScreen(pushHistory);
         } else if (/^\/activity\b/.test(pathname)) {
           homeTab = 'activity';
+          showHomeScreen(pushHistory);
+        } else if (/^\/costs\b/.test(pathname)) {
+          homeTab = 'costs';
           showHomeScreen(pushHistory);
         } else {
           homeTab = 'conversations';
@@ -1246,6 +1269,31 @@
               }
               if (data.message_count)
                 parts.push('<span>' + data.message_count + ' messages</span>');
+              if (formatCost(data.cost_usd)) {
+                const tokenTip =
+                  formatTokens(data.input_tokens) +
+                  ' in / ' +
+                  formatTokens(data.output_tokens) +
+                  ' out / ' +
+                  formatTokens(data.cache_read_tokens) +
+                  ' cache read / ' +
+                  formatTokens(data.cache_write_tokens) +
+                  ' cache write';
+                parts.push(
+                  '<span title="estimated cost — ' +
+                    esc(tokenTip) +
+                    '">~' +
+                    formatCost(data.cost_usd) +
+                    ' (' +
+                    formatTokens(
+                      (data.input_tokens || 0) +
+                        (data.output_tokens || 0) +
+                        (data.cache_read_tokens || 0) +
+                        (data.cache_write_tokens || 0),
+                    ) +
+                    ' tok)</span>',
+                );
+              }
               var duration = formatDuration(
                 data.first_timestamp,
                 data.last_timestamp,

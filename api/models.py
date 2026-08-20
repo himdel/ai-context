@@ -22,6 +22,11 @@ class ConversationIndex(models.Model):
     last_timestamp = models.CharField(max_length=64, default="")
     message_count = models.IntegerField(default=0)
     searchable_text = models.TextField(default="")
+    cost_usd = models.FloatField(default=0.0)
+    input_tokens = models.BigIntegerField(default=0)
+    output_tokens = models.BigIntegerField(default=0)
+    cache_read_tokens = models.BigIntegerField(default=0)
+    cache_write_tokens = models.BigIntegerField(default=0)
     file_size = models.BigIntegerField(default=0)
     file_mtime = models.FloatField(default=0)
 

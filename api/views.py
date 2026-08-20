@@ -294,6 +294,11 @@ def conversations(request):
                 "branch": ci.branch,
                 "message_count": ci.message_count,
                 "last_timestamp": ci.last_timestamp,
+                "cost_usd": ci.cost_usd,
+                "input_tokens": ci.input_tokens,
+                "output_tokens": ci.output_tokens,
+                "cache_read_tokens": ci.cache_read_tokens,
+                "cache_write_tokens": ci.cache_write_tokens,
                 "url": request.build_absolute_uri(
                     f"/api/conversations/{ci.conversation_id}/"
                 ),
@@ -487,6 +492,11 @@ def conversation_detail(request, conversation_id):
                 "last_timestamp": ci.last_timestamp,
                 "active": False,
                 "messages": [],
+                "cost_usd": ci.cost_usd,
+                "input_tokens": ci.input_tokens,
+                "output_tokens": ci.output_tokens,
+                "cache_read_tokens": ci.cache_read_tokens,
+                "cache_write_tokens": ci.cache_write_tokens,
                 "file_missing": True,
             }
         )
@@ -665,6 +675,7 @@ def conversation_detail(request, conversation_id):
 
     msg_count = len(messages)
     active_ids = _active_session_ids()
+    usage = _conversation_usage(jsonl_file, conversation_id)
     return Response(
         {
             "id": conversation_id,
@@ -677,6 +688,7 @@ def conversation_detail(request, conversation_id):
             "last_timestamp": last_ts,
             "active": conversation_id in active_ids,
             "messages": messages,
+            **usage,
         }
     )
 
@@ -2636,7 +2648,7 @@ def stats(request):
     rows = (
         qs.annotate(date=Substr("first_timestamp", 1, 10))
         .values("date")
-        .annotate(count=Sum("message_count"))
+        .annotate(count=Sum("message_count"), cost=Sum("cost_usd"))
         .order_by("date")
     )
 
@@ -2646,12 +2658,129 @@ def stats(request):
         .distinct()
     )
 
+    # Per-repo cost breakdown (ignores the repo filter so the whole picture is
+    # always available), most expensive first.
+    repo_costs = (
+        ConversationIndex.objects.exclude(project="")
+        .values("project")
+        .annotate(cost=Sum("cost_usd"), count=Sum("message_count"))
+        .order_by("-cost")
+    )
+
+    total_cost = qs.aggregate(total=Sum("cost_usd"))["total"] or 0.0
+
     return Response(
         {
-            "days": [{"date": r["date"], "count": r["count"]} for r in rows],
+            "days": [
+                {
+                    "date": r["date"],
+                    "count": r["count"],
+                    "cost": round(r["cost"] or 0.0, 6),
+                }
+                for r in rows
+            ],
             "projects": projects,
+            "total_cost": round(total_cost, 6),
+            "repo_costs": [
+                {
+                    "project": r["project"],
+                    "cost": round(r["cost"] or 0.0, 6),
+                    "count": r["count"],
+                }
+                for r in repo_costs
+            ],
         }
     )
+
+
+# Model pricing in USD per token as (input, output). Cache read costs 0.1x the
+# input rate, 5-minute cache writes 1.25x, 1-hour cache writes 2x. Web search is
+# billed per request. These are Anthropic/Vertex list rates and match the vendor's
+# own estimate to within ~1% on this env - edit here if your billing differs.
+_MODEL_PRICING = {
+    "opus": (5e-6, 25e-6),
+    "sonnet": (3e-6, 15e-6),
+    "haiku": (1e-6, 5e-6),
+}
+_WEB_SEARCH_COST = 10.0 / 1000  # USD per web_search request
+
+
+def _pricing_for_model(model):
+    m = (model or "").lower()
+    for family, rates in _MODEL_PRICING.items():
+        if family in m:
+            return rates
+    return None
+
+
+def _cost_for_usage(model, usage):
+    """USD cost for a single API response's usage block."""
+    rates = _pricing_for_model(model)
+    if not rates:
+        return 0.0
+    in_rate, out_rate = rates
+    cache = usage.get("cache_creation") or {}
+    server = usage.get("server_tool_use") or {}
+    return (
+        usage.get("output_tokens", 0) * out_rate
+        + usage.get("input_tokens", 0) * in_rate
+        + usage.get("cache_read_input_tokens", 0) * in_rate * 0.1
+        + cache.get("ephemeral_5m_input_tokens", 0) * in_rate * 1.25
+        + cache.get("ephemeral_1h_input_tokens", 0) * in_rate * 2.0
+        + (server.get("web_search_requests", 0) or 0) * _WEB_SEARCH_COST
+    )
+
+
+def _accumulate_usage(jsonl_file, totals, seen_request_ids):
+    """Add cost + token buckets from one transcript into totals, dedup by requestId.
+
+    Each assistant turn is written as several JSONL lines sharing one requestId and
+    an identical usage block, so we count each request only once.
+    """
+    try:
+        with open(jsonl_file) as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if data.get("type") != "assistant":
+                    continue
+                rid = data.get("requestId")
+                if not rid or rid in seen_request_ids:
+                    continue
+                seen_request_ids.add(rid)
+                msg = data.get("message", {}) or {}
+                usage = msg.get("usage") or {}
+                cache = usage.get("cache_creation") or {}
+                totals["cost_usd"] += _cost_for_usage(msg.get("model", ""), usage)
+                totals["input_tokens"] += usage.get("input_tokens", 0)
+                totals["output_tokens"] += usage.get("output_tokens", 0)
+                totals["cache_read_tokens"] += usage.get("cache_read_input_tokens", 0)
+                totals["cache_write_tokens"] += cache.get(
+                    "ephemeral_5m_input_tokens", 0
+                ) + cache.get("ephemeral_1h_input_tokens", 0)
+    except OSError:
+        pass
+
+
+def _conversation_usage(jsonl_file, conversation_id):
+    """Aggregate cost + tokens for a conversation, including subagent transcripts."""
+    totals = {
+        "cost_usd": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
+    seen_request_ids = set()
+    _accumulate_usage(jsonl_file, totals, seen_request_ids)
+    subagent_root = jsonl_file.parent / conversation_id
+    if subagent_root.is_dir():
+        for sub in subagent_root.rglob("*.jsonl"):
+            _accumulate_usage(sub, totals, seen_request_ids)
+    totals["cost_usd"] = round(totals["cost_usd"], 6)
+    return totals
 
 
 def _parse_conversation(jsonl_file, conversation_id, project_name):
@@ -2714,6 +2843,8 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
         if not blurb:
             return None
 
+        usage = _conversation_usage(jsonl_file, conversation_id)
+
         return {
             "id": conversation_id,
             "project": cwd or project_name,
@@ -2723,6 +2854,7 @@ def _parse_conversation(jsonl_file, conversation_id, project_name):
             "message_count": msg_count,
             "last_timestamp": last_ts,
             "searchable_text": "\n".join(text_parts),
+            **usage,
         }
     except (json.JSONDecodeError, OSError):
         pass
@@ -2748,6 +2880,11 @@ def _ensure_index(jsonl_file, conversation_id, project_name):
                 "branch": cached.branch,
                 "message_count": cached.message_count,
                 "last_timestamp": cached.last_timestamp,
+                "cost_usd": cached.cost_usd,
+                "input_tokens": cached.input_tokens,
+                "output_tokens": cached.output_tokens,
+                "cache_read_tokens": cached.cache_read_tokens,
+                "cache_write_tokens": cached.cache_write_tokens,
             }
     except ConversationIndex.DoesNotExist:
         pass
@@ -2766,6 +2903,11 @@ def _ensure_index(jsonl_file, conversation_id, project_name):
             "last_timestamp": parsed["last_timestamp"],
             "message_count": parsed["message_count"],
             "searchable_text": parsed.get("searchable_text", ""),
+            "cost_usd": parsed.get("cost_usd", 0.0),
+            "input_tokens": parsed.get("input_tokens", 0),
+            "output_tokens": parsed.get("output_tokens", 0),
+            "cache_read_tokens": parsed.get("cache_read_tokens", 0),
+            "cache_write_tokens": parsed.get("cache_write_tokens", 0),
             "file_size": stat.st_size,
             "file_mtime": stat.st_mtime,
         },
