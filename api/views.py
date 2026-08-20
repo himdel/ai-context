@@ -2639,8 +2639,18 @@ def stats(request):
 
     from api.models import ConversationIndex
 
-    qs = ConversationIndex.objects.exclude(first_timestamp="")
+    base = ConversationIndex.objects.exclude(first_timestamp="")
 
+    # Optional inclusive date range (YYYY-MM-DD). first_timestamp is an ISO
+    # string, so "T99" sorts after any real time-of-day on the `to` day.
+    date_from = request.query_params.get("from", "")
+    date_to = request.query_params.get("to", "")
+    if date_from:
+        base = base.filter(first_timestamp__gte=date_from)
+    if date_to:
+        base = base.filter(first_timestamp__lt=date_to + "T99")
+
+    qs = base
     repo = request.query_params.get("repo", "")
     if repo:
         qs = qs.filter(project=repo)
@@ -2652,16 +2662,17 @@ def stats(request):
         .order_by("date")
     )
 
+    # Repo dropdown lists every project regardless of range, so it stays stable.
     projects = sorted(
         ConversationIndex.objects.exclude(project="")
         .values_list("project", flat=True)
         .distinct()
     )
 
-    # Per-repo cost breakdown (ignores the repo filter so the whole picture is
-    # always available), most expensive first.
+    # Per-repo cost breakdown honours the date range but ignores the repo filter
+    # so the whole picture is always available, most expensive first.
     repo_costs = (
-        ConversationIndex.objects.exclude(project="")
+        base.exclude(project="")
         .values("project")
         .annotate(cost=Sum("cost_usd"), count=Sum("message_count"))
         .order_by("-cost")

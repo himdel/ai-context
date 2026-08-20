@@ -1,16 +1,104 @@
 import { formatCost } from '/js/utils.js';
 
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+
+function ymd(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function daysAgo(n) {
+  var d = new Date();
+  d.setDate(d.getDate() - n);
+  return ymd(d);
+}
+
+// Time-range presets, computed relative to today: rolling windows plus calendar
+// periods. `to` is left blank for open-ended ranges (transcripts never carry
+// future dates, so "this" periods need no upper bound).
+function timeRanges() {
+  var now = new Date();
+  var y = now.getFullYear();
+  var m = now.getMonth();
+  return [
+    { value: 'all', label: 'All time', from: '', to: '' },
+    { value: '31', label: 'Last 31 days', from: daysAgo(30), to: '' },
+    { value: '365', label: 'Last 365 days', from: daysAgo(364), to: '' },
+    {
+      value: 'this-month',
+      label: 'This month',
+      from: ymd(new Date(y, m, 1)),
+      to: '',
+    },
+    {
+      value: 'last-month',
+      label: 'Last month',
+      from: ymd(new Date(y, m - 1, 1)),
+      to: ymd(new Date(y, m, 0)),
+    },
+    { value: 'this-year', label: 'This year', from: y + '-01-01', to: '' },
+    {
+      value: 'last-year',
+      label: 'Last year',
+      from: y - 1 + '-01-01',
+      to: y - 1 + '-12-31',
+    },
+  ];
+}
+
+function makeRangeSelect(ranges, onChange) {
+  var sel = document.createElement('select');
+  sel.className = 'range-select';
+  ranges.forEach(function (o) {
+    var opt = document.createElement('option');
+    opt.value = o.value;
+    opt.textContent = o.label;
+    sel.appendChild(opt);
+  });
+  sel.onchange = onChange;
+  return sel;
+}
+
+function statsUrl(params) {
+  var parts = [];
+  if (params.repo) parts.push('repo=' + encodeURIComponent(params.repo));
+  if (params.from) parts.push('from=' + params.from);
+  if (params.to) parts.push('to=' + params.to);
+  return '/api/stats/' + (parts.length ? '?' + parts.join('&') : '');
+}
+
 export function showActivityHome() {
-  fetch('/api/stats/')
+  var container = document.getElementById('home-cols');
+  if (!container) return;
+  var ranges = timeRanges();
+  var rangeMap = {};
+  ranges.forEach(function (r) {
+    rangeMap[r.value] = r;
+  });
+  var state = { repo: '', range: 'all' };
+
+  function fetchAndRender(totalEl) {
+    var r = rangeMap[state.range] || rangeMap.all;
+    fetch(statsUrl({ repo: state.repo, from: r.from, to: r.to }))
+      .then(function (x) {
+        return x.json();
+      })
+      .then(function (data) {
+        renderTotal(totalEl, data.total_cost);
+        renderHeatmap(container, data.days);
+        renderLineChart(container, data.days);
+      });
+  }
+
+  fetch(statsUrl({}))
     .then(function (r) {
       return r.json();
     })
     .then(function (data) {
-      var container = document.getElementById('home-cols');
-      if (!container) return;
-
       var controls = document.createElement('div');
       controls.className = 'activity-controls';
+
       var select = document.createElement('select');
       var allOpt = document.createElement('option');
       allOpt.value = '';
@@ -22,23 +110,22 @@ export function showActivityHome() {
         opt.textContent = p.replace(/^\/home\/[^/]+\//, '~/');
         select.appendChild(opt);
       });
+
       var totalEl = document.createElement('span');
       totalEl.className = 'activity-total';
 
+      var rangeSel = makeRangeSelect(ranges, function () {
+        state.range = rangeSel.value;
+        fetchAndRender(totalEl);
+      });
+
       select.onchange = function () {
-        var url = '/api/stats/';
-        if (select.value) url += '?repo=' + encodeURIComponent(select.value);
-        fetch(url)
-          .then(function (r) {
-            return r.json();
-          })
-          .then(function (newData) {
-            renderTotal(totalEl, newData.total_cost);
-            renderHeatmap(container, newData.days);
-            renderLineChart(container, newData.days);
-          });
+        state.repo = select.value;
+        fetchAndRender(totalEl);
       };
+
       controls.appendChild(select);
+      controls.appendChild(rangeSel);
       controls.appendChild(totalEl);
       container.appendChild(controls);
 
@@ -49,16 +136,36 @@ export function showActivityHome() {
 }
 
 export function showCostsHome() {
-  fetch('/api/stats/')
-    .then(function (r) {
-      return r.json();
-    })
-    .then(function (data) {
-      var container = document.getElementById('home-cols');
-      if (!container) return;
+  var container = document.getElementById('home-cols');
+  if (!container) return;
+  var ranges = timeRanges();
+  var rangeMap = {};
+  ranges.forEach(function (r) {
+    rangeMap[r.value] = r;
+  });
+  var state = { range: 'all' };
 
-      renderRepoCosts(container, data.repo_costs, data.total_cost);
-    });
+  function fetchAndRender() {
+    var r = rangeMap[state.range] || rangeMap.all;
+    fetch(statsUrl({ from: r.from, to: r.to }))
+      .then(function (x) {
+        return x.json();
+      })
+      .then(function (data) {
+        renderRepoCosts(container, data.repo_costs, data.total_cost);
+      });
+  }
+
+  var controls = document.createElement('div');
+  controls.className = 'activity-controls';
+  var rangeSel = makeRangeSelect(ranges, function () {
+    state.range = rangeSel.value;
+    fetchAndRender();
+  });
+  controls.appendChild(rangeSel);
+  container.appendChild(controls);
+
+  fetchAndRender();
 }
 
 function renderTotal(el, totalCost) {
