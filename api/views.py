@@ -1,9 +1,11 @@
 import base64
+import hashlib
 import json
 import logging
 import mimetypes
 import os
 import re
+import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +30,21 @@ _KNOWN_FORGE_DOMAINS = {
 }
 
 
+def _pid_alive(pid):
+    """Cross-platform check whether a process is running (replaces /proc)."""
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _active_session_ids():
     """Return set of session IDs that have a running process."""
     ids = set()
@@ -37,8 +54,7 @@ def _active_session_ids():
     for f in sessions_dir.glob("*.json"):
         try:
             data = json.loads(f.read_text())
-            pid = data.get("pid")
-            if pid and Path(f"/proc/{pid}").exists():
+            if _pid_alive(data.get("pid")):
                 ids.add(data.get("sessionId", ""))
         except (json.JSONDecodeError, OSError):
             pass
@@ -707,7 +723,7 @@ def _find_conversation(conversation_id):
 
 
 def _clean_env():
-    """Return os.environ without virtualenv/Claude-child pollution, plus DISPLAY."""
+    """Return os.environ without virtualenv/Claude-child pollution."""
     strip = {
         "VIRTUAL_ENV",
         "DJANGO_SETTINGS_MODULE",
@@ -727,20 +743,140 @@ def _clean_env():
         env["PATH"] = os.pathsep.join(
             p for p in env["PATH"].split(os.pathsep) if p != venv_bin
         )
-    env["DISPLAY"] = settings.TERMINAL_DISPLAY
     return env
 
 
-def _spawn_in_terminal(cmd, cwd):
-    """Spawn a command in a terminal with a clean env."""
-    full_cmd = settings.TERMINAL_CMD + cmd
-    env = _clean_env()
+def _tmux(*args, env=None):
+    """Run a tmux command. Return (returncode, stdout). Never raises."""
     try:
-        proc = subprocess.Popen(full_cmd, cwd=cwd, env=env, start_new_session=True)
-        logger.info("spawned %s, pid %d", full_cmd, proc.pid)
+        p = subprocess.run(["tmux", *args], capture_output=True, text=True, env=env)
+        return p.returncode, p.stdout
+    except FileNotFoundError:
+        return 127, ""
+
+
+def _tmux_sessions():
+    """Return {session_name: pane_pid} for all live tmux sessions."""
+    rc, out = _tmux("list-panes", "-a", "-F", "#{session_name} #{pane_pid}")
+    result = {}
+    if rc != 0:
+        return result
+    for line in out.splitlines():
+        name, _, pid = line.partition(" ")
+        pid = pid.strip()
+        # First pane seen for a session runs the session's main process.
+        if name and pid.isdigit() and name not in result:
+            result[name] = int(pid)
+    return result
+
+
+def _tmux_session_name(cwd, mode="singleton"):
+    """Derive a tmux session name from a context path.
+
+    ``singleton`` returns the stable per-context name; ``new`` appends the
+    lowest free numeric suffix so a fresh session never collides.
+    """
+    cwd = os.path.abspath(cwd)
+    base = os.path.basename(cwd.rstrip("/")) or "root"
+    base = re.sub(r"[^a-zA-Z0-9]+", "-", base).strip("-").lower() or "ctx"
+    short = hashlib.sha1(cwd.encode()).hexdigest()[:4]
+    name = f"{settings.TMUX_SESSION_PREFIX}-{base}-{short}"
+    if mode != "new":
+        return name
+    live = _tmux_sessions()
+    if name not in live:
+        return name
+    n = 2
+    while f"{name}-{n}" in live:
+        n += 1
+    return f"{name}-{n}"
+
+
+def _viewer_argv(inner):
+    """Build the argv that runs ``inner`` (a list) in a new terminal window."""
+    if settings.TERMINAL_KIND == "mac":
+        app = settings.TERMINAL_APP or "Terminal"
+        script = " ".join(shlex.quote(a) for a in inner)
+        return [
+            "osascript",
+            "-e",
+            f'tell application "{app}" to do script "{script}"',
+        ]
+    prefix = settings.TERMINAL_CMD
+    if not prefix:
+        return None
+    return [*prefix, *inner]
+
+
+def _open_viewer(inner, env):
+    """Pop a terminal window running ``inner``. Return True on success."""
+    argv = _viewer_argv(inner)
+    if not argv:
+        logger.warning("no terminal emulator configured; skipping viewer")
+        return False
+    venv = dict(env)
+    if settings.TERMINAL_KIND != "mac" and settings.TERMINAL_DISPLAY:
+        venv["DISPLAY"] = settings.TERMINAL_DISPLAY
+    try:
+        subprocess.Popen(argv, env=venv, start_new_session=True)
+        return True
+    except (FileNotFoundError, OSError):
+        logger.warning("viewer launch failed: %s", argv)
+        return False
+
+
+def _spawn_terminal(cmd, cwd):
+    """Spawn a command directly in a terminal window (no tmux)."""
+    argv = _viewer_argv(cmd)
+    if not argv:
+        return Response({"error": "no terminal emulator available"}, status=500)
+    env = _clean_env()
+    if settings.TERMINAL_KIND != "mac" and settings.TERMINAL_DISPLAY:
+        env["DISPLAY"] = settings.TERMINAL_DISPLAY
+    try:
+        proc = subprocess.Popen(argv, cwd=cwd, env=env, start_new_session=True)
+        logger.info("spawned %s, pid %d", argv, proc.pid)
         return Response({"status": "ok", "pid": proc.pid})
     except FileNotFoundError:
         return Response({"error": "terminal emulator not found"}, status=500)
+
+
+def _spawn_session(cmd, cwd, *, mode="singleton", view=None):
+    """Launch a Claude session, preferring a headless tmux session with an
+    optional attached viewer terminal. Falls back to a plain terminal spawn
+    when tmux is unavailable.
+
+    Returns a DRF Response with {status, pid, session, reused, attached}.
+    """
+    if not settings.USE_TMUX:
+        return _spawn_terminal(cmd, cwd)
+
+    name = _tmux_session_name(cwd, mode)
+    env = _clean_env()
+    reused = name in _tmux_sessions()
+    if reused:
+        # Phase 3 will deliver `cmd` to the existing session via send-keys.
+        logger.info("reusing live tmux session %s", name)
+    else:
+        rc, out = _tmux("new-session", "-d", "-s", name, "-c", cwd, "--", *cmd, env=env)
+        if rc != 0:
+            logger.error("tmux new-session failed (%d): %s", rc, out)
+            return Response({"error": "tmux failed to start session"}, status=500)
+        logger.info("started tmux session %s: %s", name, cmd)
+
+    want_view = settings.TERMINAL_VIEWER if view is None else view
+    attached = _open_viewer(["tmux", "attach", "-t", name], env) if want_view else False
+
+    pid = _tmux_sessions().get(name)
+    return Response(
+        {
+            "status": "ok",
+            "session": name,
+            "pid": pid,
+            "reused": reused,
+            "attached": attached,
+        }
+    )
 
 
 @api_view(["POST"])
@@ -754,7 +890,7 @@ def terminal_run(request):
     if not cwd or not Path(cwd).is_dir():
         return Response({"error": "cwd is not a valid directory"}, status=400)
 
-    return _spawn_in_terminal(cmd, cwd)
+    return _spawn_terminal(cmd, cwd)
 
 
 @api_view(["POST"])
@@ -769,7 +905,7 @@ def session_new(request):
         cwd = str(Path.home())
 
     cmd = settings.CLAUDE_CMD
-    return _spawn_in_terminal([cmd, prompt] if prompt else [cmd], cwd)
+    return _spawn_session([cmd, prompt] if prompt else [cmd], cwd)
 
 
 @api_view(["POST"])
@@ -797,7 +933,7 @@ def session_resume(request):
     if not cwd or not Path(cwd).is_dir():
         cwd = str(Path.home())
 
-    return _spawn_in_terminal([settings.CLAUDE_CMD, "--resume", conversation_id], cwd)
+    return _spawn_session([settings.CLAUDE_CMD, "--resume", conversation_id], cwd)
 
 
 @api_view(["POST"])
@@ -822,7 +958,7 @@ def session_fork(request):
     if not cwd or not Path(cwd).is_dir():
         cwd = str(Path.home())
 
-    return _spawn_in_terminal(
+    return _spawn_session(
         [settings.CLAUDE_CMD, "--resume", conversation_id, "--fork-session"], cwd
     )
 
@@ -998,7 +1134,7 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
     if not Path(cj.repo).is_dir():
         return Response({"error": "repo directory not found"}, status=400)
 
-    result = _spawn_in_terminal([settings.CLAUDE_CMD, prompt], cj.repo)
+    result = _spawn_session([settings.CLAUDE_CMD, prompt], cj.repo)
 
     pid = result.data.get("pid") if result.status_code == 200 else None
     CronJobRun.objects.create(cronjob=cj, trigger_type=trigger_type, pid=pid)
@@ -2125,7 +2261,7 @@ def plan_execute(request, plan_id):
         cwd = str(Path.home())
 
     prompt = f"Execute the plan in {plan_file}"
-    return _spawn_in_terminal([settings.CLAUDE_CMD, prompt], cwd)
+    return _spawn_session([settings.CLAUDE_CMD, prompt], cwd)
 
 
 def _path_id(path):
