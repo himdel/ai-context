@@ -3,6 +3,8 @@ from pathlib import Path
 import os
 import re
 
+from contexts import capabilities
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -92,10 +94,27 @@ LOGGING = {
 CLAUDE_DIR = Path.home() / ".claude"
 CLAUDE_CMD = "claude"
 
-# Terminal emulator command for launching Claude Code sessions from the UI.
-# The prompt or --resume args are appended to this list.
-TERMINAL_CMD = ["rxvt-unicode", "-e"]
-TERMINAL_DISPLAY = ":0"
+# Session substrate + viewer defaults, autodetected for the current machine.
+# All of these can be overridden in settings_local (see below).
+#
+#   USE_TMUX        - run Claude inside a headless tmux session (default when
+#                     tmux is installed); falls back to a plain terminal spawn.
+#   TERMINAL_VIEWER - also pop a terminal window attached to the session.
+#   TERMINAL_KIND   - "prefix" (Linux, TERMINAL_CMD + argv) or "mac" (osascript).
+#   TERMINAL_CMD    - Linux viewer prefix, e.g. ["rxvt-unicode", "-e"].
+#   TERMINAL_APP    - macOS terminal app name (e.g. "Terminal", "iTerm").
+#   TERMINAL_DISPLAY- X11/Wayland display for the viewer (Linux).
+#   NOTIFIER        - "notify-send" (Linux), "osascript" (macOS), or None.
+USE_TMUX = capabilities.HAS_TMUX
+TERMINAL_VIEWER = capabilities.HAS_GUI
+TERMINAL_KIND = capabilities.TERMINAL_KIND
+TERMINAL_CMD = capabilities.TERMINAL_CMD
+TERMINAL_APP = capabilities.TERMINAL_APP
+TERMINAL_DISPLAY = capabilities.TERMINAL_DISPLAY
+NOTIFIER = capabilities.NOTIFIER
+
+# Prefix for tmux session names created from the UI.
+TMUX_SESSION_PREFIX = "ctx"
 
 _instance = os.environ.get("CONTEXTS_INSTANCE", "")
 if _instance:
