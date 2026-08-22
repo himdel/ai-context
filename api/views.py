@@ -873,6 +873,40 @@ def _open_viewer(inner, env):
         return False
 
 
+def _notify_session(name, summary, body):
+    """Best-effort desktop notification whose action opens the session viewer."""
+    notifier = settings.NOTIFIER
+    if not notifier:
+        return
+    env = _clean_env()
+    if settings.TERMINAL_KIND != "mac" and settings.TERMINAL_DISPLAY:
+        env["DISPLAY"] = settings.TERMINAL_DISPLAY
+    try:
+        if notifier == "notify-send":
+            viewer = _viewer_argv(["tmux", "attach", "-t", name])
+            script = (
+                f"act=$(notify-send --wait --action=open=Open "
+                f"{shlex.quote(summary)} {shlex.quote(body)}); "
+                f'[ "$act" = open ]'
+            )
+            if viewer:
+                script += " && exec " + " ".join(shlex.quote(a) for a in viewer)
+            subprocess.Popen(["sh", "-c", script], env=env, start_new_session=True)
+        elif notifier == "osascript":
+            subprocess.Popen(
+                [
+                    "osascript",
+                    "-e",
+                    f"display notification {json.dumps(body)} "
+                    f"with title {json.dumps(summary)}",
+                ],
+                env=env,
+                start_new_session=True,
+            )
+    except (OSError, FileNotFoundError):
+        logger.warning("notification failed for session %s", name)
+
+
 def _spawn_terminal(cmd, cwd):
     """Spawn a command directly in a terminal window (no tmux)."""
     argv = _viewer_argv(cmd)
@@ -1260,7 +1294,9 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
     if not Path(cj.repo).is_dir():
         return Response({"error": "repo directory not found"}, status=400)
 
-    result = _spawn_session([settings.CLAUDE_CMD, prompt], cj.repo)
+    # Cron sessions run headless (no auto-opened window); a notification lets
+    # the user open the terminal on demand.
+    result = _spawn_session([settings.CLAUDE_CMD, prompt], cj.repo, view=False)
 
     ok = result.status_code == 200
     pid = result.data.get("pid") if ok else None
@@ -1270,6 +1306,13 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
     )
     cj.last_run_at = datetime.now(timezone.utc)
     cj.save(update_fields=["last_run_at"])
+
+    if ok and tmux_session:
+        _notify_session(
+            tmux_session,
+            f"Cron: /{cj.skill_name}",
+            f"Started in {cj.repo}",
+        )
 
     return result
 
