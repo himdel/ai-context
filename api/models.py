@@ -47,3 +47,4 @@ class CronJobRun(models.Model):
     triggered_at = models.DateTimeField(auto_now_add=True)
     trigger_type = models.CharField(max_length=10, default="scheduled")
     pid = models.IntegerField(null=True, blank=True)
+    tmux_session = models.CharField(max_length=128, blank=True, default="")

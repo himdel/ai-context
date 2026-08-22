@@ -1036,7 +1036,9 @@ def _jsonl_first_timestamp(jsonl_file):
 
 def _resolve_run_conversations(runs):
     sessions_dir = settings.CLAUDE_DIR / "sessions"
-    unresolved = [r for r in runs if r.pid and not r.conversation_id]
+    unresolved = [
+        r for r in runs if (r.pid or r.tmux_session) and not r.conversation_id
+    ]
     if not unresolved:
         return
 
@@ -1052,8 +1054,18 @@ def _resolve_run_conversations(runs):
     # Build PID lookup (direct match for claude processes)
     pid_to_session = {s.get("pid"): s.get("sessionId", "") for s in sessions}
 
+    # Deterministic pairing: our tmux session name -> pane_pid -> session file.
+    # Resolves as soon as Claude writes its session file (lazily, on first
+    # output), so retries on later listings pick it up automatically.
+    tmux_pids = _tmux_sessions() if settings.USE_TMUX else {}
+
     for run in unresolved:
-        session_id = pid_to_session.get(run.pid, "")
+        session_id = ""
+        if run.tmux_session:
+            pane_pid = tmux_pids.get(run.tmux_session)
+            session_id = pid_to_session.get(pane_pid, "")
+        if not session_id:
+            session_id = pid_to_session.get(run.pid, "")
         if not session_id:
             # The stored PID is the terminal wrapper; claude runs as a child
             # with a different PID. Match by cwd + startedAt timestamp instead.
@@ -1136,8 +1148,12 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
 
     result = _spawn_session([settings.CLAUDE_CMD, prompt], cj.repo)
 
-    pid = result.data.get("pid") if result.status_code == 200 else None
-    CronJobRun.objects.create(cronjob=cj, trigger_type=trigger_type, pid=pid)
+    ok = result.status_code == 200
+    pid = result.data.get("pid") if ok else None
+    tmux_session = result.data.get("session", "") if ok else ""
+    CronJobRun.objects.create(
+        cronjob=cj, trigger_type=trigger_type, pid=pid, tmux_session=tmux_session
+    )
     cj.last_run_at = datetime.now(timezone.utc)
     cj.save(update_fields=["last_run_at"])
 
