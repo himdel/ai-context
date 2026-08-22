@@ -770,6 +770,54 @@ def _tmux_sessions():
     return result
 
 
+def _tmux_send(name, text, submit=True):
+    """Type ``text`` into a tmux session, optionally submitting with Enter."""
+    rc, _ = _tmux("send-keys", "-t", name, "-l", "--", text)
+    if rc != 0:
+        return False
+    if submit:
+        _tmux("send-keys", "-t", name, "Enter")
+    return True
+
+
+def _session_files():
+    """Return {pid: session-file-dict} for all Claude session files."""
+    result = {}
+    sessions_dir = settings.CLAUDE_DIR / "sessions"
+    if not sessions_dir.is_dir():
+        return result
+    for f in sessions_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            if data.get("pid"):
+                result[data["pid"]] = data
+        except (json.JSONDecodeError, OSError):
+            pass
+    return result
+
+
+def _session_registry():
+    """Merge live tmux sessions with Claude session files into UI records."""
+    if not settings.USE_TMUX:
+        return []
+    files = _session_files()
+    records = []
+    for name, pid in sorted(_tmux_sessions().items()):
+        data = files.get(pid, {})
+        records.append(
+            {
+                "session": name,
+                "pid": pid,
+                "conversation_id": data.get("sessionId", ""),
+                "cwd": data.get("cwd", ""),
+                "status": data.get("status", ""),
+                "waiting_for": data.get("waitingFor", ""),
+                "claude_name": data.get("name", ""),
+            }
+        )
+    return records
+
+
 def _tmux_session_name(cwd, mode="singleton"):
     """Derive a tmux session name from a context path.
 
@@ -841,10 +889,13 @@ def _spawn_terminal(cmd, cwd):
         return Response({"error": "terminal emulator not found"}, status=500)
 
 
-def _spawn_session(cmd, cwd, *, mode="singleton", view=None):
+def _spawn_session(cmd, cwd, *, mode="singleton", view=None, prompt=None):
     """Launch a Claude session, preferring a headless tmux session with an
     optional attached viewer terminal. Falls back to a plain terminal spawn
     when tmux is unavailable.
+
+    When a singleton session is already live, ``prompt`` (if given) is delivered
+    to it via send-keys instead of starting a duplicate.
 
     Returns a DRF Response with {status, pid, session, reused, attached}.
     """
@@ -855,8 +906,11 @@ def _spawn_session(cmd, cwd, *, mode="singleton", view=None):
     env = _clean_env()
     reused = name in _tmux_sessions()
     if reused:
-        # Phase 3 will deliver `cmd` to the existing session via send-keys.
-        logger.info("reusing live tmux session %s", name)
+        if prompt:
+            _tmux_send(name, prompt)
+            logger.info("sent prompt to live tmux session %s", name)
+        else:
+            logger.info("reusing live tmux session %s", name)
     else:
         rc, out = _tmux("new-session", "-d", "-s", name, "-c", cwd, "--", *cmd, env=env)
         if rc != 0:
@@ -905,7 +959,9 @@ def session_new(request):
         cwd = str(Path.home())
 
     cmd = settings.CLAUDE_CMD
-    return _spawn_session([cmd, prompt] if prompt else [cmd], cwd)
+    return _spawn_session(
+        [cmd, prompt] if prompt else [cmd], cwd, prompt=prompt or None
+    )
 
 
 @api_view(["POST"])
@@ -961,6 +1017,64 @@ def session_fork(request):
     return _spawn_session(
         [settings.CLAUDE_CMD, "--resume", conversation_id, "--fork-session"], cwd
     )
+
+
+@api_view(["GET"])
+def sessions_list(request):
+    """List live tmux-backed Claude sessions, merged with session-file state."""
+    return Response(_session_registry())
+
+
+def _resolve_session_name(request):
+    """Resolve a session name from a request body: explicit name or cwd."""
+    name = request.data.get("session", "").strip()
+    if name:
+        return name
+    cwd = request.data.get("cwd", "").strip()
+    if cwd:
+        return _tmux_session_name(cwd)
+    return ""
+
+
+@api_view(["POST"])
+def session_send(request):
+    """Queue a prompt into a live session via tmux send-keys."""
+    if not settings.USE_TMUX:
+        return Response({"error": "tmux is not enabled"}, status=400)
+
+    name = _resolve_session_name(request)
+    if not name:
+        return Response({"error": "session or cwd is required"}, status=400)
+
+    text = request.data.get("text", "")
+    if not text.strip():
+        return Response({"error": "text is required"}, status=400)
+
+    if name not in _tmux_sessions():
+        return Response({"error": "session is not live"}, status=404)
+
+    submit = request.data.get("submit", True)
+    if not _tmux_send(name, text, submit=submit):
+        return Response({"error": "failed to send keys"}, status=500)
+    return Response({"status": "ok", "session": name})
+
+
+@api_view(["POST"])
+def session_attach(request):
+    """Pop a terminal viewer attached to a live session."""
+    if not settings.USE_TMUX:
+        return Response({"error": "tmux is not enabled"}, status=400)
+
+    name = _resolve_session_name(request)
+    if not name:
+        return Response({"error": "session or cwd is required"}, status=400)
+    if name not in _tmux_sessions():
+        return Response({"error": "session is not live"}, status=404)
+
+    attached = _open_viewer(["tmux", "attach", "-t", name], _clean_env())
+    if not attached:
+        return Response({"error": "no viewer available"}, status=500)
+    return Response({"status": "ok", "session": name, "attached": True})
 
 
 # --- Cronjobs ---
