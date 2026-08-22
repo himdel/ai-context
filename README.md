@@ -87,6 +87,23 @@ and starting new sessions.
 
 ![](./screenshots/tasks.png)
 
+## Dependencies
+
+Python packages are managed by `uv` (see `pyproject.toml`). The app also shells
+out to a few external tools:
+
+- **Required:** `git`, and the `claude` CLI (configurable via `CLAUDE_CMD`).
+- **Default, with fallback:** `tmux` — Claude sessions run inside a headless
+  tmux session by default (enabling naming, reuse, and reliable
+  conversation pairing). If `tmux` is absent the app falls back to launching a
+  terminal directly. On macOS install it with `brew install tmux`.
+- **Optional:** a terminal emulator for the *viewer* window (Linux: `$TERMINAL`,
+  else `rxvt-unicode`/`xterm`; macOS: Terminal.app or iTerm via `osascript`) and
+  a notifier (`notify-send` on Linux, `osascript` on macOS).
+
+These are autodetected per platform at startup; override any of them in
+`contexts/settings_local.py` (see `contexts/settings.py` for the full list).
+
 ## Usage
 
 ```
@@ -100,8 +117,9 @@ make
 open http://localhost:8062
 ```
 
-Tweak `contexts/settings_local.py` if your terminal is not `rxvt-unicode`, X display not `:0`, etc.
-See `contexts/settings.py` for all available settings.
+The terminal emulator, X display, tmux usage, and notifier are autodetected.
+Override them in `contexts/settings_local.py` if needed; see
+`contexts/settings.py` for all available settings.
 
 ### Database migrations
 
