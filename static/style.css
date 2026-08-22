@@ -225,6 +225,61 @@ body {
 .conversation-header span {
   white-space: nowrap;
 }
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 10px;
+  background: #f6f8fa;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.session-bar .session-prompt {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font: inherit;
+}
+.session-bar button {
+  padding: 5px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+.session-bar button:hover {
+  background: #eef2ff;
+}
+.session-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.session-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e5e7eb;
+  color: #374151;
+  white-space: nowrap;
+}
+.session-status.status-busy {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.session-status.status-idle {
+  background: #dcfce7;
+  color: #15803d;
+}
+.session-status.status-waiting {
+  background: #fef3c7;
+  color: #b45309;
+}
 .conversation-header a {
   color: #4338ca;
   text-decoration: none;

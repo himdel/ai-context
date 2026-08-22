@@ -1375,6 +1375,73 @@
               mainEl.appendChild(toolbar);
               mainEl.appendChild(header);
 
+              // Live session controls: when this conversation is backed by a
+              // live tmux session, allow queueing prompts and opening a terminal.
+              var sessionBar = document.createElement('div');
+              sessionBar.className = 'session-bar';
+              sessionBar.style.display = 'none';
+              mainEl.appendChild(sessionBar);
+              fetch('/api/sessions/')
+                .then((r) => r.json())
+                .then((sessions) => {
+                  if (activeId !== id) return;
+                  var s = (sessions || []).find(
+                    (x) => x.conversation_id === id,
+                  );
+                  if (!s) return;
+                  sessionBar.style.display = '';
+                  sessionBar.innerHTML =
+                    '<span class="session-status status-' +
+                    esc(s.status || 'live') +
+                    '">' +
+                    esc(s.status || 'live') +
+                    (s.waiting_for ? ' — ' + esc(s.waiting_for) : '') +
+                    '</span>' +
+                    '<input class="session-prompt" type="text" placeholder="Queue a prompt to this live session…">' +
+                    '<button class="session-send">Send</button>' +
+                    '<button class="session-open" title="Open a terminal attached to this session">Open terminal</button>';
+                  var input = sessionBar.querySelector('.session-prompt');
+                  var sendBtn = sessionBar.querySelector('.session-send');
+                  var send = function () {
+                    var text = input.value;
+                    if (!text.trim()) return;
+                    sendBtn.disabled = true;
+                    fetch('/api/sessions/send/', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ session: s.session, text: text }),
+                    })
+                      .then((r) => r.json().then((d) => ({ ok: r.ok })))
+                      .then(({ ok }) => {
+                        sendBtn.disabled = false;
+                        if (ok) input.value = '';
+                      })
+                      .catch(() => {
+                        sendBtn.disabled = false;
+                      });
+                  };
+                  sendBtn.onclick = send;
+                  input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      send();
+                    }
+                  });
+                  sessionBar.querySelector('.session-open').onclick =
+                    function () {
+                      var btn = this;
+                      btn.disabled = true;
+                      fetch('/api/sessions/attach/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session: s.session }),
+                      }).finally(() => {
+                        btn.disabled = false;
+                      });
+                    };
+                })
+                .catch(() => {});
+
               if (data.file_missing) {
                 var notice = document.createElement('div');
                 notice.className = 'file-missing-notice';
