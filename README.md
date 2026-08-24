@@ -108,6 +108,22 @@ On macOS the viewer window is opened by driving Terminal.app or iTerm via
 `osascript`. The first time this happens macOS shows an Automation permission
 prompt ("… wants to control iTerm"); allow it once and it is remembered.
 
+### Shift+Enter in tmux
+
+Because Claude sessions run inside tmux by default, Shift+Enter (insert a
+newline in the prompt) stops working unless tmux passes modified keys through.
+Add to `~/.tmux.conf`:
+
+```tmux
+set -s extended-keys on
+set -as terminal-features 'xterm*:extkeys'
+```
+
+`extended-keys` is a server option, so restart the tmux server (`tmux
+kill-server`, or just start a fresh session) for it to take effect. If your
+terminal still swallows it, try `set -s extended-keys always`, or use the
+built-in fallbacks: `\` at end of line then Enter, or Option/Meta+Enter.
+
 ## Usage
 
 ```
