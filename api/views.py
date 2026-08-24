@@ -1365,8 +1365,12 @@ def _execute_cronjob(cj, trigger_type="scheduled"):
         return Response({"error": "repo directory not found"}, status=400)
 
     # Cron sessions run headless (no auto-opened window); a notification lets
-    # the user open the terminal on demand.
-    result = _spawn_session([settings.CLAUDE_CMD, prompt], cj.repo, view=False)
+    # the user open the terminal on demand. Each run gets its own session
+    # (mode="new") so multiple cron jobs on the same repo don't collapse onto a
+    # single singleton where all but the first are silently skipped as "reused".
+    result = _spawn_session(
+        [settings.CLAUDE_CMD, prompt], cj.repo, mode="new", view=False
+    )
 
     ok = result.status_code == 200
     pid = result.data.get("pid") if ok else None

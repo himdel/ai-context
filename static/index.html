@@ -1450,13 +1450,19 @@
                 sessionBuilt = true;
               };
 
-              var renderStatus = function (s) {
+              var renderStatus = function (s, hasPrompt) {
                 var badge = sessionBar.querySelector('.session-status');
                 if (!badge) return;
                 var status = s.status || 'live';
+                // The session file can stay "waiting" after the prompt is
+                // answered or gone; only present a waiting state while the pane
+                // actually shows a prompt, otherwise the badge never clears.
+                var waiting = status === 'waiting' && hasPrompt;
+                if (status === 'waiting' && !hasPrompt) status = 'live';
                 badge.className = 'session-status status-' + status;
                 badge.textContent =
-                  status + (s.waiting_for ? ' — ' + s.waiting_for : '');
+                  status +
+                  (waiting && s.waiting_for ? ' — ' + s.waiting_for : '');
               };
 
               var renderOptions = function (prompt) {
@@ -1524,8 +1530,9 @@
                     }
                     if (!sessionBuilt) buildBar(s);
                     sessionName = s.session;
-                    renderStatus(s);
                     if (s.status === 'waiting') {
+                      // Reconcile the (possibly stale) file status against the
+                      // live pane: only treat it as waiting if a prompt is there.
                       fetch(
                         '/api/sessions/capture/?session=' +
                           encodeURIComponent(s.session),
@@ -1533,11 +1540,22 @@
                         .then((r) => r.json())
                         .then((cap) => {
                           if (activeId !== id) return;
-                          renderOptions(cap && cap.prompt);
+                          var prompt = cap && cap.prompt;
+                          var hasPrompt = !!(
+                            prompt &&
+                            prompt.options &&
+                            prompt.options.length
+                          );
+                          renderStatus(s, hasPrompt);
+                          renderOptions(prompt);
                         })
-                        .catch(() => {})
+                        .catch(() => {
+                          renderStatus(s, false);
+                          renderOptions(null);
+                        })
                         .finally(again);
                     } else {
+                      renderStatus(s, false);
                       renderOptions(null);
                       again();
                     }
