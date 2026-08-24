@@ -780,6 +780,47 @@ def _tmux_send(name, text, submit=True):
     return True
 
 
+def _capture_pane(name):
+    """Return the visible text of a tmux session's pane."""
+    rc, out = _tmux("capture-pane", "-p", "-t", name)
+    return out if rc == 0 else ""
+
+
+_OPTION_RE = re.compile(r"^[\s│|>❯»*]*(\d+)[.)]\s+(.+?)\s*$")
+
+
+def _parse_prompt(text):
+    """Best-effort parse of a Claude prompt box into {question, options}.
+
+    Version-sensitive (reads the TUI); returns None when no numbered options
+    are visible. Options let the UI answer via send-keys.
+    """
+    lines = text.splitlines()
+    options = []
+    first_idx = None
+    for i, line in enumerate(lines):
+        m = _OPTION_RE.match(line)
+        if m:
+            if first_idx is None:
+                first_idx = i
+            options.append({"key": m.group(1), "label": m.group(2).strip()})
+    if not options:
+        return None
+    # Question: the text lines above the options, up to a box border or a few
+    # lines back (blank lines within the box are skipped).
+    block = []
+    for line in reversed(lines[:first_idx]):
+        if re.search(r"[─—]{3,}", line):
+            break
+        clean = re.sub(r"[─—_]{2,}", "", line).strip("│|╭╮╰╯ ").strip()
+        if clean:
+            block.append(clean)
+        if len(block) >= 6:
+            break
+    question = " ".join(reversed(block))
+    return {"question": question, "options": options}
+
+
 def _session_files():
     """Return {pid: session-file-dict} for all Claude session files."""
     result = {}
@@ -1109,6 +1150,26 @@ def session_attach(request):
     if not attached:
         return Response({"error": "no viewer available"}, status=500)
     return Response({"status": "ok", "session": name, "attached": True})
+
+
+@api_view(["GET"])
+def session_capture(request):
+    """Return a live session's pane text plus any parsed prompt options."""
+    if not settings.USE_TMUX:
+        return Response({"error": "tmux is not enabled"}, status=400)
+
+    name = request.GET.get("session", "").strip()
+    if not name:
+        cwd = request.GET.get("cwd", "").strip()
+        if cwd:
+            name = _tmux_session_name(cwd)
+    if not name:
+        return Response({"error": "session or cwd is required"}, status=400)
+    if name not in _tmux_sessions():
+        return Response({"error": "session is not live"}, status=404)
+
+    text = _capture_pane(name)
+    return Response({"session": name, "text": text, "prompt": _parse_prompt(text)})
 
 
 # --- Cronjobs ---

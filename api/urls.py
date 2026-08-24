@@ -41,6 +41,8 @@ urlpatterns = [
     path("sessions/fork", views.session_fork),
     path("sessions/send/", views.session_send),
     path("sessions/send", views.session_send),
+    path("sessions/capture/", views.session_capture),
+    path("sessions/capture", views.session_capture),
     path("sessions/attach/", views.session_attach),
     path("sessions/attach", views.session_attach),
     path("cronjobs/", views.cronjobs_list),
