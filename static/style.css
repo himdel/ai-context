@@ -229,12 +229,37 @@ body {
 .session-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
   padding: 8px 10px;
   background: #f6f8fa;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
+}
+.session-options {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.session-options:empty {
+  display: none;
+}
+.session-prompt-q {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: pre-wrap;
+}
+.session-bar .session-option {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.session-bar .session-option:hover {
+  background: #fef3c7;
 }
 .session-bar .session-prompt {
   flex: 1;

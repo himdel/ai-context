@@ -227,6 +227,7 @@
       let activeId = null;
       let activePlanId = null;
       let activeSkillId = null;
+      let sessionPollTimer = null;
       let activeCronjobId = null;
       let activeMemoryId = null;
       let activeRepoPath = null;
@@ -913,6 +914,10 @@
 
       function closeConversation(tab) {
         currentMessages = null;
+        if (sessionPollTimer) {
+          clearTimeout(sessionPollTimer);
+          sessionPollTimer = null;
+        }
         if (tab) homeTab = tab;
         showHomeScreen();
       }
@@ -1177,6 +1182,10 @@
 
       function loadConversation(id, pushHistory) {
         setActiveScreen({ activeId: id });
+        if (sessionPollTimer) {
+          clearTimeout(sessionPollTimer);
+          sessionPollTimer = null;
+        }
         if (pushHistory !== false) {
           history.pushState({ id: id }, '', '/conversations/' + id);
         }
@@ -1381,66 +1390,161 @@
               sessionBar.className = 'session-bar';
               sessionBar.style.display = 'none';
               mainEl.appendChild(sessionBar);
-              fetch('/api/sessions/')
-                .then((r) => r.json())
-                .then((sessions) => {
-                  if (activeId !== id) return;
-                  var s = (sessions || []).find(
-                    (x) => x.conversation_id === id,
-                  );
-                  if (!s) return;
-                  sessionBar.style.display = '';
-                  sessionBar.innerHTML =
-                    '<span class="session-status status-' +
-                    esc(s.status || 'live') +
+
+              // Live session controls, polled every few seconds: status badge,
+              // a queue-prompt input, an "open terminal" button, and — when the
+              // session is waiting on a prompt — clickable answer options parsed
+              // from the pane. The static chrome is built once so the input keeps
+              // its value/focus across polls; only status + options re-render.
+              var sessionBuilt = false;
+              var sessionName = null;
+
+              var buildBar = function (s) {
+                sessionName = s.session;
+                sessionBar.style.display = '';
+                sessionBar.innerHTML =
+                  '<span class="session-status">…</span>' +
+                  '<input class="session-prompt" type="text" placeholder="Queue a prompt to this live session…">' +
+                  '<button class="session-send">Send</button>' +
+                  '<button class="session-open" title="Open a terminal attached to this session">Open terminal</button>' +
+                  '<div class="session-options"></div>';
+                var input = sessionBar.querySelector('.session-prompt');
+                var sendBtn = sessionBar.querySelector('.session-send');
+                var send = function () {
+                  var text = input.value;
+                  if (!text.trim()) return;
+                  sendBtn.disabled = true;
+                  fetch('/api/sessions/send/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session: sessionName, text: text }),
+                  })
+                    .then((r) => ({ ok: r.ok }))
+                    .then(({ ok }) => {
+                      sendBtn.disabled = false;
+                      if (ok) input.value = '';
+                    })
+                    .catch(() => {
+                      sendBtn.disabled = false;
+                    });
+                };
+                sendBtn.onclick = send;
+                input.addEventListener('keydown', function (e) {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    send();
+                  }
+                });
+                sessionBar.querySelector('.session-open').onclick =
+                  function () {
+                    var btn = this;
+                    btn.disabled = true;
+                    fetch('/api/sessions/attach/', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ session: sessionName }),
+                    }).finally(() => {
+                      btn.disabled = false;
+                    });
+                  };
+                sessionBuilt = true;
+              };
+
+              var renderStatus = function (s) {
+                var badge = sessionBar.querySelector('.session-status');
+                if (!badge) return;
+                var status = s.status || 'live';
+                badge.className = 'session-status status-' + status;
+                badge.textContent =
+                  status + (s.waiting_for ? ' — ' + s.waiting_for : '');
+              };
+
+              var renderOptions = function (prompt) {
+                var box = sessionBar.querySelector('.session-options');
+                if (!box) return;
+                if (!prompt || !prompt.options || !prompt.options.length) {
+                  box.innerHTML = '';
+                  return;
+                }
+                var html = '';
+                if (prompt.question) {
+                  html +=
+                    '<div class="session-prompt-q">' +
+                    esc(prompt.question) +
+                    '</div>';
+                }
+                prompt.options.forEach(function (o) {
+                  html +=
+                    '<button class="session-option" data-key="' +
+                    esc(o.key) +
                     '">' +
-                    esc(s.status || 'live') +
-                    (s.waiting_for ? ' — ' + esc(s.waiting_for) : '') +
-                    '</span>' +
-                    '<input class="session-prompt" type="text" placeholder="Queue a prompt to this live session…">' +
-                    '<button class="session-send">Send</button>' +
-                    '<button class="session-open" title="Open a terminal attached to this session">Open terminal</button>';
-                  var input = sessionBar.querySelector('.session-prompt');
-                  var sendBtn = sessionBar.querySelector('.session-send');
-                  var send = function () {
-                    var text = input.value;
-                    if (!text.trim()) return;
-                    sendBtn.disabled = true;
+                    esc(o.key) +
+                    '. ' +
+                    esc(o.label) +
+                    '</button>';
+                });
+                box.innerHTML = html;
+                box.querySelectorAll('.session-option').forEach(function (btn) {
+                  btn.onclick = function () {
+                    var key = btn.dataset.key;
+                    box
+                      .querySelectorAll('.session-option')
+                      .forEach((b) => (b.disabled = true));
                     fetch('/api/sessions/send/', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ session: s.session, text: text }),
-                    })
-                      .then((r) => r.json().then((d) => ({ ok: r.ok })))
-                      .then(({ ok }) => {
-                        sendBtn.disabled = false;
-                        if (ok) input.value = '';
-                      })
-                      .catch(() => {
-                        sendBtn.disabled = false;
-                      });
+                      body: JSON.stringify({
+                        session: sessionName,
+                        text: key,
+                        submit: true,
+                      }),
+                    }).catch(() => {});
                   };
-                  sendBtn.onclick = send;
-                  input.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      send();
+                });
+              };
+
+              var pollSession = function () {
+                if (activeId !== id) return;
+                var again = function () {
+                  if (activeId === id) {
+                    sessionPollTimer = setTimeout(pollSession, 3000);
+                  }
+                };
+                fetch('/api/sessions/')
+                  .then((r) => r.json())
+                  .then((sessions) => {
+                    if (activeId !== id) return;
+                    var s = (sessions || []).find(
+                      (x) => x.conversation_id === id,
+                    );
+                    if (!s) {
+                      // No live session (yet gone); stop polling this view.
+                      if (sessionBuilt) sessionBar.style.display = 'none';
+                      return;
                     }
-                  });
-                  sessionBar.querySelector('.session-open').onclick =
-                    function () {
-                      var btn = this;
-                      btn.disabled = true;
-                      fetch('/api/sessions/attach/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ session: s.session }),
-                      }).finally(() => {
-                        btn.disabled = false;
-                      });
-                    };
-                })
-                .catch(() => {});
+                    if (!sessionBuilt) buildBar(s);
+                    sessionName = s.session;
+                    renderStatus(s);
+                    if (s.status === 'waiting') {
+                      fetch(
+                        '/api/sessions/capture/?session=' +
+                          encodeURIComponent(s.session),
+                      )
+                        .then((r) => r.json())
+                        .then((cap) => {
+                          if (activeId !== id) return;
+                          renderOptions(cap && cap.prompt);
+                        })
+                        .catch(() => {})
+                        .finally(again);
+                    } else {
+                      renderOptions(null);
+                      again();
+                    }
+                  })
+                  .catch(again);
+              };
+              pollSession();
 
               if (data.file_missing) {
                 var notice = document.createElement('div');
