@@ -1272,6 +1272,9 @@ def _resolve_run_conversations(runs):
     # Deterministic pairing: our tmux session name -> pane_pid -> session file.
     # Resolves as soon as Claude writes its session file (lazily, on first
     # output), so retries on later listings pick it up automatically.
+    # NOTE: validated on Linux only (no claude CLI on the test Mac yet); it
+    # relies on Claude's own session file + POSIX pane_pid, so it is expected to
+    # carry over to macOS unchanged — worth a live check once claude is on a Mac.
     tmux_pids = _tmux_sessions() if settings.USE_TMUX else {}
 
     for run in unresolved:
