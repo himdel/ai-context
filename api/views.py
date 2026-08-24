@@ -886,11 +886,17 @@ def _viewer_argv(inner):
     if settings.TERMINAL_KIND == "mac":
         app = settings.TERMINAL_APP or "Terminal"
         script = " ".join(shlex.quote(a) for a in inner)
-        return [
-            "osascript",
-            "-e",
-            f'tell application "{app}" to do script "{script}"',
-        ]
+        if app == "iTerm":
+            # iTerm2 dropped Terminal's `do script` terminology; drive its own
+            # scripting API to open a window and run the command instead.
+            applescript = (
+                'tell application "iTerm" to tell '
+                "(create window with default profile) to tell current session "
+                f'to write text "{script}"'
+            )
+        else:
+            applescript = f'tell application "{app}" to do script "{script}"'
+        return ["osascript", "-e", applescript]
     prefix = settings.TERMINAL_CMD
     if not prefix:
         return None

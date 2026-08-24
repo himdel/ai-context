@@ -104,6 +104,10 @@ out to a few external tools:
 These are autodetected per platform at startup; override any of them in
 `contexts/settings_local.py` (see `contexts/settings.py` for the full list).
 
+On macOS the viewer window is opened by driving Terminal.app or iTerm via
+`osascript`. The first time this happens macOS shows an Automation permission
+prompt ("… wants to control iTerm"); allow it once and it is remembered.
+
 ## Usage
 
 ```
