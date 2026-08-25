@@ -18,6 +18,8 @@ and starting new sessions.
 - Tool use, thinking, subagent, and workflow blocks with inline results
 - Edit blocks rendered as diffs, skill invocations collapsed under prompt
 - Resume, fork, or start new sessions from the UI
+- Live session dock: queue prompts, answer tool/permission prompts inline,
+  open an attached terminal, and see live idle/busy/waiting status
 - Active session indicator, status bar with running tasks and agents
 - Deleted logs stay visible from DB cache, live tailing for active sessions
 - Estimated cost per conversation (list + detail), computed from transcript token usage
@@ -52,6 +54,8 @@ and starting new sessions.
 
 - Schedule skills to run on cron with per-repo targeting
 - Next run preview, manual "Run Now", run history with conversation links
+- Runs execute headless in tmux, paired to a conversation, with a
+  notification to open the live terminal
 - Create cronjobs directly from a skill's detail page
 
 ### Git & forge integration
