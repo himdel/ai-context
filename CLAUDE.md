@@ -31,10 +31,11 @@ an entry (newest first) whenever a change:
 - changes or removes an existing config option or default
 - otherwise needs action from current users (e.g. a new migration)
 
-Put these under "Action required": date, commit sha, one-line description, then
-what breaks and how to cope. Keep the reason to a short line - no long technical
-rationale. List notable new features after, under "New features" (date, sha, one
-line). Skip ordinary fixes and refactors.
+Group entries by date (newest first). Under each date, put an "Action required"
+subsection before a "New features" one. Action entries: commit sha, one-line
+description, then what breaks and how to cope - keep the reason to a short line,
+no long technical rationale. Feature entries: one line with the sha. Skip
+ordinary fixes and refactors.
 
 ## Invariants
 
