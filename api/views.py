@@ -821,6 +821,16 @@ def _parse_prompt(text):
     return {"question": question, "options": options}
 
 
+def _prompt_is_active(text):
+    """True if a selection prompt is awaiting input, not just a numbered list.
+
+    Stricter than _parse_prompt: requires the TUI selection cursor (❯) so a
+    plain numbered list printed in Claude's output doesn't count as a prompt.
+    Fails open (returns False) when unsure, so it never blocks a normal queue.
+    """
+    return bool(_parse_prompt(text)) and "❯" in text
+
+
 def _session_files():
     """Return {pid: session-file-dict} for all Claude session files."""
     result = {}
@@ -1135,6 +1145,33 @@ def session_send(request):
         return Response({"error": "session is not live"}, status=404)
 
     submit = request.data.get("submit", True)
+    answer = request.data.get("answer", False)
+
+    # Reconcile against the live pane at send time: the client's view can be a
+    # few seconds stale, so a free-text prompt must not land on (and Enter
+    # through) a selection box, and an option answer must still match the
+    # prompt it was rendered from. This closes the window to the send instant
+    # rather than the last poll.
+    pane = _capture_pane(name)
+    if answer:
+        prompt = _parse_prompt(pane)
+        expect_key = str(request.data.get("expect_key", "")).strip()
+        expect_label = str(request.data.get("expect_label", "")).strip()
+        current = None
+        for o in (prompt or {}).get("options", []):
+            if o["key"] == expect_key:
+                current = o
+                break
+        if not current or (expect_label and current["label"] != expect_label):
+            return Response({"error": "prompt changed", "prompt": prompt}, status=409)
+    elif _prompt_is_active(pane):
+        # A selection prompt is on screen; typing free text would corrupt it
+        # and the trailing Enter would confirm its default option.
+        return Response(
+            {"error": "session is waiting on a prompt", "prompt": _parse_prompt(pane)},
+            status=409,
+        )
+
     if not _tmux_send(name, text, submit=submit):
         return Response({"error": "failed to send keys"}, status=500)
     return Response({"status": "ok", "session": name})

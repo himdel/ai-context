@@ -1429,10 +1429,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ session: sessionName, text: text }),
                   })
-                    .then((r) => ({ ok: r.ok }))
-                    .then(({ ok }) => {
+                    .then((r) =>
+                      r.json().then((d) => ({ status: r.status, data: d })),
+                    )
+                    .then(({ status, data }) => {
                       sendBtn.disabled = false;
-                      if (ok) input.value = '';
+                      if (status === 409) {
+                        // The session started waiting on a prompt between the
+                        // last poll and now; surface it and keep the text so
+                        // it isn't blasted into the selection box.
+                        renderOptions(data.prompt);
+                        return;
+                      }
+                      if (status >= 200 && status < 300) input.value = '';
                     })
                     .catch(() => {
                       sendBtn.disabled = false;
@@ -1489,7 +1498,12 @@
                     esc(prompt.question) +
                     '</div>';
                 }
+                // Keep labels in a closure map (not a data-attr) so we can send
+                // the exact rendered label back for the server to verify — esc
+                // doesn't escape quotes, so labels aren't attribute-safe.
+                var labels = {};
                 prompt.options.forEach(function (o) {
+                  labels[o.key] = o.label;
                   html +=
                     '<button class="session-option" data-key="' +
                     esc(o.key) +
@@ -1513,8 +1527,20 @@
                         session: sessionName,
                         text: key,
                         submit: true,
+                        answer: true,
+                        expect_key: key,
+                        expect_label: labels[key],
                       }),
-                    }).catch(() => {});
+                    })
+                      .then((r) =>
+                        r.json().then((d) => ({ status: r.status, data: d })),
+                      )
+                      .then(({ status, data }) => {
+                        // The prompt changed under us; re-render the current
+                        // one instead of answering the wrong question.
+                        if (status === 409) renderOptions(data.prompt);
+                      })
+                      .catch(() => {});
                   };
                 });
               };
