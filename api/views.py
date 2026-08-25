@@ -821,14 +821,19 @@ def _parse_prompt(text):
     return {"question": question, "options": options}
 
 
+# The selection cursor (❯) sits directly on the highlighted option row, e.g.
+# " ❯ 1. Yes". Note ❯ is also the normal input-prompt marker ("❯ some text"),
+# so it only signals a live prompt when it lands on a numbered option line.
+_ACTIVE_OPTION_RE = re.compile(r"^[\s│|]*[❯➤▶►▸]\s*\d+[.)]\s")
+
+
 def _prompt_is_active(text):
     """True if a selection prompt is awaiting input, not just a numbered list.
 
-    Stricter than _parse_prompt: requires the TUI selection cursor (❯) so a
-    plain numbered list printed in Claude's output doesn't count as a prompt.
-    Fails open (returns False) when unsure, so it never blocks a normal queue.
+    Requires the TUI selection cursor to sit on an option row, so neither a
+    plain numbered list in Claude's output nor the ordinary input prompt counts.
     """
-    return bool(_parse_prompt(text)) and "❯" in text
+    return any(_ACTIVE_OPTION_RE.match(ln) for ln in text.splitlines())
 
 
 def _session_files():
@@ -1154,7 +1159,7 @@ def session_send(request):
     # rather than the last poll.
     pane = _capture_pane(name)
     if answer:
-        prompt = _parse_prompt(pane)
+        prompt = _parse_prompt(pane) if _prompt_is_active(pane) else None
         expect_key = str(request.data.get("expect_key", "")).strip()
         expect_label = str(request.data.get("expect_label", "")).strip()
         current = None
@@ -1212,7 +1217,10 @@ def session_capture(request):
         return Response({"error": "session is not live"}, status=404)
 
     text = _capture_pane(name)
-    return Response({"session": name, "text": text, "prompt": _parse_prompt(text)})
+    # Only surface a prompt when a selection is actually awaiting input; a
+    # numbered list in Claude's output must not render as answer buttons.
+    prompt = _parse_prompt(text) if _prompt_is_active(text) else None
+    return Response({"session": name, "text": text, "prompt": prompt})
 
 
 # --- Cronjobs ---
