@@ -21,6 +21,21 @@ Django app serving a REST API and static UI, running via uv.
 - Screen modules receive shared app state via `initX(deps)` pattern, not direct imports from index.html
 - `index.html` is the glue: state management, routing, sidebar, conversations, init wiring
 
+## Changelog
+
+`CHANGELOG.md` is for people already running contexts, not a full history. Add
+an entry (newest first) whenever a change:
+
+- breaks existing behavior or usage
+- adds or changes a dependency (say whether it's required or optional)
+- changes or removes an existing config option or default
+- otherwise needs action from current users (e.g. a new migration)
+
+Put these under "Action required": date, commit sha, one-line description, then
+what breaks and how to cope. Keep the reason to a short line - no long technical
+rationale. List notable new features after, under "New features" (date, sha, one
+line). Skip ordinary fixes and refactors.
+
 ## Invariants
 
 - No containers, everything runs locally via uv
