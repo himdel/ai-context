@@ -2,6 +2,13 @@
 
 Django app serving a REST API and static UI, running via uv.
 
+## Commits
+
+- Work directly on `main` - no feature branches unless asked.
+- When and how to commit, message style, and the `Assisted-by` trailer:
+  see `~/.claude/CLAUDE.md`.
+- Run `make fix` before staging.
+
 ## Running
 
 - `make` / `make run` - start the dev server
