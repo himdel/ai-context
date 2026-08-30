@@ -2,6 +2,45 @@
 
 Django app serving a REST API and static UI, running via uv.
 
+## Session start
+
+Read `docs/STATE.md` (where things stand) and `docs/IDEAS.md` (the backlog).
+`docs/DECISIONS.md` holds the choices already made and why - skim it before reworking
+anything in the tmux/session layer.
+
+## Recording rules
+
+- **Record as you go, unasked.** A decision made in conversation evaporates. Record the
+  **why**, not just the what; facts recoverable from the code or `git log` do not belong
+  in docs.
+- **Where things go:** a real choice, or a constraint found the hard way, goes in
+  `docs/DECISIONS.md`, newest first, dated. A record-now-do-later goes in
+  `docs/IDEAS.md`. Anything user-facing that needs action goes in `CHANGELOG.md` per the
+  rules below. Local-only learnings and followups stay in `CLAUDE.local.md`, which is
+  gitignored - this repo is published.
+- **Memory vs markdown.** Anything about *this repo* goes in `docs/`. Only facts about
+  himdel, or how to work with him, belong in Claude memory.
+- **Track external tool dependencies explicitly.** `pyproject.toml` only records Python
+  deps, but the app shells out to tmux, a terminal emulator, `notify-send`, the `claude`
+  binary and git. When adding a feature that shells out, document the tool in the README
+  and deps list as **required or optional**, and prefer graceful fallback when an optional
+  one is absent. Do this without being reminded.
+- Absolute dates, always.
+
+## Layout
+
+| Path | Holds |
+|---|---|
+| `docs/STATE.md` | Where things stand right now. A snapshot - overwrite freely |
+| `docs/DECISIONS.md` | Decision log, newest first, dated |
+| `docs/IDEAS.md` | Backlog: record now, do later |
+| `docs/CLAUDE-SESSION-FILES.md` | Format and gotchas of `~/.claude/sessions/<pid>.json` |
+| `CHANGELOG.md` | For people already running contexts. Rules below |
+| `CLAUDE.local.md` | Local learnings and followups. Gitignored, stays out of the public repo |
+
+Adding a file this table does not describe means the table is wrong - update it in the
+same commit.
+
 ## Commits
 
 - Work directly on `main` - no feature branches unless asked.
