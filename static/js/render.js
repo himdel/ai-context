@@ -97,7 +97,8 @@ marked.use({
       var downloadBtn =
         svgLangs.indexOf(lang) === -1
           ? ''
-          : '<button class="rich-download" title="Download SVG">SVG</button>';
+          : '<button class="rich-download" data-format="svg" title="Download SVG">SVG</button>' +
+            '<button class="rich-download" data-format="png" title="Download PNG">PNG</button>';
       return (
         '<div class="rich-container">' +
         '<div class="rich-toolbar">' +

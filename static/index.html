@@ -1752,6 +1752,23 @@
         e.target.closest('summary').scrollIntoView({ block: 'nearest' });
       });
 
+      function downloadBlob(blob, name) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function svgToString(svg) {
+        var xml = new XMLSerializer().serializeToString(svg);
+        if (!/^<\?xml/.test(xml)) {
+          xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml;
+        }
+        return xml;
+      }
+
       mainEl.addEventListener('click', function (e) {
         var dl = e.target.closest('.rich-download');
         if (dl) {
@@ -1759,17 +1776,34 @@
             .closest('.rich-container')
             .querySelector('.rich-rendered svg');
           if (!svg) return;
-          var xml = new XMLSerializer().serializeToString(svg);
-          if (!/^<\?xml/.test(xml)) {
-            xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml;
+          var xml = svgToString(svg);
+          if (dl.dataset.format === 'png') {
+            var rect = svg.getBoundingClientRect();
+            var scale = 2;
+            var w = Math.max(1, Math.round(rect.width)) * scale;
+            var h = Math.max(1, Math.round(rect.height)) * scale;
+            var img = new Image();
+            img.onload = function () {
+              var canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              var ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(0, 0, w, h);
+              ctx.drawImage(img, 0, 0, w, h);
+              canvas.toBlob(function (blob) {
+                if (blob) downloadBlob(blob, 'diagram.png');
+              }, 'image/png');
+            };
+            img.src =
+              'data:image/svg+xml;base64,' +
+              btoa(unescape(encodeURIComponent(xml)));
+            return;
           }
-          var blob = new Blob([xml], { type: 'image/svg+xml' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'diagram.svg';
-          a.click();
-          URL.revokeObjectURL(url);
+          downloadBlob(
+            new Blob([xml], { type: 'image/svg+xml' }),
+            'diagram.svg',
+          );
           return;
         }
         var btn = e.target.closest('.rich-toggle');
