@@ -93,9 +93,16 @@ marked.use({
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+      var svgLangs = ['mermaid', 'dot', 'graphviz'];
+      var downloadBtn =
+        svgLangs.indexOf(lang) === -1
+          ? ''
+          : '<button class="rich-download" title="Download SVG">SVG</button>';
       return (
         '<div class="rich-container">' +
-        '<div class="rich-toolbar"><button class="rich-toggle" title="Toggle source">Source</button></div>' +
+        '<div class="rich-toolbar">' +
+        downloadBtn +
+        '<button class="rich-toggle" title="Toggle source">Source</button></div>' +
         '<div class="rich-rendered" data-rich-id="' +
         id +
         '" data-rich-lang="' +

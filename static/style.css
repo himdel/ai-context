@@ -544,11 +544,13 @@ body {
 .rich-toolbar {
   display: flex;
   justify-content: flex-end;
+  gap: 4px;
   padding: 2px 4px;
   background: #f4f4f4;
   border-bottom: 1px solid #e0e0e0;
 }
-.rich-toggle {
+.rich-toggle,
+.rich-download {
   font-size: 12px;
   padding: 1px 8px;
   border: 1px solid #ccc;
@@ -557,7 +559,8 @@ body {
   cursor: pointer;
   color: #555;
 }
-.rich-toggle:hover {
+.rich-toggle:hover,
+.rich-download:hover {
   background: #eee;
 }
 .rich-rendered {

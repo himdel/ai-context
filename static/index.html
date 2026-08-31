@@ -1753,6 +1753,25 @@
       });
 
       mainEl.addEventListener('click', function (e) {
+        var dl = e.target.closest('.rich-download');
+        if (dl) {
+          var svg = dl
+            .closest('.rich-container')
+            .querySelector('.rich-rendered svg');
+          if (!svg) return;
+          var xml = new XMLSerializer().serializeToString(svg);
+          if (!/^<\?xml/.test(xml)) {
+            xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml;
+          }
+          var blob = new Blob([xml], { type: 'image/svg+xml' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'diagram.svg';
+          a.click();
+          URL.revokeObjectURL(url);
+          return;
+        }
         var btn = e.target.closest('.rich-toggle');
         if (!btn) return;
         var container = btn.closest('.rich-container');
