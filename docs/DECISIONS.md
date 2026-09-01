@@ -8,6 +8,42 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-01 - Cron run pairing resolves eagerly in the background, keyed on pane_pid
+
+Cron runs now get their conversation link resolved by the scheduler thread (every tick)
+and opportunistically on the `/api/sessions` poll (`_resolve_all_unresolved_runs`), not
+only when the cronjob detail page is opened.
+
+**Supersedes** the view-time-only resolution from the 2026-08-22 cron pairing decision.
+That version paired only in `cronjob_detail`, so a run's link appeared only if someone had
+that exact page open at the right moment. It missed **prompt-first runs**: Claude writes
+its `sessions/<pid>.json` lazily on first output, so a run that blocks on a trust or
+permission prompt writes the file late - long after the 10s/30s timestamp-fallback windows
+expired - and nothing ever retried. Reply-first runs paired because their file and JSONL
+appeared immediately.
+
+Making resolution run continuously exposed a correctness bug in the old deterministic
+tier and forced two changes:
+
+- **Identity is `run.pid` (the claude pane_pid at spawn), not the tmux session name.**
+  The old tier mapped `tmux_session name -> current pane_pid -> session file`. But cron
+  session names are reused across runs (`mode="new"` only suffixes while a name is *live*,
+  then reuses the base), so a stale run would grab whatever session now holds its name -
+  e.g. four old `/anstrat-daily` runs all resolved to a session running *today*. The
+  pane_pid keys `<pid>.json` directly and is stable; a `cwd == repo` guard stops a
+  recycled pid from masquerading. The name-based lookup is gone.
+- **`_jsonl_first_timestamp` scans past the metadata prefix.** Conversations now open with
+  untimestamped `mode` / `permission-mode` / `file-history-snapshot` lines; the helper
+  read only line one and returned 0, silently defeating the JSONL fallback for every
+  modern conversation.
+
+The JSONL fallback was also widened (15 min window, closest-match at/after trigger) and
+every tier now refuses a conversation already claimed by another run, so two runs never
+collapse onto one conversation. A one-time clear-and-re-resolve repaired the historical
+mislinks (no new model field or migration - it reuses `CronJobRun.conversation_id`).
+The background resolver retries until it succeeds, so it survives an app crash: tmux keeps
+the cron session alive and the first scheduler iteration after restart pairs the run.
+
 ## 2026-08-22 - tmux is the session substrate; the terminal emulator is an optional viewer
 
 Reworked so **tmux owns the claude process headlessly** and the terminal emulator is

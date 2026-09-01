@@ -1,6 +1,6 @@
 # State
 
-_Last updated: 2026-08-30_
+_Last updated: 2026-09-01_
 
 ## Where we are
 
@@ -37,7 +37,8 @@ Multi-instance (2026-07-16) is in use: work on :8062, personal on :8063.
   `../CLAUDE.md` for the full trap and the workaround.
 - **Cron runs leave idle tmux sessions behind.** See `IDEAS.md`.
 - `/api/sessions` lists *all* tmux sessions, including non-claude ones with an empty
-  `conversation_id`; the frontend filters by `conversation_id` so they are ignored.
+  `conversation_id`; the frontend filters by `conversation_id` so they are ignored. The
+  endpoint also doubles as the fast path for cron run pairing (`_resolve_all_unresolved_runs`).
 - Session-file `status`/`waitingFor` can get stuck - see `CLAUDE-SESSION-FILES.md`.
 
 ## Next

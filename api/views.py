@@ -1117,7 +1117,16 @@ def session_fork(request):
 
 @api_view(["GET"])
 def sessions_list(request):
-    """List live tmux-backed Claude sessions, merged with session-file state."""
+    """List live tmux-backed Claude sessions, merged with session-file state.
+
+    Doubles as the fast path for cron run pairing: this endpoint is polled every
+    few seconds while a tab is open, so resolving here links a run within seconds
+    of Claude writing its session file. Best-effort - never break the listing.
+    """
+    try:
+        _resolve_all_unresolved_runs()
+    except Exception:
+        logger.exception("cron pairing error")
     return Response(_session_registry())
 
 
@@ -1280,16 +1289,23 @@ def _conversation_skill(conversation_id):
 
 
 def _jsonl_first_timestamp(jsonl_file):
-    """Return the first timestamp (ms epoch) from a JSONL conversation file."""
+    """Return the first timestamp (ms epoch) from a JSONL conversation file.
+
+    The file opens with a few metadata lines (mode, permission-mode,
+    file-history-snapshot) that carry no timestamp, so scan past them to the
+    first timestamped entry rather than giving up on line one.
+    """
     try:
         with open(jsonl_file) as f:
             for line in f:
-                ts = json.loads(line).get("timestamp", "")
+                try:
+                    ts = json.loads(line).get("timestamp", "")
+                except json.JSONDecodeError:
+                    continue
                 if ts:
                     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     return dt.timestamp() * 1000
-                break
-    except (json.JSONDecodeError, OSError, ValueError):
+    except (OSError, ValueError):
         pass
     return 0
 
@@ -1311,37 +1327,45 @@ def _resolve_run_conversations(runs):
             except (json.JSONDecodeError, OSError):
                 pass
 
-    # Build PID lookup (direct match for claude processes)
-    pid_to_session = {s.get("pid"): s.get("sessionId", "") for s in sessions}
+    # Full session-file lookup keyed by the claude pane_pid.
+    pid_to_data = {s.get("pid"): s for s in sessions}
 
-    # Deterministic pairing: our tmux session name -> pane_pid -> session file.
-    # Resolves as soon as Claude writes its session file (lazily, on first
-    # output), so retries on later listings pick it up automatically.
-    # NOTE: validated on Linux only (no claude CLI on the test Mac yet); it
-    # relies on Claude's own session file + POSIX pane_pid, so it is expected to
-    # carry over to macOS unchanged — worth a live check once claude is on a Mac.
-    tmux_pids = _tmux_sessions() if settings.USE_TMUX else {}
+    # Conversations already claimed by a run, so no two runs ever collapse onto
+    # one conversation (whether via the deterministic or heuristic tiers).
+    used_ids = set(
+        CronJobRun.objects.exclude(conversation_id="").values_list(
+            "conversation_id", flat=True
+        )
+    )
 
     for run in unresolved:
         session_id = ""
-        if run.tmux_session:
-            pane_pid = tmux_pids.get(run.tmux_session)
-            session_id = pid_to_session.get(pane_pid, "")
+        repo = run.cronjob.repo if run.cronjob_id else ""
+        skill = run.cronjob.skill_name if run.cronjob_id else ""
+        run_ts = run.triggered_at.timestamp() * 1000
+
+        # Deterministic pairing: the pane_pid we recorded at spawn keys Claude's
+        # session file directly (the pane runs claude with no shell wrapper, so
+        # pane_pid == claude pid == <pid>.json). We deliberately do NOT map the
+        # tmux session *name* -> current pane_pid: names are reused across cron
+        # runs, so a stale run would grab whatever session now holds its name.
+        # The cwd guard stops a recycled pid from masquerading as our run.
+        data = pid_to_data.get(run.pid)
+        if data:
+            sid = data.get("sessionId", "")
+            if sid and sid not in used_ids and (not repo or data.get("cwd") == repo):
+                session_id = sid
+
         if not session_id:
-            session_id = pid_to_session.get(run.pid, "")
-        if not session_id:
-            # The stored PID is the terminal wrapper; claude runs as a child
-            # with a different PID. Match by cwd + startedAt timestamp instead.
-            run_ts = run.triggered_at.timestamp() * 1000
-            repo = run.cronjob.repo if run.cronjob_id else ""
-            skill = run.cronjob.skill_name if run.cronjob_id else ""
+            # Session file present but not under our pid: match live files by
+            # cwd + startedAt (close to the trigger) + skill.
             for s in sessions:
-                started = s.get("startedAt", 0)
-                cwd = s.get("cwd", "")
                 sid = s.get("sessionId", "")
+                if not sid or sid in used_ids:
+                    continue
                 if (
-                    cwd == repo
-                    and abs(started - run_ts) < 10_000
+                    s.get("cwd", "") == repo
+                    and abs(s.get("startedAt", 0) - run_ts) < 10_000
                     and (not skill or _conversation_skill(sid) == skill)
                 ):
                     session_id = sid
@@ -1349,25 +1373,56 @@ def _resolve_run_conversations(runs):
 
         if not session_id:
             # Session files are ephemeral — fall back to scanning persisted
-            # JSONL conversation files by timestamp + skill match.
-            repo = run.cronjob.repo if run.cronjob_id else ""
-            skill = run.cronjob.skill_name if run.cronjob_id else ""
+            # JSONL conversation files by timestamp + skill match. This is the
+            # backfill path for old runs whose tmux session is long gone. A
+            # trust prompt can delay Claude's first message well past the run
+            # trigger, so the window is generous; the skill match keeps it
+            # precise, and we pick the closest conversation that started at or
+            # after the trigger, skipping ids already claimed by another run.
             if repo:
                 project_dir_name = repo.replace("/", "-").lstrip("-")
                 project_dir = settings.CLAUDE_DIR / "projects" / f"-{project_dir_name}"
                 if project_dir.is_dir():
-                    run_ts = run.triggered_at.timestamp() * 1000
+                    best_delta = None
                     for jsonl_file in project_dir.glob("*.jsonl"):
+                        cid = jsonl_file.stem
+                        if cid in used_ids:
+                            continue
                         first_ts = _jsonl_first_timestamp(jsonl_file)
-                        if first_ts and abs(first_ts - run_ts) < 30_000:
-                            cid = jsonl_file.stem
-                            if not skill or _conversation_skill(cid) == skill:
-                                session_id = cid
-                                break
+                        if not first_ts:
+                            continue
+                        # Prefer conversations at/after the trigger; allow a
+                        # small negative slack for clock skew.
+                        delta = first_ts - run_ts
+                        if delta < -30_000 or delta > 900_000:
+                            continue
+                        if best_delta is not None and abs(delta) >= abs(best_delta):
+                            continue
+                        if skill and _conversation_skill(cid) != skill:
+                            continue
+                        session_id = cid
+                        best_delta = delta
 
         if session_id:
             run.conversation_id = session_id
+            used_ids.add(session_id)
             run.save(update_fields=["conversation_id"])
+
+
+def _resolve_all_unresolved_runs():
+    """Resolve conversation links for every unpaired cron run.
+
+    Safe to call repeatedly and from background threads; a cheap no-op when
+    nothing is pending, so the 3s sessions poll stays fast once all runs pair.
+    """
+    qs = CronJobRun.objects.filter(conversation_id="").exclude(
+        pid__isnull=True, tmux_session=""
+    )
+    if not qs.exists():
+        return
+    _resolve_run_conversations(
+        list(qs.select_related("cronjob").order_by("-triggered_at"))
+    )
 
 
 def _next_run_at(cj):

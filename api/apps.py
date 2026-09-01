@@ -31,7 +31,17 @@ def _scheduler_loop():
             _check_cronjobs()
         except Exception:
             logger.exception("scheduler error")
+        try:
+            _resolve_cron_conversations()
+        except Exception:
+            logger.exception("cron pairing error")
         time.sleep(60)
+
+
+def _resolve_cron_conversations():
+    from api.views import _resolve_all_unresolved_runs
+
+    _resolve_all_unresolved_runs()
 
 
 def _check_cronjobs():
