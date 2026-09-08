@@ -8,6 +8,35 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-08 - the terminal flag is a per-terminal fact, and Ptyxis eats dollars
+
+Found on Fedora + GNOME, where `$TERMINAL` is `ptyxis`. Two separate things were wrong
+and both were silent, because everything they break happens inside a window that never
+opens.
+
+`_terminal_cmd()` assumed every terminal takes `-e`. That is an rxvt/xterm convention,
+not a standard: Ptyxis wants `--`, xfce4-terminal `-x`, wezterm `start --`, kitty and
+foot nothing at all. So there is a small table now, `TERMINAL_EXEC`, mapping name to
+flag - and it doubles as the PATH search order, replacing the old
+`rxvt-unicode`-then-`xterm` fallback with something that finds the terminal a modern
+desktop actually has.
+
+Ptyxis then *expands* `$VAR` in the argv it is handed, before the child sees it. An
+undefined name becomes the empty string and the empty argument is dropped from the argv
+entirely - so `tmux attach -t $3` arrives as `tmux attach -t`, and tmux says `-t expects
+an argument`. Session names here are `[a-z0-9-]` so the viewer was safe, but
+`terminal/run` passes a command straight through from the UI, and that is not.
+`TERMINAL_EXPANDS_VARS` names the terminals that do this (one, so far),
+`TERMINAL_ESCAPE_DOLLARS` says whether the resolved terminal is one of them, and
+`_viewer_argv` doubles the dollars when it is. `$$` is Ptyxis's own escape.
+
+Worth keeping: the *general* lesson is that the argv handed to a terminal emulator is
+not necessarily the argv the child gets. Anything with a `$`, a backslash or a quote in
+it is the terminal's to reinterpret, and only the terminal knows how.
+
+The same fix landed in tmuxtray the same day, for the same reason - every tmux id starts
+with `$`, so there it was not an edge case at all.
+
 ## 2026-09-01 - Cron run pairing resolves eagerly in the background, keyed on pane_pid
 
 Cron runs now get their conversation link resolved by the scheduler thread (every tick)

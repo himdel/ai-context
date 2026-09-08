@@ -101,7 +101,8 @@ CLAUDE_CMD = "claude"
 #                     tmux is installed); falls back to a plain terminal spawn.
 #   TERMINAL_VIEWER - also pop a terminal window attached to the session.
 #   TERMINAL_KIND   - "prefix" (Linux, TERMINAL_CMD + argv) or "mac" (osascript).
-#   TERMINAL_CMD    - Linux viewer prefix, e.g. ["rxvt-unicode", "-e"].
+#   TERMINAL_CMD    - Linux viewer prefix, e.g. ["ptyxis", "--"].
+#   TERMINAL_ESCAPE_DOLLARS - the terminal eats `$VAR` in the command; double it.
 #   TERMINAL_APP    - macOS terminal app name (e.g. "Terminal", "iTerm").
 #   TERMINAL_DISPLAY- X11/Wayland display for the viewer (Linux).
 #   NOTIFIER        - "notify-send" (Linux), "osascript" (macOS), or None.
@@ -109,6 +110,7 @@ USE_TMUX = capabilities.HAS_TMUX
 TERMINAL_VIEWER = capabilities.HAS_GUI
 TERMINAL_KIND = capabilities.TERMINAL_KIND
 TERMINAL_CMD = capabilities.TERMINAL_CMD
+TERMINAL_ESCAPE_DOLLARS = capabilities.TERMINAL_ESCAPE_DOLLARS
 TERMINAL_APP = capabilities.TERMINAL_APP
 TERMINAL_DISPLAY = capabilities.TERMINAL_DISPLAY
 NOTIFIER = capabilities.NOTIFIER

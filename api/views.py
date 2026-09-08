@@ -915,6 +915,10 @@ def _viewer_argv(inner):
     prefix = settings.TERMINAL_CMD
     if not prefix:
         return None
+    if settings.TERMINAL_ESCAPE_DOLLARS:
+        # This terminal expands `$VAR` itself before the child sees the argv;
+        # `$$` is its escape. See capabilities.TERMINAL_EXPANDS_VARS.
+        inner = [a.replace("$", "$$") for a in inner]
     return [*prefix, *inner]
 
 

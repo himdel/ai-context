@@ -36,14 +36,47 @@ else:
     HAS_GUI = False
 
 
+# How each terminal we know about wants a command handed to it: the flag that
+# goes last, before the command. "" means "just append the argv". They do not
+# agree, and `-e` is not the safe guess it looks like - Ptyxis wants `--`,
+# xfce4-terminal wants `-x`, kitty and foot want nothing at all. A wrong flag
+# is a viewer window that never opens, with the error inside the window that
+# never opened.
+#
+# Order is the PATH search order too. Debian's `x-terminal-emulator` answers
+# for whichever terminal is actually installed, so it goes first; xterm is the
+# last resort it usually resolves to anyway.
+TERMINAL_EXEC = {
+    "x-terminal-emulator": "-e",
+    "ptyxis": "--",
+    "ghostty": "-e",
+    "kitty": "",
+    "foot": "",
+    "wezterm": "start --",
+    "alacritty": "-e",
+    "kgx": "--",  # GNOME Console
+    "gnome-terminal": "--",
+    "konsole": "-e",
+    "xfce4-terminal": "-x",
+    "rxvt-unicode": "-e",
+    "urxvt": "-e",
+    "xterm": "-e",
+}
+
+# Terminals that expand `$VAR` in the command line they are handed, before the
+# child ever sees it. Ptyxis does: an undefined name becomes the empty string,
+# and the empty argument is then dropped from the argv entirely. `terminal/run`
+# passes a command through from the UI, so a `$` in one would arrive mangled or
+# not arrive at all. Doubling the dollar is Ptyxis's own escape.
+TERMINAL_EXPANDS_VARS = frozenset({"ptyxis"})
+
+
 def _terminal_cmd():
     """Linux viewer prefix, appended with the command to run (e.g. `-e cmd`)."""
     term = os.environ.get("TERMINAL")
-    if term and shutil.which(term):
-        return [term, "-e"]
-    for cand in ("rxvt-unicode", "xterm"):
+    for cand in ([term] if term else []) + list(TERMINAL_EXEC):
         if shutil.which(cand):
-            return [cand, "-e"]
+            return [cand, *TERMINAL_EXEC.get(os.path.basename(cand), "-e").split()]
     return None
 
 
@@ -70,5 +103,10 @@ else:
     TERMINAL_KIND = "prefix"
     TERMINAL_CMD = _terminal_cmd()
     TERMINAL_APP = None
+
+# Whether the command handed to the viewer needs its dollars doubled first.
+TERMINAL_ESCAPE_DOLLARS = bool(
+    TERMINAL_CMD and os.path.basename(TERMINAL_CMD[0]) in TERMINAL_EXPANDS_VARS
+)
 
 NOTIFIER = _notifier()

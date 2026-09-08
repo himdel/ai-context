@@ -102,8 +102,11 @@ out to a few external tools:
   conversation pairing). If `tmux` is absent the app falls back to launching a
   terminal directly. On macOS install it with `brew install tmux`.
 - **Optional:** a terminal emulator for the *viewer* window (Linux: `$TERMINAL`,
-  else `rxvt-unicode`/`xterm`; macOS: Terminal.app or iTerm via `osascript`) and
-  a notifier (`notify-send` on Linux, `osascript` on macOS).
+  else the first known one on `PATH` - Ptyxis, ghostty, kitty, foot, GNOME
+  Terminal, konsole, urxvt, xterm and friends; macOS: Terminal.app or iTerm via
+  `osascript`) and a notifier (`notify-send` on Linux, `osascript` on macOS).
+  Each terminal is launched with the flag it wants for a command, since they
+  disagree; see `TERMINAL_EXEC` in `contexts/capabilities.py`.
 
 These are autodetected per platform at startup; override any of them in
 `contexts/settings_local.py` (see `contexts/settings.py` for the full list).
