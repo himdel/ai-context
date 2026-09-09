@@ -16,6 +16,7 @@ from croniter import croniter
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from api import harness
 from api.models import CronJob, CronJobRun
 
 logger = logging.getLogger(__name__)
@@ -30,35 +31,9 @@ _KNOWN_FORGE_DOMAINS = {
 }
 
 
-def _pid_alive(pid):
-    """Cross-platform check whether a process is running (replaces /proc)."""
-    if not pid:
-        return False
-    try:
-        os.kill(int(pid), 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except (OSError, TypeError, ValueError):
-        return False
-    return True
-
-
 def _active_session_ids():
     """Return set of session IDs that have a running process."""
-    ids = set()
-    sessions_dir = settings.CLAUDE_DIR / "sessions"
-    if not sessions_dir.is_dir():
-        return ids
-    for f in sessions_dir.glob("*.json"):
-        try:
-            data = json.loads(f.read_text())
-            if _pid_alive(data.get("pid")):
-                ids.add(data.get("sessionId", ""))
-        except (json.JSONDecodeError, OSError):
-            pass
-    return ids
+    return harness.active_ids()
 
 
 @api_view(["GET"])
@@ -277,26 +252,22 @@ def github_repo(request):
 
 @api_view(["GET"])
 def conversations(request):
-    projects_dir = settings.CLAUDE_DIR / "projects"
-    if not projects_dir.is_dir():
-        return Response([])
-
     results = []
-    for project_dir in projects_dir.iterdir():
-        if not project_dir.is_dir():
+    for adapter in harness.enabled():
+        try:
+            refs = list(adapter.list_refs())
+        except Exception:
+            logger.exception("harness %s failed to list conversations", adapter.key)
             continue
-        project_name = project_dir.name
-
-        for jsonl_file in project_dir.glob("*.jsonl"):
-            conversation_id = jsonl_file.stem
-            entry = _ensure_index(jsonl_file, conversation_id, project_name)
+        for ref in refs:
+            entry = _ensure_index(adapter, ref)
             if entry:
                 entry["url"] = request.build_absolute_uri(
-                    f"/api/conversations/{conversation_id}/"
+                    f"/api/conversations/{ref.id}/"
                 )
                 results.append(entry)
 
-    # Merge in DB-only entries (files deleted but index remains)
+    # Merge in DB-only entries (logs deleted but index remains)
     from api.models import ConversationIndex
 
     seen_ids = {r["id"] for r in results}
@@ -304,6 +275,9 @@ def conversations(request):
         results.append(
             {
                 "id": ci.conversation_id,
+                "source": ci.source,
+                "parent_id": ci.parent_id,
+                "agent_type": ci.agent_type,
                 "project": ci.project,
                 "date": ci.first_timestamp,
                 "blurb": ci.blurb,
@@ -358,147 +332,24 @@ def conversations(request):
     return Response(results)
 
 
-def _load_subagents(subagents_dir):
-    if not subagents_dir.is_dir():
-        return []
-    subagents = []
-    for meta_file in subagents_dir.glob("*.meta.json"):
-        agent_id = meta_file.stem.replace(".meta", "")
-        jsonl_file = subagents_dir / f"{agent_id}.jsonl"
-        if not jsonl_file.is_file():
-            continue
-        try:
-            meta = json.loads(meta_file.read_text())
-        except (json.JSONDecodeError, OSError):
-            meta = {}
-
-        messages = []
-        first_ts = None
-        tool_use_ids = {}
-        try:
-            with open(jsonl_file) as f:
-                for line in f:
-                    data = json.loads(line)
-                    ts = data.get("timestamp", "")
-                    if ts and not first_ts:
-                        first_ts = ts
-                    msg = data.get("message", {})
-                    role = msg.get("role")
-                    if role not in ("user", "assistant"):
-                        continue
-                    content = msg.get("content", "")
-                    if isinstance(content, str) and content.strip():
-                        messages.append(
-                            {
-                                "role": role,
-                                "content": [{"type": "text", "text": content}],
-                            }
-                        )
-                    elif isinstance(content, list):
-                        blocks = []
-                        for block in content:
-                            if not isinstance(block, dict):
-                                continue
-                            btype = block.get("type")
-                            if btype == "text" and block.get("text", "").strip():
-                                blocks.append({"type": "text", "text": block["text"]})
-                            elif btype == "tool_use":
-                                tool_use_ids[block.get("id")] = block.get("name", "")
-                                blocks.append(
-                                    {
-                                        "type": "tool_use",
-                                        "name": block.get("name", ""),
-                                        "input": block.get("input", {}),
-                                    }
-                                )
-                            elif btype == "tool_result":
-                                tool_name = tool_use_ids.get(
-                                    block.get("tool_use_id"), ""
-                                )
-                                result_content = block.get("content", "")
-                                if isinstance(result_content, list):
-                                    result_content = "\n".join(
-                                        b.get("text", "")
-                                        for b in result_content
-                                        if isinstance(b, dict)
-                                    )
-                                blocks.append(
-                                    {
-                                        "type": "tool_result",
-                                        "name": tool_name,
-                                        "output": str(result_content),
-                                    }
-                                )
-                        if blocks:
-                            messages.append({"role": role, "content": blocks})
-        except (json.JSONDecodeError, OSError):
-            continue
-
-        if messages:
-            subagents.append(
-                {
-                    "agent_type": meta.get("agentType", ""),
-                    "description": meta.get("description", ""),
-                    "timestamp": first_ts,
-                    "tool_use_id": meta.get("toolUseId", ""),
-                    "messages": messages,
-                }
-            )
-    return subagents
-
-
-def _find_closest_subagent(subagents, target_ts):
-    if not target_ts or not subagents:
-        return None
-    best = None
-    best_diff = None
-    for s in subagents:
-        if not s.get("timestamp"):
-            continue
-        try:
-            diff = abs(
-                datetime.fromisoformat(
-                    s["timestamp"].replace("Z", "+00:00")
-                ).timestamp()
-                - datetime.fromisoformat(target_ts.replace("Z", "+00:00")).timestamp()
-            )
-            if best_diff is None or diff < best_diff:
-                best = s
-                best_diff = diff
-        except (ValueError, TypeError):
-            continue
-    return best
-
-
-_TASK_NOTIFICATION_RE = re.compile(
-    r"<task-notification>.*?"
-    r"<tool-use-id>(.*?)</tool-use-id>.*?"
-    r"<result>(.*?)</result>.*?"
-    r"</task-notification>",
-    re.DOTALL,
-)
-
-
-def _parse_task_notification(text):
-    m = _TASK_NOTIFICATION_RE.search(text)
-    if m:
-        return m.group(1), m.group(2).strip()
-    return None, None
-
-
 @api_view(["GET"])
 def conversation_detail(request, conversation_id):
-    jsonl_file = _find_conversation(conversation_id)
-    if not jsonl_file:
-        from api.models import ConversationIndex
+    from api.models import ConversationIndex
 
-        try:
-            ci = ConversationIndex.objects.get(conversation_id=conversation_id)
-        except ConversationIndex.DoesNotExist:
+    ci = ConversationIndex.objects.filter(conversation_id=conversation_id).first()
+    conv = harness.load(conversation_id, ci.source if ci else "")
+
+    if conv is None:
+        # Indexed once, but the harness can no longer produce it - the log was
+        # deleted. Serve what the index remembers rather than 404ing.
+        if ci is None:
             return Response({"error": "not found"}, status=404)
         return Response(
             {
                 "id": conversation_id,
+                "source": ci.source,
+                "parent_id": ci.parent_id,
+                "agent_type": ci.agent_type,
                 "cwd": ci.project,
                 "branch": ci.branch,
                 "model": "",
@@ -508,218 +359,71 @@ def conversation_detail(request, conversation_id):
                 "last_timestamp": ci.last_timestamp,
                 "active": False,
                 "messages": [],
+                "todos": [],
+                "running_agents": [],
                 "cost_usd": ci.cost_usd,
                 "input_tokens": ci.input_tokens,
                 "output_tokens": ci.output_tokens,
                 "cache_read_tokens": ci.cache_read_tokens,
                 "cache_write_tokens": ci.cache_write_tokens,
+                **_usage_with_descendants(conversation_id, _cached_summary(ci)),
                 "file_missing": True,
             }
         )
 
-    messages = []
-    cwd = None
-    branch = None
-    model = None
-    version = None
-    first_ts = None
-    last_ts = None
-    tool_use_ids = {}  # id -> name, for labeling tool_results
-    task_notifications = {}  # tool_use_id -> result text from async agents
-    try:
-        with open(jsonl_file) as f:
-            for line in f:
-                data = json.loads(line)
-                if not cwd:
-                    cwd = data.get("cwd", "")
-                if not branch:
-                    branch = data.get("gitBranch", "")
-                if not version:
-                    version = data.get("version", "")
-                ts = data.get("timestamp", "")
-                if ts:
-                    if not first_ts:
-                        first_ts = ts
-                    last_ts = ts
-                msg = data.get("message", {})
-                if not model:
-                    model = msg.get("model", "")
-                role = msg.get("role")
-                if role not in ("user", "assistant"):
-                    continue
+    data = conv.detail()
+    data["active"] = conversation_id in _active_session_ids()
+    data.update(_usage_with_descendants(conv.id, conv.usage()))
+    return Response(data)
 
-                content = msg.get("content", "")
-                timestamp = data.get("timestamp", "")
 
-                if role == "user" and isinstance(content, str) and content.strip():
-                    tuid, result = _parse_task_notification(content)
-                    if tuid:
-                        task_notifications[tuid] = result
-                        continue
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": content}],
-                            "timestamp": timestamp,
-                        }
-                    )
+_USAGE_FIELDS = (
+    "cost_usd",
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_write_tokens",
+)
 
-                elif isinstance(content, list):
-                    blocks = []
-                    for block in content:
-                        if not isinstance(block, dict):
-                            continue
-                        btype = block.get("type")
-                        if btype == "text" and block.get("text", "").strip():
-                            blocks.append({"type": "text", "text": block["text"]})
-                        elif btype == "thinking" and block.get("thinking", "").strip():
-                            blocks.append(
-                                {"type": "thinking", "text": block["thinking"]}
-                            )
-                        elif btype == "tool_use":
-                            tool_use_ids[block.get("id")] = block.get("name", "")
-                            blocks.append(
-                                {
-                                    "type": "tool_use",
-                                    "name": block.get("name", ""),
-                                    "input": block.get("input", {}),
-                                    "_id": block.get("id", ""),
-                                }
-                            )
-                        elif btype == "tool_result":
-                            tool_name = tool_use_ids.get(block.get("tool_use_id"), "")
-                            result_content = block.get("content", "")
-                            if isinstance(result_content, list):
-                                result_content = "\n".join(
-                                    b.get("text", "")
-                                    for b in result_content
-                                    if isinstance(b, dict)
-                                )
-                            blocks.append(
-                                {
-                                    "type": "tool_result",
-                                    "name": tool_name,
-                                    "output": str(result_content),
-                                    "_tool_use_id": block.get("tool_use_id", ""),
-                                }
-                            )
-                    if blocks:
-                        messages.append(
-                            {"role": role, "content": blocks, "timestamp": timestamp}
-                        )
 
-    except (json.JSONDecodeError, OSError):
-        return Response({"error": "failed to read conversation"}, status=500)
+def _usage_with_descendants(conversation_id, own):
+    """Own usage plus every subagent underneath, as `<field>_total` keys.
 
-    # Replace async agent boilerplate with actual completion results
-    if task_notifications:
-        for m in messages:
-            for block in m.get("content", []):
-                if (
-                    block.get("type") == "tool_result"
-                    and block.get("name") == "Agent"
-                    and block.get("output", "").startswith("Async agent launched")
-                ):
-                    tuid = block.get("_tool_use_id", "")
-                    if tuid in task_notifications:
-                        block["output"] = task_notifications[tuid]
+    Index rows carry own usage only, so `stats` can sum them all without
+    double-counting. The rollup a reader expects to see on one conversation is
+    rebuilt here by walking the parent_id tree, which also handles subagents
+    that spawned subagents.
 
-    # Load subagents
-    subagents = _load_subagents(jsonl_file.parent / conversation_id / "subagents")
+    This reads the index rather than the loaded transcript, so a subagent that
+    appeared since the last conversation-list refresh is not counted yet. It
+    corrects itself on the next refresh.
+    """
+    from api.models import ConversationIndex
 
-    # Match subagents to Agent tool_use blocks by toolUseId, falling back
-    # to timestamp proximity for older conversations
-    subagent_by_tuid = {s["tool_use_id"]: s for s in subagents if s.get("tool_use_id")}
-    unmatched_subagents = [s for s in subagents if not s.get("tool_use_id")]
-
-    agent_tool_uses = {}  # tool_use_id -> timestamp (for fallback matching)
-    for m in messages:
-        for block in m.get("content", []):
-            if block.get("type") == "tool_use" and block.get("name") == "Agent":
-                agent_tool_uses[block.get("_id")] = m.get("timestamp", "")
-
-    for m in messages:
-        for block in m.get("content", []):
-            if block.get("type") != "tool_result":
+    totals = {k: own.get(k, 0) for k in _USAGE_FIELDS}
+    frontier = [conversation_id]
+    seen = {conversation_id}
+    while frontier:
+        rows = ConversationIndex.objects.filter(parent_id__in=frontier).values(
+            "conversation_id", *_USAGE_FIELDS
+        )
+        frontier = []
+        for row in rows:
+            cid = row["conversation_id"]
+            if cid in seen:
                 continue
-            if (
-                block.get("name") != "Agent"
-                and block.get("_tool_use_id", "") not in subagent_by_tuid
-            ):
-                continue
-            tuid = block.get("_tool_use_id", "")
-            best = subagent_by_tuid.pop(tuid, None)
-            if not best and unmatched_subagents:
-                tool_ts = agent_tool_uses.get(tuid, "")
-                best = _find_closest_subagent(unmatched_subagents, tool_ts)
-                if best:
-                    unmatched_subagents = [
-                        s for s in unmatched_subagents if s is not best
-                    ]
-            if best:
-                block["subagent"] = best
-
-    # Merge tool_result into corresponding tool_use blocks
-    tool_use_map = {}
-    for m in messages:
-        for block in m.get("content", []):
-            if block.get("type") == "tool_use":
-                tool_use_map[block.get("_id")] = block
-
-    def _merge_result(result_block):
-        tool_use = tool_use_map.get(result_block.get("_tool_use_id"))
-        if tool_use:
-            tool_use["result"] = result_block.get("output", "")
-            if "subagent" in result_block:
-                tool_use["subagent"] = result_block["subagent"]
-            return True
-        return False
-
-    for m in messages:
-        m["content"] = [
-            b
-            for b in m["content"]
-            if not (b.get("type") == "tool_result" and _merge_result(b))
-        ]
-    messages = [m for m in messages if m.get("content")]
-
-    # Clean internal fields
-    for m in messages:
-        for block in m.get("content", []):
-            block.pop("_id", None)
-            block.pop("_tool_use_id", None)
-
-    msg_count = len(messages)
-    active_ids = _active_session_ids()
-    usage = _conversation_usage(jsonl_file, conversation_id)
-    return Response(
-        {
-            "id": conversation_id,
-            "cwd": cwd,
-            "branch": branch,
-            "model": model,
-            "version": version,
-            "message_count": msg_count,
-            "first_timestamp": first_ts,
-            "last_timestamp": last_ts,
-            "active": conversation_id in active_ids,
-            "messages": messages,
-            **usage,
-        }
-    )
+            seen.add(cid)
+            frontier.append(cid)
+            for k in _USAGE_FIELDS:
+                totals[k] += row[k] or 0
+    totals["cost_usd"] = round(totals["cost_usd"], 6)
+    return {f"{k}_total": v for k, v in totals.items()}
 
 
 def _find_conversation(conversation_id):
-    projects_dir = settings.CLAUDE_DIR / "projects"
-    if not projects_dir.is_dir():
-        return None
-    for project_dir in projects_dir.iterdir():
-        if not project_dir.is_dir():
-            continue
-        candidate = project_dir / f"{conversation_id}.jsonl"
-        if candidate.is_file():
-            return candidate
-    return None
+    """Path to a Claude transcript. Claude-only: used by resume/fork and skills."""
+    path, _ = harness.claude_adapter()._find_file(conversation_id)
+    return path
 
 
 def _clean_env():
@@ -3191,228 +2895,64 @@ def stats(request):
     )
 
 
-# Model pricing in USD per token as (input, output). Cache read costs 0.1x the
-# input rate, 5-minute cache writes 1.25x, 1-hour cache writes 2x. Web search is
-# billed per request. These are Anthropic/Vertex list rates and match the vendor's
-# own estimate to within ~1% on this env - edit here if your billing differs.
-_MODEL_PRICING = {
-    "opus": (5e-6, 25e-6),
-    "sonnet": (3e-6, 15e-6),
-    "haiku": (1e-6, 5e-6),
-}
-_WEB_SEARCH_COST = 10.0 / 1000  # USD per web_search request
-
-
-def _pricing_for_model(model):
-    m = (model or "").lower()
-    for family, rates in _MODEL_PRICING.items():
-        if family in m:
-            return rates
-    return None
-
-
-def _cost_for_usage(model, usage):
-    """USD cost for a single API response's usage block."""
-    rates = _pricing_for_model(model)
-    if not rates:
-        return 0.0
-    in_rate, out_rate = rates
-    cache = usage.get("cache_creation") or {}
-    server = usage.get("server_tool_use") or {}
-    return (
-        usage.get("output_tokens", 0) * out_rate
-        + usage.get("input_tokens", 0) * in_rate
-        + usage.get("cache_read_input_tokens", 0) * in_rate * 0.1
-        + cache.get("ephemeral_5m_input_tokens", 0) * in_rate * 1.25
-        + cache.get("ephemeral_1h_input_tokens", 0) * in_rate * 2.0
-        + (server.get("web_search_requests", 0) or 0) * _WEB_SEARCH_COST
-    )
-
-
-def _accumulate_usage(jsonl_file, totals, seen_request_ids):
-    """Add cost + token buckets from one transcript into totals, dedup by requestId.
-
-    Each assistant turn is written as several JSONL lines sharing one requestId and
-    an identical usage block, so we count each request only once.
-    """
-    try:
-        with open(jsonl_file) as f:
-            for line in f:
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if data.get("type") != "assistant":
-                    continue
-                rid = data.get("requestId")
-                if not rid or rid in seen_request_ids:
-                    continue
-                seen_request_ids.add(rid)
-                msg = data.get("message", {}) or {}
-                usage = msg.get("usage") or {}
-                cache = usage.get("cache_creation") or {}
-                totals["cost_usd"] += _cost_for_usage(msg.get("model", ""), usage)
-                totals["input_tokens"] += usage.get("input_tokens", 0)
-                totals["output_tokens"] += usage.get("output_tokens", 0)
-                totals["cache_read_tokens"] += usage.get("cache_read_input_tokens", 0)
-                totals["cache_write_tokens"] += cache.get(
-                    "ephemeral_5m_input_tokens", 0
-                ) + cache.get("ephemeral_1h_input_tokens", 0)
-    except OSError:
-        pass
-
-
-def _conversation_usage(jsonl_file, conversation_id):
-    """Aggregate cost + tokens for a conversation, including subagent transcripts."""
-    totals = {
-        "cost_usd": 0.0,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
+def _cached_summary(ci):
+    """The list entry for an index row, matching Conversation.summary()."""
+    return {
+        "id": ci.conversation_id,
+        "source": ci.source,
+        "parent_id": ci.parent_id,
+        "agent_type": ci.agent_type,
+        "project": ci.project,
+        "date": ci.first_timestamp,
+        "blurb": ci.blurb,
+        "branch": ci.branch,
+        "message_count": ci.message_count,
+        "last_timestamp": ci.last_timestamp,
+        "cost_usd": ci.cost_usd,
+        "input_tokens": ci.input_tokens,
+        "output_tokens": ci.output_tokens,
+        "cache_read_tokens": ci.cache_read_tokens,
+        "cache_write_tokens": ci.cache_write_tokens,
     }
-    seen_request_ids = set()
-    _accumulate_usage(jsonl_file, totals, seen_request_ids)
-    subagent_root = jsonl_file.parent / conversation_id
-    if subagent_root.is_dir():
-        for sub in subagent_root.rglob("*.jsonl"):
-            _accumulate_usage(sub, totals, seen_request_ids)
-    totals["cost_usd"] = round(totals["cost_usd"], 6)
-    return totals
 
 
-def _parse_conversation(jsonl_file, conversation_id, project_name):
-    # If you change what gets extracted here, run `make reindex` to rebuild the cache.
-    try:
-        blurb = ""
-        cwd = ""
-        first_ts = ""
-        last_ts = ""
-        branch = ""
-        msg_count = 0
-        text_parts = []
-
-        with open(jsonl_file) as f:
-            for line in f:
-                data = json.loads(line)
-                ts = data.get("timestamp", "")
-                if ts:
-                    if not first_ts:
-                        first_ts = ts
-                    last_ts = ts
-                if not cwd:
-                    cwd = data.get("cwd", "")
-                if not branch:
-                    branch = data.get("gitBranch", "")
-
-                msg = data.get("message", {})
-                role = msg.get("role")
-                if role not in ("user", "assistant"):
-                    continue
-                msg_count += 1
-
-                content = msg.get("content", "")
-                if isinstance(content, str) and content.strip():
-                    if "<task-notification>" in content:
-                        continue
-                    cleaned = re.sub(r"<([\w-]+)>[^<]*</\1>", "", content).strip()
-                    if not blurb and role == "user":
-                        if cleaned:
-                            blurb = cleaned[:200]
-                        else:
-                            # Skill/cronjob invocations: extract command name from XML tag
-                            m = re.search(
-                                r"<command-message>([\w-]+)</command-message>", content
-                            )
-                            if m:
-                                blurb = f"/{m.group(1)}"
-                    if not cleaned:
-                        continue
-                    text_parts.append(cleaned)
-                elif isinstance(content, list):
-                    for block in content:
-                        if (
-                            isinstance(block, dict)
-                            and block.get("type") == "text"
-                            and block.get("text", "").strip()
-                        ):
-                            text_parts.append(block["text"])
-
-        if not blurb:
-            return None
-
-        usage = _conversation_usage(jsonl_file, conversation_id)
-
-        return {
-            "id": conversation_id,
-            "project": cwd or project_name,
-            "date": first_ts,
-            "blurb": blurb,
-            "branch": branch,
-            "message_count": msg_count,
-            "last_timestamp": last_ts,
-            "searchable_text": "\n".join(text_parts),
-            **usage,
-        }
-    except (json.JSONDecodeError, OSError):
-        pass
-    return None
-
-
-def _ensure_index(jsonl_file, conversation_id, project_name):
+def _ensure_index(adapter, ref):
+    """Return a list entry for one conversation, reparsing only if it changed."""
     from api.models import ConversationIndex
 
     try:
-        stat = jsonl_file.stat()
-    except OSError:
-        return None
-
-    try:
-        cached = ConversationIndex.objects.get(conversation_id=conversation_id)
-        if cached.file_size == stat.st_size and cached.file_mtime == stat.st_mtime:
-            return {
-                "id": conversation_id,
-                "project": cached.project,
-                "date": cached.first_timestamp,
-                "blurb": cached.blurb,
-                "branch": cached.branch,
-                "message_count": cached.message_count,
-                "last_timestamp": cached.last_timestamp,
-                "cost_usd": cached.cost_usd,
-                "input_tokens": cached.input_tokens,
-                "output_tokens": cached.output_tokens,
-                "cache_read_tokens": cached.cache_read_tokens,
-                "cache_write_tokens": cached.cache_write_tokens,
-            }
+        cached = ConversationIndex.objects.get(conversation_id=ref.id)
+        if cached.revision and cached.revision == ref.revision:
+            return _cached_summary(cached)
     except ConversationIndex.DoesNotExist:
         pass
 
-    parsed = _parse_conversation(jsonl_file, conversation_id, project_name)
-    if not parsed:
+    try:
+        conv = adapter.load(ref.id)
+    except Exception:
+        logger.exception("harness %s failed to index %s", adapter.key, ref.id)
+        return None
+    if conv is None or not (conv.blurb or conv.messages):
         return None
 
     ConversationIndex.objects.update_or_create(
-        conversation_id=conversation_id,
+        conversation_id=conv.id,
         defaults={
-            "project": parsed["project"],
-            "branch": parsed["branch"],
-            "blurb": parsed["blurb"],
-            "first_timestamp": parsed["date"],
-            "last_timestamp": parsed["last_timestamp"],
-            "message_count": parsed["message_count"],
-            "searchable_text": parsed.get("searchable_text", ""),
-            "cost_usd": parsed.get("cost_usd", 0.0),
-            "input_tokens": parsed.get("input_tokens", 0),
-            "output_tokens": parsed.get("output_tokens", 0),
-            "cache_read_tokens": parsed.get("cache_read_tokens", 0),
-            "cache_write_tokens": parsed.get("cache_write_tokens", 0),
-            "file_size": stat.st_size,
-            "file_mtime": stat.st_mtime,
+            "source": conv.source,
+            "parent_id": conv.parent_id,
+            "agent_type": conv.agent_type,
+            "revision": ref.revision,
+            "project": conv.cwd,
+            "branch": conv.branch,
+            "blurb": conv.blurb,
+            "first_timestamp": conv.first_timestamp,
+            "last_timestamp": conv.last_timestamp,
+            "message_count": len(conv.messages),
+            "searchable_text": conv.searchable_text,
+            **conv.usage(),
         },
     )
-
-    parsed.pop("searchable_text", None)
-    return parsed
+    return conv.summary()
 
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}

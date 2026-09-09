@@ -60,17 +60,24 @@ body {
   color: #333;
 }
 
+/* An item is a container, not a leaf: a conversation holds its own .conv-main
+   and then one nested item per subagent. Padding, hover and the click target
+   all live on .conv-main so a child never inherits the parent's hit area, and
+   the parent's coloured left rule runs the full height of the group - which is
+   what makes the subagents read as belonging to the conversation above them. */
 .conversation-item {
-  padding: 12px 16px;
   border-bottom: 1px solid #eee;
   border-left: 3px solid #3b82f6;
-  cursor: pointer;
 }
 
-.conversation-item:hover {
+.conv-main {
+  padding: 12px 16px;
+  cursor: pointer;
+}
+.conv-main:hover {
   background: #e8e8e8;
 }
-.conversation-item.active {
+.conversation-item.active > .conv-main {
   background: #d0d8ff;
 }
 
@@ -126,6 +133,39 @@ body {
 
 .conversation-item.file-missing {
   opacity: 0.6;
+}
+
+/* Subagents. Indented and tinted so the block reads as hanging off its parent,
+   and deliberately more compact - they are always visible, so a full-size entry
+   each would push the next conversation off the screen. The source badge goes:
+   a subagent always comes from the same harness as its parent. */
+.conversation-item.child {
+  margin-left: 16px;
+  border-left: 2px solid #a78bfa;
+  border-bottom: none;
+  background: #f3f3f3;
+}
+.conversation-item.child > .conv-main {
+  padding: 7px 16px 7px 12px;
+}
+.conversation-item.child .blurb {
+  font-size: 12px;
+  -webkit-line-clamp: 1;
+}
+.conversation-item.child .badge-source {
+  display: none;
+}
+
+.conversation-item .badge-source {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.patch-text {
+  font-family: monospace;
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow-y: auto;
 }
 .badge-missing {
   background: #fef3c7;

@@ -412,61 +412,6 @@ function formatJson(str) {
 
 export var taskSubjects = {};
 
-function extractTaskStates(messages) {
-  var tasks = {};
-  messages.forEach(function (m) {
-    m.content.forEach(function (block) {
-      if (block.type !== 'tool_use') return;
-      if (block.name === 'TaskCreate' && block.result) {
-        var tm = block.result.match(/Task #(\d+) created successfully: (.+)/);
-        if (tm) {
-          tasks[tm[1]] = {
-            id: tm[1],
-            subject: block.input.subject || tm[2],
-            status: 'pending',
-          };
-        }
-      }
-      if (block.name === 'TaskUpdate' && block.input && block.input.taskId) {
-        var t = tasks[block.input.taskId];
-        if (t) {
-          if (block.input.status) t.status = block.input.status;
-          if (block.input.subject) t.subject = block.input.subject;
-        }
-      }
-    });
-  });
-  var counts = { pending: 0, in_progress: 0, completed: 0, total: 0 };
-  for (var id in tasks) {
-    if (tasks[id].status === 'deleted') continue;
-    counts.total++;
-    if (counts[tasks[id].status] !== undefined) counts[tasks[id].status]++;
-  }
-  return { tasks: tasks, counts: counts };
-}
-
-function extractRunningAgents(messages) {
-  var running = [];
-  messages.forEach(function (m) {
-    m.content.forEach(function (block) {
-      if (block.type === 'tool_use' && block.name === 'Agent') {
-        if (
-          !block.subagent &&
-          (block.result == null ||
-            (typeof block.result === 'string' &&
-              block.result.indexOf('Async agent launched') === 0))
-        ) {
-          running.push({
-            description: block.input ? block.input.description || '' : '',
-            type: block.input ? block.input.subagent_type || '' : '',
-          });
-        }
-      }
-    });
-  });
-  return running;
-}
-
 function scrollToBlock(selector) {
   var els = mainEl.querySelectorAll(selector);
   var el = els.length ? els[els.length - 1] : null;
@@ -479,41 +424,40 @@ function scrollToBlock(selector) {
   }
 }
 
-function buildStatusBar(messages) {
-  var taskState = extractTaskStates(messages);
-  var agents = extractRunningAgents(messages);
-  if (taskState.counts.total === 0 && agents.length === 0) return null;
+// `todos` and `running_agents` are derived server-side, by the harness adapter
+// that knows how its own logs record them - Claude replays TaskCreate/TaskUpdate
+// mutations, opencode reads the last todowrite snapshot. Both arrive here as the
+// same plain list.
+function buildStatusBar(conversation) {
+  var todos = (conversation && conversation.todos) || [];
+  var agents = (conversation && conversation.running_agents) || [];
+  if (todos.length === 0 && agents.length === 0) return null;
 
   var bar = document.createElement('div');
   bar.className = 'conversation-status-bar';
 
-  if (taskState.counts.total > 0) {
+  if (todos.length > 0) {
     var tasksEl = document.createElement('div');
     tasksEl.className = 'status-bar-tasks';
     var label = document.createElement('span');
     label.className = 'status-bar-label';
     label.textContent = 'Tasks:';
     tasksEl.appendChild(label);
-    var taskIds = Object.keys(taskState.tasks).sort(function (a, b) {
-      return a - b;
-    });
-    taskIds.forEach(function (id) {
-      var t = taskState.tasks[id];
-      if (t.status === 'deleted') return;
+    todos.forEach(function (t) {
       var item = document.createElement('span');
       item.className = 'status-bar-task ' + t.status;
-      item.textContent = '#' + id + ' ' + t.subject;
+      item.textContent = '#' + t.id + ' ' + t.subject;
       item.title =
-        '#' + id + ' [' + t.status.replace('_', ' ') + '] ' + t.subject;
+        '#' + t.id + ' [' + t.status.replace('_', ' ') + '] ' + t.subject;
       item.onclick = function () {
-        scrollToBlock('[data-task-id="' + id + '"]');
+        scrollToBlock('[data-task-id="' + t.id + '"]');
       };
       tasksEl.appendChild(item);
     });
     bar.appendChild(tasksEl);
   }
 
-  if (taskState.counts.total > 0 && agents.length > 0) {
+  if (todos.length > 0 && agents.length > 0) {
     var sep = document.createElement('span');
     sep.className = 'status-bar-separator';
     bar.appendChild(sep);
@@ -543,11 +487,11 @@ function buildStatusBar(messages) {
   return bar;
 }
 
-export function updateStatusBar(messages) {
+export function updateStatusBar(conversation) {
   var existing = mainWrapEl.querySelector('.conversation-status-bar');
   if (existing) existing.remove();
-  if (!messages) return;
-  var bar = buildStatusBar(messages);
+  if (!conversation) return;
+  var bar = buildStatusBar(conversation);
   if (bar) mainWrapEl.appendChild(bar);
 }
 
@@ -625,6 +569,30 @@ function renderToolInput(name, input) {
     if (new_s) diff += '<div class="edit-new">' + esc(new_s) + '</div>';
     diff += '</div>';
     return header + diff;
+  }
+  // opencode edits files by handing over one patch document rather than an
+  // old/new string pair, so it gets its own view instead of Edit's.
+  if (name === 'ApplyPatch') {
+    var patch = input.patchText || '';
+    var lines = patch.split('\n');
+    var body = lines
+      .map(function (line) {
+        var cls = '';
+        if (/^\+/.test(line)) cls = 'edit-new';
+        else if (/^-/.test(line)) cls = 'edit-old';
+        else if (/^\*\*\* /.test(line)) cls = 'edit-file';
+        return '<div class="' + cls + '">' + esc(line) + '</div>';
+      })
+      .join('');
+    return '<div class="edit-diff patch-text">' + body + '</div>';
+  }
+  if (name === 'Patch') {
+    var files = input.files || [];
+    return (
+      '<div class="edit-file">' +
+      files.map((f) => esc(f)).join('<br>') +
+      '</div>'
+    );
   }
   if (name === 'ExitPlanMode') {
     var html = '';

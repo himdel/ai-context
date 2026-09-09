@@ -8,6 +8,80 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-09 - conversations come from a harness adapter, not from a JSONL file
+
+Claude's on-disk format had stopped being merely the *source* of conversations and had
+become the *interchange* format: the API handed the frontend Claude's own
+`tool_use`/`tool_result` blocks and Claude's tool names, and `render.js` string-matched
+Claude quirks (`"Async agent launched"`) to paper over them. Adding opencode with himdel
+using both for the same work made that untenable.
+
+**opencode is a SQLite database, not files.** So are codex (`~/.codex/state_5.sqlite`)
+and goose (`~/.local/share/goose/sessions/sessions.db`). Claude is the odd one out, and
+any abstraction assuming "one file per conversation" would have been wrong immediately -
+which is why `ConvRef.revision` is an opaque staleness token rather than the
+`(file_size, file_mtime)` pair it replaced.
+
+The canonical model (`api/harness/base.py`) deliberately **keeps Claude's wire vocabulary**
+- `text`/`thinking`/`tool_use`, CamelCase tool names - rather than inventing a neutral
+one. Not because it is the better shape (opencode's already-merged tool part is), but
+because `render.js` has a per-tool view for each of those names and a new dialect would
+have meant porting all ~1100 lines for no user-visible gain. Adapters normalize *into*
+the renderer's language; the renderer never learns a second one.
+
+What moved server-side is the part that was never presentation: `extractTaskStates`
+replayed Claude's `TaskCreate`/`TaskUpdate` protocol in JS to rebuild a todo list, and
+`extractRunningAgents` sniffed a magic string. Those are harness semantics. They are now
+`Conversation.todos` and `.running_agents`, derived by whichever adapter knows how its own
+logs record them - Claude replays mutations, opencode reads the last `todowrite` snapshot,
+and the status bar just reads a list.
+
+**Ids stay native; a `source` column says who owns one.** Prefixing everything
+(`claude:<uuid>`) would have been unambiguous by construction but needed a data migration
+for `ConversationIndex` and `CronJobRun` and would have invalidated bookmarked
+`/conversations/<uuid>` URLs. Claude UUIDs and opencode `ses_*` ids do not collide, and
+`owner_of()` falls back to probing adapters when `source` is unknown.
+
+**Cost is now own-cost, per row.** It had to change: subagents became index rows of their
+own (so they can be opened standalone), and a Claude parent's `cost_usd` used to include
+its subagents, so `stats` would have double-counted. opencode already attributes this way
+- `session.cost` is the sum of that session's own messages, children excluded, verified
+against the data. The with-descendants rollup the detail header shows is rebuilt at read
+time from the `parent_id` tree as `cost_usd_total` (and a `_total` for every token bucket
+beside it, since the header prints tokens next to the cost and the two have to agree).
+The conversation header shows the rollup, the sidebar and the stats screens show own
+spend. Consequence: `stats` totals shift
+slightly, because they were previously counting Claude subagent spend twice.
+
+**Subagents are both nested and listed.** himdel wanted them expandable where they
+happened *and* openable on their own; making them first-class conversations with a
+`parent_id` gives both from one change.
+
+The sidebar nesting went through a `<details>` disclosure first and lost it. A sidebar
+entry is now a *container*, not a leaf: the conversation's own content sits in a
+`.conv-main` child and the subagents are nested items beside it. That fixes two things a
+sibling disclosure could not - the parent's coloured left rule runs the full height of the
+group, so the block visibly hangs off the conversation rather than separating two of them,
+and the click target stays on `.conv-main`, so a click on a child cannot reach the parent's
+handler without `stopPropagation`. Expand/collapse went with it: subagents are few and
+compact, and a control nobody needs to touch is not worth the state.
+
+Two traps found while wiring opencode up. The conversation header hardcoded `claude-code`
+beside the version - but the version *is* the harness's, so it now comes from
+`Conversation.source_label`. And opencode keeps **`tokens_reasoning` in a bucket of its
+own, outside `tokens_output`**, where it is routinely the larger of the two (768 vs 55 in
+one real session); reading `tokens_output` alone silently dropped most of the generated
+tokens from the header. Providers bill reasoning at the output rate and `session.cost`
+already includes it, so the adapter folds it into `output_tokens` and the token count
+stays consistent with the cost printed next to it.
+
+Two things not solved. opencode has **no per-session liveness signal** - the pid in
+`~/.local/state/opencode/locks/*/meta.json` hashes to a *project*, not a session, so
+`active_ids()` returns empty rather than guessing, and opencode conversations never show
+the green dot. And `todowrite` is the one genuine format mismatch: opencode writes a whole
+list per call where Claude logs only mutations, so the ids in the status bar are
+positional for opencode and real task numbers for Claude.
+
 ## 2026-09-08 - the terminal flag is a per-terminal fact, and Ptyxis eats dollars
 
 Found on Fedora + GNOME, where `$TERMINAL` is `ptyxis`. Two separate things were wrong

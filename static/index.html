@@ -903,7 +903,7 @@
               if (wasNear) mainEl.scrollTop = mainEl.scrollHeight;
             }
             currentMessages = data.messages;
-            updateStatusBar(currentMessages);
+            updateStatusBar(data);
             if (!data.active) {
               stopFollowing();
               var indicator = mainEl.querySelector('.follow-indicator');
@@ -993,61 +993,95 @@
           .then((conversations) => {
             updateFavicon(conversations.filter((c) => c.active).length);
             listEl.innerHTML = '';
+
+            // Subagents come back as ordinary conversations carrying a
+            // parent_id. Nest them under their parent so the list stays a list
+            // of things you started, but keep each one openable on its own. A
+            // child whose parent is filtered out stands on its own rather than
+            // vanishing.
+            const children = {};
             conversations.forEach((c) => {
-              const div = document.createElement('div');
-              div.className = 'conversation-item';
-              if (c.active) div.classList.add('active-session');
-              if (c.file_missing) div.classList.add('file-missing');
-              div.dataset.id = c.id;
-              if (c.id === activeId) div.classList.add('active');
+              if (!c.parent_id) return;
+              (children[c.parent_id] = children[c.parent_id] || []).push(c);
+            });
+            const shown = new Set(conversations.map((c) => c.id));
+            const topLevel = conversations.filter(
+              (c) => !c.parent_id || !shown.has(c.parent_id),
+            );
 
-              const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
-              const duration = formatDuration(c.date, c.last_timestamp);
-              const rid = RepoIdentity.get(c.project);
-
-              div.innerHTML =
-                '<div class="row">' +
-                '<div class="project"' +
-                (rid ? ' style="color:' + rid.colorText + '"' : '') +
-                '>' +
-                (rid ? rid.iconSm : '') +
-                esc(project) +
-                (c.branch ? ' (' + esc(c.branch) + ')' : '') +
-                '</div>' +
-                '<span class="indicator' +
-                (c.active ? ' active' : '') +
-                '"></span>' +
-                '</div>' +
-                '<div class="row">' +
-                '<div class="date">' +
-                esc(formatDate(c.date)) +
-                (duration ? ', ' + esc(duration) : '') +
-                '</div>' +
-                (c.message_count || formatCost(c.cost_usd)
-                  ? '<span class="badge badge-stats" title="messages | estimated cost">' +
-                    (c.message_count
-                      ? '<span>' + c.message_count + '</span>'
-                      : '') +
-                    (c.message_count && formatCost(c.cost_usd)
-                      ? '<span class="badge-div"></span>'
-                      : '') +
-                    (formatCost(c.cost_usd)
-                      ? '<span>' + formatCost(c.cost_usd) + '</span>'
-                      : '') +
-                    '</span>'
-                  : '') +
-                (c.file_missing
-                  ? '<span class="badge badge-missing">log deleted</span>'
-                  : '') +
-                '</div>' +
-                '<div class="blurb">' +
-                esc(c.blurb) +
-                '</div>';
-
-              div.onclick = () => loadConversation(c.id);
-              listEl.appendChild(div);
+            topLevel.forEach((c) => {
+              const item = renderConversationItem(c);
+              (children[c.id] || [])
+                .sort((a, b) => (a.date < b.date ? -1 : 1))
+                .forEach((k) =>
+                  item.appendChild(renderConversationItem(k, true)),
+                );
+              listEl.appendChild(item);
             });
           });
+      }
+
+      function renderConversationItem(c, isChild) {
+        const div = document.createElement('div');
+        div.className = 'conversation-item';
+        if (isChild) div.classList.add('child');
+        if (c.active) div.classList.add('active-session');
+        if (c.file_missing) div.classList.add('file-missing');
+        div.dataset.id = c.id;
+        if (c.id === activeId) div.classList.add('active');
+
+        const project = c.project.replace(/^\/home\/[^/]+\//, '~/');
+        const duration = formatDuration(c.date, c.last_timestamp);
+        const rid = RepoIdentity.get(c.project);
+
+        // The item is a container: a parent holds its own .conv-main plus one
+        // nested item per subagent. Everything clickable and hoverable lives on
+        // .conv-main, so a click on a child never reaches the parent's handler.
+        const body = document.createElement('div');
+        body.className = 'conv-main';
+        body.innerHTML =
+          '<div class="row">' +
+          '<div class="project"' +
+          (rid ? ' style="color:' + rid.colorText + '"' : '') +
+          '>' +
+          (rid ? rid.iconSm : '') +
+          esc(isChild ? c.agent_type || 'subagent' : project) +
+          (!isChild && c.branch ? ' (' + esc(c.branch) + ')' : '') +
+          '</div>' +
+          '<span class="indicator' +
+          (c.active ? ' active' : '') +
+          '"></span>' +
+          '</div>' +
+          '<div class="row">' +
+          '<div class="date">' +
+          esc(formatDate(c.date)) +
+          (duration ? ', ' + esc(duration) : '') +
+          '</div>' +
+          (c.source && c.source !== 'claude'
+            ? '<span class="badge badge-source">' + esc(c.source) + '</span>'
+            : '') +
+          (c.message_count || formatCost(c.cost_usd)
+            ? '<span class="badge badge-stats" title="messages | estimated cost">' +
+              (c.message_count ? '<span>' + c.message_count + '</span>' : '') +
+              (c.message_count && formatCost(c.cost_usd)
+                ? '<span class="badge-div"></span>'
+                : '') +
+              (formatCost(c.cost_usd)
+                ? '<span>' + formatCost(c.cost_usd) + '</span>'
+                : '') +
+              '</span>'
+            : '') +
+          (c.file_missing
+            ? '<span class="badge badge-missing">log deleted</span>'
+            : '') +
+          '</div>' +
+          '<div class="blurb">' +
+          esc(c.blurb) +
+          '</div>';
+
+        body.onclick = () => loadConversation(c.id);
+        div.appendChild(body);
+        return div;
       }
 
       loadSidebar();
@@ -1279,27 +1313,41 @@
               }
               if (data.message_count)
                 parts.push('<span>' + data.message_count + ' messages</span>');
-              if (formatCost(data.cost_usd)) {
+              // The header shows the rollup *including* subagents, which is what
+              // this conversation actually cost to run. The API's bare fields are
+              // own-spend only — that is what the sidebar and the stats screen
+              // use, so every row can be summed without counting a subagent
+              // twice. The tooltip breaks the two apart when they differ.
+              if (formatCost(data.cost_usd_total)) {
+                const subagentCost =
+                  (data.cost_usd_total || 0) - (data.cost_usd || 0);
                 const tokenTip =
-                  formatTokens(data.input_tokens) +
+                  formatTokens(data.input_tokens_total) +
                   ' in / ' +
-                  formatTokens(data.output_tokens) +
+                  formatTokens(data.output_tokens_total) +
                   ' out / ' +
-                  formatTokens(data.cache_read_tokens) +
+                  formatTokens(data.cache_read_tokens_total) +
                   ' cache read / ' +
-                  formatTokens(data.cache_write_tokens) +
-                  ' cache write';
+                  formatTokens(data.cache_write_tokens_total) +
+                  ' cache write' +
+                  (formatCost(subagentCost)
+                    ? ' — ' +
+                      formatCost(data.cost_usd) +
+                      ' here plus ' +
+                      formatCost(subagentCost) +
+                      ' in subagents'
+                    : '');
                 parts.push(
                   '<span title="estimated cost — ' +
                     esc(tokenTip) +
                     '">~' +
-                    formatCost(data.cost_usd) +
+                    formatCost(data.cost_usd_total) +
                     ' (' +
                     formatTokens(
-                      (data.input_tokens || 0) +
-                        (data.output_tokens || 0) +
-                        (data.cache_read_tokens || 0) +
-                        (data.cache_write_tokens || 0),
+                      (data.input_tokens_total || 0) +
+                        (data.output_tokens_total || 0) +
+                        (data.cache_read_tokens_total || 0) +
+                        (data.cache_write_tokens_total || 0),
                     ) +
                     ' tok)</span>',
                 );
@@ -1313,7 +1361,11 @@
                 parts.push('<span>' + esc(data.model) + '</span>');
               if (data.version)
                 parts.push(
-                  '<span>claude-code ' + esc(data.version) + '</span>',
+                  '<span>' +
+                    esc(data.source_label || 'claude-code') +
+                    ' ' +
+                    esc(data.version) +
+                    '</span>',
                 );
               if (data.file_missing)
                 parts.push(
@@ -1655,7 +1707,7 @@
                 mainEl.appendChild(div);
               });
               currentMessages = data.messages;
-              updateStatusBar(currentMessages);
+              updateStatusBar(data);
               renderRichBlocks();
               mainEl.scrollTop = 0;
               mainEl.focus();

@@ -94,6 +94,16 @@ LOGGING = {
 CLAUDE_DIR = Path.home() / ".claude"
 CLAUDE_CMD = "claude"
 
+# Which harness adapters to read conversations from, in order. Conversations
+# from all of them land in one list, grouped by directory and sorted by date -
+# this is not the work/personal split, which is CONTEXTS_INSTANCE. An adapter
+# whose data is absent is skipped silently, so listing one costs nothing.
+# See docs/HARNESSES.md.
+HARNESSES = ["claude"]
+
+# opencode's database. Read-only and never written; see api/harness/opencode.py.
+OPENCODE_DB = Path.home() / ".local/share/opencode/opencode.db"
+
 # Session substrate + viewer defaults, autodetected for the current machine.
 # All of these can be overridden in settings_local (see below).
 #

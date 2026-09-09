@@ -15,6 +15,16 @@ class ForgePR(models.Model):
 
 class ConversationIndex(models.Model):
     conversation_id = models.CharField(max_length=64, unique=True)
+    # Which harness adapter owns this conversation, and - for a subagent - the
+    # conversation it ran under. cost_usd and the token counts are this
+    # conversation's OWN spend; a parent never includes its children, so summing
+    # every row (see the stats view) counts each once.
+    source = models.CharField(max_length=32, default="claude")
+    parent_id = models.CharField(max_length=64, default="", db_index=True)
+    agent_type = models.CharField(max_length=64, default="")
+    # Opaque staleness token from the adapter - size+mtime for a file, an
+    # updated-at plus row count for a database.
+    revision = models.CharField(max_length=64, default="")
     project = models.CharField(max_length=512, default="")
     branch = models.CharField(max_length=255, default="")
     blurb = models.CharField(max_length=200, default="")
@@ -27,8 +37,6 @@ class ConversationIndex(models.Model):
     output_tokens = models.BigIntegerField(default=0)
     cache_read_tokens = models.BigIntegerField(default=0)
     cache_write_tokens = models.BigIntegerField(default=0)
-    file_size = models.BigIntegerField(default=0)
-    file_mtime = models.FloatField(default=0)
 
 
 class CronJob(models.Model):

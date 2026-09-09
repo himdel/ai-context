@@ -1,0 +1,348 @@
+"""opencode adapter: a live SQLite database, not files on disk.
+
+`session` / `message` / `part`, where `part.data` is JSON typed `text`,
+`reasoning`, `tool`, `step-start`, `step-finish` or `patch`. Several things
+Claude makes us reconstruct are already right here: a tool call carries its own
+result, a subagent names its child session outright, and cost is a column.
+
+The database belongs to a program that may be running. Everything below reads
+it through `_connect`, which is read-only and deliberately short-lived - see the
+comment there before changing how it opens.
+"""
+
+import json
+import logging
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime, timezone
+
+from django.conf import settings
+
+from api.harness import base
+from api.harness.base import Conversation, ConvRef, Message
+
+logger = logging.getLogger(__name__)
+
+_MAX_SUBAGENT_DEPTH = 4
+
+
+# opencode's tool names -> the canonical (Claude-shaped) vocabulary the renderer
+# knows. Anything absent passes through under its own name and renders
+# generically, which is the right outcome for a tool we have not seen yet.
+_TOOL_NAMES = {
+    "read": base.READ,
+    "write": base.WRITE,
+    "edit": base.EDIT,
+    "bash": base.BASH,
+    "grep": base.GREP,
+    "glob": base.GLOB,
+    "task": base.AGENT,
+    "skill": base.SKILL,
+    "webfetch": base.WEB_FETCH,
+    "websearch": base.WEB_SEARCH,
+    "question": base.ASK_USER_QUESTION,
+    "todowrite": base.TODO_WRITE,
+    "apply_patch": "ApplyPatch",
+}
+
+# Per-tool input key renames, applied after the tool name is canonicalized.
+# Only the keys that actually differ; `bash`, `grep`, `glob` and `task` already
+# agree with Claude's spelling.
+_INPUT_KEYS = {
+    base.READ: {"filePath": "file_path"},
+    base.WRITE: {"filePath": "file_path"},
+    base.EDIT: {
+        "filePath": "file_path",
+        "oldString": "old_string",
+        "newString": "new_string",
+        "replaceAll": "replace_all",
+    },
+    base.SKILL: {"name": "skill"},
+}
+
+
+@contextmanager
+def _connect(path):
+    """Open opencode's database without getting in its way.
+
+    Read-only, autocommit, short-lived. The database is WAL, so a reader never
+    blocks opencode's writer - but a *long-lived* read transaction pins the WAL
+    and stops it being checkpointed, so it grows without bound while we hold it.
+    Hence `isolation_level=None`: every statement is its own brief read
+    transaction. This is a context manager rather than a bare connection because
+    sqlite3's own `with` block commits but does not *close*, which is precisely
+    the leak that would keep a snapshot alive.
+
+    Never pass `immutable=1` here. It reads like the safe option and is the
+    opposite: it tells SQLite the file cannot change, so the WAL is ignored and
+    recent writes come back missing or torn.
+    """
+    conn = sqlite3.connect(
+        f"file:{path}?mode=ro", uri=True, isolation_level=None, timeout=5.0
+    )
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = 1")
+        yield conn
+    finally:
+        conn.close()
+
+
+def _json(text):
+    try:
+        return json.loads(text) if text else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _iso(ms):
+    """opencode stores epoch milliseconds; the rest of the app sorts ISO strings."""
+    if not ms:
+        return ""
+    return (
+        datetime.fromtimestamp(ms / 1000, timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _canonical_tool(name, input_):
+    canonical = _TOOL_NAMES.get(name, name)
+    renames = _INPUT_KEYS.get(canonical)
+    if renames and isinstance(input_, dict):
+        input_ = {renames.get(k, k): v for k, v in input_.items()}
+    return canonical, input_
+
+
+class OpencodeHarness(base.Harness):
+    key = "opencode"
+    label = "opencode"
+
+    @property
+    def db_path(self):
+        return getattr(settings, "OPENCODE_DB", None)
+
+    def available(self):
+        # Deliberately just a file check: this runs several times per request,
+        # and probing with a real query would open a connection each time.
+        # An unreadable or locked database surfaces as an empty result from
+        # list_refs/load instead, which is the same outcome for the caller.
+        path = self.db_path
+        return bool(path) and path.is_file()
+
+    def owns(self, conversation_id):
+        return conversation_id.startswith("ses_")
+
+    # -- discovery ---------------------------------------------------------
+
+    def list_refs(self):
+        try:
+            with _connect(self.db_path) as conn:
+                rows = conn.execute(
+                    "select s.id, s.parent_id, s.agent, s.time_updated,"
+                    " (select count(*) from message m where m.session_id = s.id) n"
+                    " from session s"
+                ).fetchall()
+        except (sqlite3.Error, TypeError):
+            logger.exception("opencode list_refs failed")
+            return
+        for r in rows:
+            yield ConvRef(
+                id=r["id"],
+                revision=f"{r['time_updated']}:{r['n']}",
+                parent_id=r["parent_id"] or "",
+                agent_type=r["agent"] or "",
+            )
+
+    # -- loading -----------------------------------------------------------
+
+    def load(self, conversation_id, _depth=0):
+        if not self.owns(conversation_id):
+            return None
+        try:
+            with _connect(self.db_path) as conn:
+                session = conn.execute(
+                    "select * from session where id = ?", (conversation_id,)
+                ).fetchone()
+                if session is None:
+                    return None
+                rows = conn.execute(
+                    "select m.id mid, m.data mdata, p.data pdata"
+                    " from message m left join part p on p.message_id = m.id"
+                    " where m.session_id = ?"
+                    " order by m.time_created, m.id, p.id",
+                    (conversation_id,),
+                ).fetchall()
+                children = {
+                    r["id"]: r["title"]
+                    for r in conn.execute(
+                        "select id, title from session where parent_id = ?",
+                        (conversation_id,),
+                    ).fetchall()
+                }
+        except (sqlite3.Error, TypeError):
+            logger.exception("opencode load %s failed", conversation_id)
+            return None
+
+        messages, text_parts = self._build_messages(rows)
+        for block in _tool_blocks(messages):
+            sid = block.pop("_session_id", None)
+            # _depth guards against a cycle in parent_id; agents nest a few
+            # levels deep at most, so this never truncates a real transcript.
+            if not sid or sid not in children or _depth >= _MAX_SUBAGENT_DEPTH:
+                continue
+            sub = self._load_subagent(sid, children[sid], _depth + 1)
+            if sub is not None:
+                block["subagent"] = sub
+
+        model = _json(session["model"]).get("id", "") or session["agent"] or ""
+        return Conversation(
+            id=conversation_id,
+            source=self.key,
+            source_label=self.label,
+            parent_id=session["parent_id"] or "",
+            agent_type=session["agent"] or "",
+            messages=messages,
+            cwd=session["directory"] or "",
+            branch="",
+            model=model,
+            version=session["version"] or "",
+            blurb=(session["title"] or "")[:200],
+            first_timestamp=_iso(session["time_created"]),
+            last_timestamp=_iso(session["time_updated"]),
+            searchable_text="\n".join(text_parts),
+            # session.cost is this session's own spend - a parent's cost does
+            # not include its children's, which is exactly the split the index
+            # wants. Verified against sum(message.cost) per session.
+            cost_usd=session["cost"] or 0.0,
+            input_tokens=session["tokens_input"] or 0,
+            # tokens_reasoning is a separate bucket here, NOT part of
+            # tokens_output - and it is routinely the larger of the two (768 vs
+            # 55 in one real session). Providers bill it at the output rate and
+            # session.cost already includes it, so folding it in is what keeps
+            # the token count consistent with the cost shown beside it.
+            output_tokens=(session["tokens_output"] or 0)
+            + (session["tokens_reasoning"] or 0),
+            cache_read_tokens=session["tokens_cache_read"] or 0,
+            cache_write_tokens=session["tokens_cache_write"] or 0,
+            todos=_derive_todos(messages),
+            running_agents=_derive_running_agents(messages),
+        )
+
+    def _build_messages(self, rows):
+        """Rows -> canonical messages, one per turn.
+
+        opencode writes an assistant turn as several `message` rows, one per
+        step, all sharing the `parentID` of the user message that triggered
+        them. Left as-is that renders as a run of near-empty assistant bubbles,
+        so consecutive assistant rows of the same turn are merged.
+        """
+        messages = []
+        text_parts = []
+        current_key = None
+        for row in rows:
+            mdata = _json(row["mdata"])
+            role = mdata.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            block = _block_from_part(_json(row["pdata"]))
+            if block is None:
+                continue
+            if block.get("type") == "text" and block.get("text"):
+                text_parts.append(block["text"])
+
+            key = (role, mdata.get("parentID") or row["mid"])
+            if key != current_key:
+                messages.append(
+                    Message(role, [], _iso((mdata.get("time") or {}).get("created")))
+                )
+                current_key = key
+            messages[-1].blocks.append(block)
+        return [m for m in messages if m.blocks], text_parts
+
+    def _load_subagent(self, session_id, title, depth):
+        """A child session, shaped for embedding in the parent's Agent block."""
+        conv = self.load(session_id, _depth=depth)
+        if conv is None:
+            return None
+        return {
+            "id": session_id,
+            "agent_type": conv.agent_type,
+            "description": title or conv.blurb,
+            "timestamp": conv.first_timestamp,
+            "tool_use_id": "",
+            "messages": [m.as_dict() for m in conv.messages],
+        }
+
+
+def _block_from_part(part):
+    """One `part` row -> a canonical block, or None to drop it."""
+    ptype = part.get("type")
+    if ptype == "text":
+        text = part.get("text") or ""
+        return base.text_block(text) if text.strip() else None
+    if ptype == "reasoning":
+        text = part.get("text") or ""
+        return base.thinking_block(text) if text.strip() else None
+    if ptype == "patch":
+        files = part.get("files") or []
+        return base.tool_block("Patch", {"files": files}, result="")
+    if ptype == "tool":
+        state = part.get("state") or {}
+        name, input_ = _canonical_tool(part.get("tool", ""), state.get("input") or {})
+        status = state.get("status")
+        if status == "error":
+            result = state.get("error") or ""
+        elif status == "completed":
+            result = state.get("output") or ""
+        else:
+            result = None  # still running
+        block = base.tool_block(name, input_, result=result)
+        # Carried only until load() swaps it for the embedded child transcript.
+        block["_session_id"] = ((state.get("metadata") or {}).get("sessionId")) or ""
+        return block
+    # step-start / step-finish are turn bookkeeping, not conversation content.
+    return None
+
+
+def _tool_blocks(messages):
+    for m in messages:
+        for block in m.blocks:
+            if block.get("type") == "tool_use":
+                yield block
+
+
+def _derive_todos(messages):
+    """opencode writes the whole list on every call, so the last one is the state."""
+    todos = []
+    for block in _tool_blocks(messages):
+        if block.get("name") != base.TODO_WRITE:
+            continue
+        items = (block.get("input") or {}).get("todos") or []
+        todos = [
+            {
+                "id": str(i + 1),
+                "subject": t.get("content", ""),
+                "status": t.get("status", "pending"),
+            }
+            for i, t in enumerate(items)
+            if isinstance(t, dict)
+        ]
+    return [t for t in todos if t["status"] != "deleted"]
+
+
+def _derive_running_agents(messages):
+    running = []
+    for block in _tool_blocks(messages):
+        if block.get("name") != base.AGENT or block.get("subagent"):
+            continue
+        if block.get("result") is not None:
+            continue
+        input_ = block.get("input") or {}
+        running.append(
+            {
+                "description": input_.get("description", ""),
+                "type": input_.get("subagent_type", ""),
+            }
+        )
+    return running

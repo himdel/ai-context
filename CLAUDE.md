@@ -35,6 +35,7 @@ anything in the tmux/session layer.
 | `docs/DECISIONS.md` | Decision log, newest first, dated |
 | `docs/IDEAS.md` | Backlog: record now, do later |
 | `docs/CLAUDE-SESSION-FILES.md` | Format and gotchas of `~/.claude/sessions/<pid>.json` |
+| `docs/HARNESSES.md` | The harness adapter contract and canonical conversation model |
 | `CHANGELOG.md` | For people already running contexts. Rules below |
 | `CLAUDE.local.md` | Local learnings and followups. Gitignored, stays out of the public repo |
 
