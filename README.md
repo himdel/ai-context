@@ -1,10 +1,14 @@
 # context
 
-Vibe-coded tool to browse Claude Code data in a web UI.
+Vibe-coded tool to browse coding-agent data in a web UI.
 
 Reads `~/.claude/` and exposes conversation history, plans, skills, and memory
 in a searchable, markdown-rendered interface with support for resuming, forking,
 and starting new sessions.
+
+Conversations can come from more than one agent — Claude Code and
+[opencode](https://opencode.ai) today — mixed into a single list, grouped by
+directory and sorted by date. Everything else is Claude-only.
 
 (DO NOT expect this to be safe, secure, or complete)
 
@@ -12,17 +16,22 @@ and starting new sessions.
 
 ### Conversations
 
+- Conversations from Claude Code and opencode in one list, tagged by source
 - Full-text search with SQLite-backed index
 - Markdown rendering with syntax highlighting, Mermaid diagrams
 - Rich code blocks: LaTeX, Graphviz, Vega-Lite, GeoJSON, ABC notation (with audio), Markmap, PlantUML
+- Diagrams download as SVG or PNG from the block toolbar
 - Tool use, thinking, subagent, and workflow blocks with inline results
 - Edit blocks rendered as diffs, skill invocations collapsed under prompt
+- Subagents expand inline where they ran, and are also listed under their parent
+  in the sidebar so they can be opened on their own
 - Resume, fork, or start new sessions from the UI
 - Live session dock: queue prompts, answer tool/permission prompts inline,
   open an attached terminal, and see live idle/busy/waiting status
 - Active session indicator, status bar with running tasks and agents
 - Deleted logs stay visible from DB cache, live tailing for active sessions
-- Estimated cost per conversation (list + detail), computed from transcript token usage
+- Estimated cost per conversation (list + detail), computed from transcript token
+  usage for Claude and read from the harness for other agents
 
 ### Plans
 
@@ -56,6 +65,8 @@ and starting new sessions.
 - Next run preview, manual "Run Now", run history with conversation links
 - Runs execute headless in tmux, paired to a conversation, with a
   notification to open the live terminal
+- Pairing resolves in the background, so a run links to its conversation while
+  it is still live and the link survives an app restart
 - Create cronjobs directly from a skill's detail page
 
 ### Git & forge integration
@@ -70,6 +81,8 @@ and starting new sessions.
 - Per-day message counts and estimated cost in tooltips, filterable by repo
 - Costs tab: estimated cost per repo with proportional bars and a running total
 - Cost estimates are self-contained (derived from token usage in the transcripts)
+- Each conversation is charged its own spend, so totals never count a subagent
+  twice; a conversation's own header shows the rollup including its subagents
 
 ### Home screen
 
@@ -110,6 +123,23 @@ out to a few external tools:
 
 These are autodetected per platform at startup; override any of them in
 `contexts/settings_local.py` (see `contexts/settings.py` for the full list).
+
+### Other coding agents
+
+Conversations can come from more than just Claude Code. List the ones you want in
+`HARNESSES`, and they share a single list, grouped by directory and sorted by date
+(this is not the work/personal split — that is `CONTEXTS_INSTANCE`):
+
+```python
+HARNESSES = ["claude", "opencode"]
+```
+
+- **Optional:** [opencode](https://opencode.ai). Its conversations live in a SQLite
+  database at `~/.local/share/opencode/opencode.db` (`OPENCODE_DB`). No binary is
+  invoked — the file is read strictly read-only and is safe to read while opencode
+  is running. If it is missing, the harness is skipped silently.
+
+Adding another agent means writing one adapter; see `docs/HARNESSES.md`.
 
 On macOS the viewer window is opened by driving Terminal.app or iTerm via
 `osascript`. The first time this happens macOS shows an Automation permission

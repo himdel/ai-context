@@ -5,6 +5,21 @@ it is picked up or settled.
 
 ---
 
+## `x-terminal-emulator` hides which terminal is really being launched
+
+`TERMINAL_EXEC` in `contexts/capabilities.py` keys the exec flag and
+`TERMINAL_EXPANDS_VARS` off the binary name, but on Debian `x-terminal-emulator` is an
+alternative that can point at any of them - the `ptyxis` package registers itself for it
+at priority 40 (verified 2026-09-09 from `ptyxis_50.1-1_amd64.deb`'s postinst). Since
+`x-terminal-emulator` is first in `TERMINAL_EXEC` and hardcoded to `-e`, a Debian box
+with Ptyxis selected and `$TERMINAL` unset gets the exact launch `f4978da` set out to
+fix, and `TERMINAL_ESCAPE_DOLLARS` stays `False` besides.
+
+Debian Policy 11.8.3 does require an `x-terminal-emulator` to accept `-e`, so the flag
+is probably survivable; the dollar-escaping is not covered by any policy. Fix would be
+to resolve the symlink (`os.path.realpath`) before looking the name up. Not urgent -
+this machine sets `$TERMINAL=rxvt-unicode`, which is matched first and sidesteps it.
+
 ## Close idle cron sessions
 
 Cron runs spawn headless `claude /skill` sessions that are interactive and do not exit on
