@@ -50,6 +50,40 @@ Needs a spike to confirm current claude ACP-server support, and whether tmux and
 share one session. **Noted from memory, not research - verify the specifics before
 betting on any of it.**
 
+## Keep what an agent prints on the way out
+
+Both Claude and opencode print their parting text - how to resume, what the session cost -
+and it is gone before it can be read, because the tmux session dies with the process and
+takes the screen with it. Measured 2026-09-11 against the real binaries; none of this is
+from the manual.
+
+- **`remain-on-exit on` does not do it, and is not wanted anyway.** Both agents run in the
+  alternate screen, and leaving it discards everything they drew - the frozen pane ends up
+  showing literally just `Pane is dead (status 0, ...)`. It also keeps the session in tmux
+  after the agent exits, which is the opposite of what we want.
+- **`alternate-screen off` is the half that matters.** With no alt screen to restore, the
+  TUI draws on the normal screen and the final frame survives the process. Verified with
+  both agents, in combination with `remain-on-exit`.
+- **On its own it still loses everything at exit**, because the session dies with the
+  process and the scrollback goes with it (verified: opencode killed with ctrl-c, session
+  gone). So `alternate-screen off` only pays off if something reads the pane *before* the
+  process exits, or if the viewer terminal is made to hold the window open.
+- Both are **window** options, settable per session (`set-option -t <session> -w ...`), so
+  any of this can be scoped to `ctx-` sessions without touching global tmux config.
+
+The cost of `alternate-screen off` looked smaller than expected - a short Claude session
+left 25 lines of scrollback, since it redraws in place rather than appending - but that
+was a session with no real work in it.
+
+**Wants a hands-on test before anything is built**: run a real session with
+`alternate-screen off` and see whether the churn is tolerable over hours, and confirm what
+the agents actually print on exit (opencode printed *nothing* on `/exit`, and a Claude
+session with nothing worth resuming printed no resume hint either).
+
+If it turns out to be worth it, the shape is a setting defaulting off, applied by
+`_spawn_session` and by the shell wrappers, plus somewhere for the last frame to land that
+is not a pane about to be destroyed.
+
 ## Let the other launchers pick a harness
 
 The conversation toolbar now launches whichever harness the conversation belongs to, but
