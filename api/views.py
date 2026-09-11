@@ -750,6 +750,13 @@ def _tmux_session_name(cwd, mode="singleton", source="claude"):
     an opencode launch in a directory that already has a live Claude session
     would look ``reused`` and its prompt would be typed into Claude. Claude
     keeps the bare name so existing sessions stay addressable.
+
+    **Session-name registry on this box** (2026-09-11): ``ctx-`` is ours - both
+    what we launch and what ``~/bin/claude`` / ``~/bin/opencode`` start, which
+    is what makes adoption work. ``panel-<id>`` belongs to controlpanel, which
+    now runs its dev services in tmux too; those are services, not
+    conversations, and ``_source_from_session_name`` ignores them because they
+    do not carry our prefix. Keep it that way.
     """
     cwd = os.path.abspath(cwd)
     base = os.path.basename(cwd.rstrip("/")) or "root"
@@ -926,6 +933,11 @@ def _spawn_session(
         else:
             logger.info("reusing live tmux session %s", name)
     else:
+        # `env=env` reaches the tmux *client*, and a new session gets the tmux
+        # *server's* environment - only tmux's `update-environment` list crosses
+        # over from us. That server can be days old and carry the environment of
+        # whatever started it, so nothing here can be relied on to arrive; it is
+        # why the shell wrappers source their keys file *inside* the command.
         rc, out = _tmux("new-session", "-d", "-s", name, "-c", cwd, "--", *cmd, env=env)
         if rc != 0:
             logger.error("tmux new-session failed (%d): %s", rc, out)
