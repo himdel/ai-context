@@ -488,6 +488,26 @@ def _tmux_sessions():
     return result
 
 
+def _tmux_session_details():
+    """Return {session_name: (start_dir, created_unixtime)}.
+
+    Separate from `_tmux_sessions` because only session adoption needs it, and
+    that runs far less often than the pid lookup does.
+    """
+    rc, out = _tmux(
+        "list-sessions", "-F", "#{session_name}\t#{session_path}\t#{session_created}"
+    )
+    result = {}
+    if rc != 0:
+        return result
+    for line in out.splitlines():
+        name, _, rest = line.partition("\t")
+        path, _, created = rest.partition("\t")
+        if name and path:
+            result[name] = (path, int(created) if created.isdigit() else 0)
+    return result
+
+
 def _tmux_send(name, text, submit=True):
     """Type ``text`` into a tmux session, optionally submitting with Enter."""
     rc, _ = _tmux("send-keys", "-t", name, "-l", "--", text)
@@ -570,34 +590,86 @@ def _session_files():
     return result
 
 
-def _record_launch(name, source, cwd, conversation_id=""):
+def _record_launch(name, source, cwd, conversation_id="", started_at=None):
     """Remember that we started `name`, so its conversation stays knowable."""
     from api.models import LaunchedSession
 
+    defaults = {
+        "source": source,
+        "cwd": os.path.abspath(cwd),
+        "conversation_id": conversation_id,
+    }
+    if started_at is not None:
+        defaults["started_at"] = started_at
     try:
-        LaunchedSession.objects.update_or_create(
-            tmux_session=name,
-            defaults={
-                "source": source,
-                "cwd": os.path.abspath(cwd),
-                "conversation_id": conversation_id,
-            },
-        )
+        LaunchedSession.objects.update_or_create(tmux_session=name, defaults=defaults)
     except Exception:
         logger.exception("could not record launch of %s", name)
+
+
+def _source_from_session_name(name):
+    """The harness a `ctx-...` tmux session belongs to, or "" if not one of ours.
+
+    Reads back what `_tmux_session_name` writes: `<prefix>-<dir>-<hash>`, then
+    the harness key for everything but Claude, then a numeric suffix when the
+    name was already taken. Claude is the default precisely because its own
+    sessions carry no key - both ours and the ones its shell wrapper starts.
+    """
+    prefix = f"{settings.TMUX_SESSION_PREFIX}-"
+    if not name.startswith(prefix):
+        return ""
+    parts = name[len(prefix) :].split("-")
+    if parts and parts[-1].isdigit():
+        parts.pop()
+    if len(parts) < 2:
+        return ""
+    return parts[-1] if harness.get(parts[-1]) is not None else "claude"
+
+
+def _adopt_tmux_sessions(live):
+    """Record `ctx-` tmux sessions we did not start, so they count as live.
+
+    A session started from a shell wrapper (`~/bin/claude`, `~/bin/opencode`)
+    names itself the way we do, which is the whole point: adopting it here
+    means a terminal-started session is paired to its conversation by exactly
+    the same path as one launched from the UI. Claude does not need this - its
+    own session file names its conversation - but it costs nothing and covers
+    the gap before that file is written.
+    """
+    from api.models import LaunchedSession
+
+    try:
+        known = set(LaunchedSession.objects.values_list("tmux_session", flat=True))
+    except Exception:
+        logger.exception("could not read launched sessions")
+        return
+    unknown = [n for n in live if n not in known and _source_from_session_name(n)]
+    if not unknown:
+        return
+    details = _tmux_session_details()
+    for name in unknown:
+        path, created = details.get(name, ("", 0))
+        if not path or not created:
+            # Without a real start time `identify` would be free to match any
+            # session ever created in that directory. Rather not guess.
+            continue
+        started = datetime.fromtimestamp(created, timezone.utc)
+        logger.info("adopting tmux session %s (%s)", name, path)
+        _record_launch(name, _source_from_session_name(name), path, started_at=started)
 
 
 def _resolve_launched_sessions(live):
     """Pair our launches to conversations, and forget the dead ones.
 
-    Returns {tmux_session: row} for live sessions we started. A launch we
-    handed a session id to is already paired; the rest - a new session, or a
-    fork, where the harness picks the id - are asked about on every call until
-    the harness has one to give, which for opencode is the moment the first
-    message lands.
+    Returns {tmux_session: row} for live sessions we know about. A launch we
+    handed a session id to is already paired; the rest - a new session, a fork,
+    or an adopted one, where the harness picks the id - are asked about on every
+    call until the harness has one to give, which for opencode is the moment the
+    first message lands.
     """
     from api.models import LaunchedSession
 
+    _adopt_tmux_sessions(live)
     try:
         rows = list(LaunchedSession.objects.all())
     except Exception:
@@ -606,6 +678,10 @@ def _resolve_launched_sessions(live):
 
     paired = {}
     dead = []
+    # Two sessions in one directory must not resolve to the same conversation:
+    # the first to claim an id keeps it, and the other stays unpaired rather
+    # than showing the wrong transcript.
+    claimed = {r.conversation_id for r in rows if r.conversation_id}
     for row in rows:
         if row.tmux_session not in live:
             dead.append(row.pk)
@@ -618,9 +694,10 @@ def _resolve_launched_sessions(live):
                 except Exception:
                     logger.exception("harness %s failed identify()", row.source)
                     found = ""
-                if found:
+                if found and found not in claimed:
                     row.conversation_id = found
                     row.save(update_fields=["conversation_id"])
+                    claimed.add(found)
         paired[row.tmux_session] = row
     if dead:
         LaunchedSession.objects.filter(pk__in=dead).delete()

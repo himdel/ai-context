@@ -149,27 +149,35 @@ class OpencodeHarness(base.Harness):
         return argv
 
     def identify(self, cwd, since_ms):
-        """Newest session in `cwd` created since `since_ms`, or "".
+        """The session in `cwd` that a process started at `since_ms` is in, or "".
 
         opencode has no liveness signal we can read - its lock directories are
-        transient and hash a project rather than a session - so a launch we did
-        not hand a session id has to be recognized by what it writes. A session
-        row only appears once the first message is sent, so this returns ""
-        for a TUI that is open but untouched, which is the honest answer.
+        transient and hash a project rather than a session - so a session we
+        did not hand an id to has to be recognized by what it writes. A row
+        only appears once the first message is sent, so this returns "" for a
+        TUI that is open but untouched, which is the honest answer.
+
+        Created-since is tried first and is the strong signal: a session that
+        came into existence after the process did belongs to it. Updated-since
+        is the fallback, and the only thing that can identify `opencode -c` or
+        a resume started from a shell, where the row long predates the process.
         """
-        try:
-            with _connect(self.db_path) as conn:
-                row = conn.execute(
-                    "select id from session"
-                    " where directory = ? and time_created >= ?"
-                    " and parent_id is null"
-                    " order by time_created desc limit 1",
-                    (cwd, since_ms),
-                ).fetchone()
-        except (sqlite3.Error, TypeError):
-            logger.exception("opencode identify failed")
-            return ""
-        return row["id"] if row else ""
+        for column in ("time_created", "time_updated"):
+            try:
+                with _connect(self.db_path) as conn:
+                    row = conn.execute(
+                        "select id from session"
+                        f" where directory = ? and {column} >= ?"
+                        " and parent_id is null"
+                        f" order by {column} desc limit 1",
+                        (cwd, since_ms),
+                    ).fetchone()
+            except (sqlite3.Error, TypeError):
+                logger.exception("opencode identify failed")
+                return ""
+            if row:
+                return row["id"]
+        return ""
 
     # -- discovery ---------------------------------------------------------
 

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class ForgePR(models.Model):
@@ -68,10 +69,15 @@ class LaunchedSession(models.Model):
     `_resolve_launched_sessions` in views.
 
     Rows are pruned when their tmux session dies, so this stays small.
+
+    A session started from a shell rather than from here is adopted on sight
+    (`_adopt_tmux_sessions`), which is why `started_at` is settable rather than
+    `auto_now_add` - an adopted row takes tmux's own creation time, not the
+    moment we noticed it.
     """
 
     tmux_session = models.CharField(max_length=128, unique=True)
     source = models.CharField(max_length=32, default="claude")
     cwd = models.CharField(max_length=512, default="")
     conversation_id = models.CharField(max_length=64, blank=True, default="")
-    started_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(default=timezone.now)
