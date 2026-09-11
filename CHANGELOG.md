@@ -4,6 +4,29 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-09-11
+
+### Action required
+
+- New migration: `make migrate` (`migrate-<name>` per extra instance).
+  - **Breaks:** the server refuses to start with unapplied migrations.
+  - **Cope:** run it. The new table records sessions this app launches.
+- New sessions no longer reuse the live session for a directory.
+  - **Breaks:** `POST /api/sessions/new` and the `+` buttons now always start a
+    session instead of typing `prompt` into the one already running there.
+  - **Cope:** to talk to a live session, use `POST /api/sessions/send`.
+
+### New features
+
+- Launch, resume and fork opencode sessions from the UI, same buttons as
+  Claude. Set `OPENCODE_CMD` in `settings_local.py` if `opencode` is not on
+  PATH or in `~/.opencode/bin`.
+- opencode conversations show as active while running, and the session bar
+  works for them. This only covers sessions started from contexts - opencode
+  publishes nothing we can read about ones started elsewhere.
+- A session whose command is missing or dies on startup now returns an error
+  instead of reporting success with a dead session.
+
 ## 2026-09-09
 
 ### Action required

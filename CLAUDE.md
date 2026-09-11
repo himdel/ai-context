@@ -97,14 +97,7 @@ ordinary fixes and refactors.
 
 ## Known gaps
 
-- **`POST /api/sessions/new` cannot force a new session.** `_spawn_session` is called with
-  the default `mode="singleton"`, and `_tmux_session_name` derives the tmux name from `cwd`
-  alone. If a session is already live for that directory the endpoint returns
-  `"reused": true` and delivers `prompt` to the *existing* session via tmux `send-keys`,
-  which also collapses a multi-line prompt onto one line. So an agent asking for a new
-  session in the directory it is already running in just types the prompt into itself.
-  `_tmux_session_name` already implements `mode="new"` (lowest free numeric suffix) - the
-  fix is to let `session_new` accept a `mode` (or `force`/`new`) parameter and pass it
-  through. Until then the workaround is `POST /api/terminal/run` with
-  `{"cmd": ["claude.personal", "<prompt>"], "cwd": "..."}`, which bypasses the singleton
-  path and keeps the prompt intact as one argv element.
+- **Launching an agent needs a harness that implements `launch_argv`.** `POST
+  /api/sessions/new` takes a `source` (default `claude`); resume and fork take the
+  conversation's own. A harness we can only read returns None there and gets no session
+  buttons - `can_launch` in the conversation payload says which. See `docs/HARNESSES.md`.

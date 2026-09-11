@@ -21,6 +21,10 @@ separate database.
 at opencode's database. An adapter whose data is absent reports `available() is False` and
 is skipped silently, so naming one costs nothing on a machine that does not have it.
 
+`CLAUDE_CMD` and `OPENCODE_CMD` name the binaries to launch. Bare names are fine - they
+are resolved against PATH and the usual per-user install dirs - but an override in
+`settings_local` can point at an absolute path.
+
 ## The contract
 
 ```python
@@ -33,6 +37,10 @@ class Harness:
     def load(self, conversation_id) -> Conversation | None
     def owns(self, conversation_id) -> bool         # must be cheap
     def active_ids(self)           -> set[str]      # empty when not detectable
+
+    # optional - a read-only harness just gets no session buttons
+    def launch_argv(self, *, conversation_id="", prompt="", fork=False) -> list | None
+    def identify(self, cwd, since_ms) -> str        # "" until it can be told
 ```
 
 Nothing here may raise on missing or unreadable data. One broken harness must not take
@@ -113,8 +121,55 @@ opens it read-only, autocommit, and short-lived, and the docstring there explain
 of those matters - read it before changing how it opens. In particular: **never pass
 `immutable=1`**, which silently ignores the WAL and returns stale or torn data.
 
+## Launching
+
+`launch_argv` is the only place that knows an agent's flags. They do not rhyme - Claude
+resumes with `--resume <id>` and forks with `--fork-session`; opencode resumes with
+`--session <id>`, forks with `--fork`, and takes a starting prompt as `--prompt` rather
+than a positional. Returning None means "readable but not launchable", and the UI drops
+the session buttons for that conversation (`can_launch` in the detail payload).
+
+Three rules the substrate enforces around it:
+
+- **The harness key is part of the tmux session name** for everything but Claude. Without
+  it, an opencode launch in a directory that already has a live Claude session looks like
+  a reuse, and its prompt gets typed into Claude.
+- **argv[0] is resolved before tmux sees it.** A tmux server keeps the environment it
+  started with, and this server's own PATH depends on how it was launched - neither
+  reliably has `~/.opencode/bin`. `_resolve_cmd` tries our PATH, then the usual per-user
+  install dirs, and fails loudly rather than handing tmux a name it cannot find.
+- **A session that dies on startup is an error**, not `{"status": "ok", "pid": null}`.
+
+Sessions are started with `mode="new"`. The `singleton` mode - one live session per
+directory, with a prompt delivered by send-keys - is only right for a caller that
+explicitly wants that, and nothing does.
+
+## Knowing which conversation a session is in
+
+Claude writes `CLAUDE_DIR/sessions/<pid>.json` naming its own conversation, so its live
+sessions are knowable without our help - that is what `active_ids` reads.
+
+Nothing else does. opencode has no liveness signal at all: its lock directories under
+`~/.local/state/opencode/locks/` are transient, hash a project rather than a session, and
+are gone seconds after startup; the database has no column for it; and a session row does
+not exist until the first message is sent.
+
+So the link exists because we recorded the launch. `LaunchedSession` stores the tmux
+session, harness, cwd and start time, and `_resolve_launched_sessions` (`views.py`) fills
+in the conversation:
+
+- A **resume** was handed an id, so it is paired from the start - exact, no guessing.
+- A **new session or a fork** gets its id from the harness, via `identify(cwd, since_ms)`:
+  the newest top-level session in that directory started after we launched. It is asked on
+  every poll and answers "" until there is something to answer with, so a TUI sitting open
+  and untouched simply has no conversation yet.
+
+Rows are pruned when their tmux session dies. `_active_session_ids` is the union of what
+the harnesses report and what these records pair, which is what makes an opencode
+conversation show as live and makes the "already active" guard on resume work for it.
+
 ## Claude-only features
 
-Plans, skills, memories and the tmux session substrate read `CLAUDE_DIR` directly and are
-not part of this abstraction. They reach it through `harness.claude_adapter()` so those
-paths stay in one module. Launching a session from the UI is Claude-only too.
+Plans, skills and memories read `CLAUDE_DIR` directly and are not part of this
+abstraction. They reach it through `harness.claude_adapter()` so those paths stay in one
+module.

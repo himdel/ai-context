@@ -50,43 +50,12 @@ Needs a spike to confirm current claude ACP-server support, and whether tmux and
 share one session. **Noted from memory, not research - verify the specifics before
 betting on any of it.**
 
-## Launch opencode sessions from the UI
+## Let the other launchers pick a harness
 
-opencode 1.18.30 has everything the session bar needs (verified 2026-09-11 from
-`opencode --help` / `opencode run --help`), only under different flag names than Claude:
-
-| | Claude | opencode |
-|---|---|---|
-| resume | `--resume <id>` | `-s, --session <ses_...>` (or `-c` for the last one) |
-| fork | `--resume <id> --fork-session` | `--session <id> --fork` |
-| new with a prompt | `claude "<prompt>"` | `opencode --prompt "<prompt>"` |
-
-Both flag sets exist on the TUI entrypoint and on `opencode run` (headless), so a tmux
-session works the same way. Session ids are the `ses_...` ids already stored in the index,
-so `harness.owner_of()` is enough to pick the argv.
-
-What is missing is purely on our side - the toolbar and every launcher hardcode Claude:
-
-- `static/index.html:1243` renders `+` / resume / fork unconditionally, ignoring
-  `data.source` (which the detail payload already carries). On an opencode conversation
-  resume and fork 404 (`_find_conversation` only looks for a Claude `.jsonl`) and show a
-  bare "x"; `+` is worse - it succeeds, launching *Claude* in an opencode conversation's
-  directory with no hint that it switched harness.
-- `session_new` / `session_resume` / `session_fork` (`api/views.py`) hardcode
-  `settings.CLAUDE_CMD`. There is no `OPENCODE_CMD`.
-- The other launchers - new-session screen (`index.html:521`), plans `/plan` picker
-  (`:617`), repos `+ New` (`:778`), skills (`skills.js:333,361`) - are all Claude by
-  construction. Some of those should stay Claude-only (skills, plans); the repo and
-  new-session ones want a harness choice.
-
-**Trap before any of this ships:** `_tmux_session_name` derives the singleton name from
-`cwd` alone, so an opencode launch in a directory that already has a live Claude session
-would be treated as `reused` and send-keys the prompt into *Claude*. The harness key has
-to be part of the session name (or the launch has to be `mode="new"`).
-
-Related: the "already active" 409 guard in `session_resume` leans on `_active_session_ids()`,
-and opencode never reports active (see `STATE.md`), so nothing stops resuming a session that
-is open in another opencode TUI.
+The conversation toolbar now launches whichever harness the conversation belongs to, but
+the launchers that start from nothing still assume Claude: the new-session screen and the
+repos `+ New` button. Both want a harness picker, defaulting to Claude. The plans `/plan`
+picker and the skills launchers are correctly Claude-only - those are Claude features.
 
 ## Repo maps (aider-style)
 

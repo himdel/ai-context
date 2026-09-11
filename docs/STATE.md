@@ -1,6 +1,6 @@
 # State
 
-_Last updated: 2026-09-09_
+_Last updated: 2026-09-11_
 
 ## Where we are
 
@@ -22,20 +22,22 @@ Subagents are first-class: nested inline in the conversation *and* listed under 
 parent in the sidebar, openable on their own. Cost is own-cost per row, with the rollup
 computed at read time.
 
-The tmux substrate (2026-08-22..24) is unchanged and remains Claude-only, as do plans,
-skills and memories - they reach `CLAUDE_DIR` through `harness.claude_adapter()`.
+**Sessions are launched per harness too** (2026-09-11). `launch_argv` on the adapter owns
+the flags, `LaunchedSession` records what we started so an opencode conversation can show
+as active, and a new session no longer reuses the live one for its directory. The tmux
+substrate (2026-08-22..24) is otherwise unchanged. Plans, skills and memories stay
+Claude-only - they reach `CLAUDE_DIR` through `harness.claude_adapter()`.
 
-Multi-instance (2026-07-16) is in use: work on :8062, personal on :8063. opencode is
-enabled on work only.
+Multi-instance (2026-07-16) is in use: default on :8062, personal on :8063. Which
+harnesses each one reads is per-instance `settings_local` and differs by machine.
 
 ## Known gaps
 
-- **`POST /api/sessions/new` cannot force a new session** - see the Known gaps section in
-  `../CLAUDE.md` for the full trap and the workaround.
-- **opencode conversations never show as active.** Its lock files carry a pid but hash to
-  a project, not a session, so `active_ids()` returns empty rather than guessing.
-- **Sessions can only be launched for Claude.** `_spawn_session` and the session bar are
-  Claude-only; opencode conversations are read-only in the UI.
+- **The launchers that start from nothing are still Claude-only** - the new-session screen
+  and the repos `+ New` button. See `IDEAS.md`.
+- **opencode sessions started outside contexts never show as active.** opencode publishes
+  nothing we can read; liveness comes from our own `LaunchedSession` records, so a TUI
+  someone started in a terminal is invisible.
 - **Cron runs leave idle tmux sessions behind.** See `IDEAS.md`.
 - `/api/sessions` lists *all* tmux sessions, including non-claude ones with an empty
   `conversation_id`; the frontend filters by `conversation_id` so they are ignored. The
@@ -46,5 +48,6 @@ enabled on work only.
 ## Next
 
 Nothing scheduled. The obvious follow-ons are a codex adapter and a goose adapter, now
-that the contract has been proven against two very different formats. `IDEAS.md` holds
-the rest of the backlog.
+that the contract has been proven against two very different formats - and launching is
+part of the contract now, so a third adapter tests both halves. `IDEAS.md` holds the rest
+of the backlog.

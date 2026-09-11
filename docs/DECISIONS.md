@@ -8,6 +8,45 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-11 - sessions are launched per harness, and a new session is a new session
+
+Reading opencode conversations but only ever launching Claude was worse than it looked.
+The `+` button on an opencode conversation *worked* - it started Claude in that directory,
+silently switching agent - while resume and fork 404'd on a transcript that was never
+going to exist. So launching joins the harness abstraction: `launch_argv` is the only
+place that knows an agent's flags, and a harness that declines to implement it just loses
+its session buttons (`can_launch`).
+
+**`mode="new"` is now the default.** `singleton` - one live session per directory, with
+any prompt delivered to it by send-keys - was the default because reusing a warm session
+felt thrifty. It meant an agent asking for a new session in its own directory typed the
+prompt into *itself*, with a multi-line prompt collapsed onto one line; and because the
+name was derived from `cwd` alone, resuming conversation A in a directory where B was live
+reused B's session and never resumed A at all. The one caller with a real reason to want
+one-session-per-repo is cron, and it had already opted out for its own reasons. The mode
+stays in the signature; nothing passes it.
+
+**Two things had been quietly turning failures into successes**, both found launching
+opencode for the first time:
+
+- A tmux server keeps the environment it was started with - on this machine, a PATH from
+  weeks ago without `~/.opencode/bin`. This server's own PATH came from a node toolchain
+  and lacked it too. Hence `_resolve_cmd`: resolve argv[0] here, against our PATH and the
+  usual per-user install dirs, and fail loudly instead of handing tmux a bare name.
+- `tmux new-session` returns 0 for a command that starts and immediately dies, so the
+  endpoint answered `{"status": "ok", "pid": null}`. A missing pane right after creation
+  is now a 500.
+
+**Knowing which conversation an opencode session is in is our job, not opencode's.** It
+has no liveness signal worth reading - the lock directories are transient, hash a project
+rather than a session, and vanish seconds after startup; there is no column for it; and a
+session row does not exist until the first message is sent. Polling the database for
+recently-updated sessions was rejected: "updated 30s ago" is not "live", and an open idle
+TUI would read as dead. So we record what we launch (`LaunchedSession`) and ask the
+adapter to name it (`identify`) until it can. A resume is exact. A fork or a fresh session
+is the newest session in that directory started after we launched - a guess, but bounded
+by directory and time, and only ever made among sessions we caused.
+
 ## 2026-09-09 - conversations come from a harness adapter, not from a JSONL file
 
 Claude's on-disk format had stopped being merely the *source* of conversations and had

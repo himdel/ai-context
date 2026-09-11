@@ -110,10 +110,15 @@ Python packages are managed by `uv` (see `pyproject.toml`). The app also shells
 out to a few external tools:
 
 - **Required:** `git`, and the `claude` CLI (configurable via `CLAUDE_CMD`).
-- **Default, with fallback:** `tmux` — Claude sessions run inside a headless
-  tmux session by default (enabling naming, reuse, and reliable
-  conversation pairing). If `tmux` is absent the app falls back to launching a
-  terminal directly. On macOS install it with `brew install tmux`.
+- **Optional:** the `opencode` CLI (`OPENCODE_CMD`), needed only to launch,
+  resume or fork opencode sessions. Reading its conversations needs nothing but
+  the database. A bare name is resolved against `PATH` and the usual per-user
+  install dirs, `~/.opencode/bin` included; set an absolute path if yours is
+  somewhere else.
+- **Default, with fallback:** `tmux` — sessions run inside a headless tmux
+  session by default (enabling naming, reuse, and reliable conversation
+  pairing). If `tmux` is absent the app falls back to launching a terminal
+  directly. On macOS install it with `brew install tmux`.
 - **Optional:** a terminal emulator for the *viewer* window (Linux: `$TERMINAL`,
   else the first known one on `PATH` - Ptyxis, ghostty, kitty, foot, GNOME
   Terminal, konsole, urxvt, xterm and friends; macOS: Terminal.app or iTerm via
@@ -135,9 +140,14 @@ HARNESSES = ["claude", "opencode"]
 ```
 
 - **Optional:** [opencode](https://opencode.ai). Its conversations live in a SQLite
-  database at `~/.local/share/opencode/opencode.db` (`OPENCODE_DB`). No binary is
-  invoked — the file is read strictly read-only and is safe to read while opencode
-  is running. If it is missing, the harness is skipped silently.
+  database at `~/.local/share/opencode/opencode.db` (`OPENCODE_DB`), read strictly
+  read-only and safe to read while opencode is running. If it is missing, the
+  harness is skipped silently.
+
+Sessions can be launched, resumed and forked for any harness that knows how, with
+the same buttons — the conversation's own agent is the one that starts, never a
+hardcoded one. opencode publishes no liveness signal of its own, so a session only
+shows as active if contexts started it.
 
 Adding another agent means writing one adapter; see `docs/HARNESSES.md`.
 
