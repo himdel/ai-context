@@ -8,6 +8,29 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-11 - a session is ours if tmux says it is named like ours
+
+Sessions started in a terminal were invisible, and for opencode that was most of them.
+Three ways to fix it were on the table:
+
+- **Have the wrapper register with the API** (`POST /api/sessions/adopt`). Rejected: the
+  shell would have to know which port and instance to talk to, and would fail silently
+  when contexts is not running - which is exactly when you would not notice.
+- **Read the agent's own state.** Fine for Claude, impossible for opencode, and it is the
+  thing the whole `LaunchedSession` mechanism exists to work around.
+- **Adopt by name.** A tmux session named `ctx-<dir>-<hash>[-<harness>]` is claimed on
+  sight, with the directory and start time read from tmux itself.
+
+Adoption by name won because it inverts the dependency: the shell wrapper needs to know
+nothing about contexts except a naming convention, contexts needs to know nothing about
+the wrapper, and either can be absent. It also costs nothing to *not* use - a session not
+named that way is left alone - so the convention is the entire contract.
+
+The price is that the name now carries meaning and has to be parsed back
+(`_source_from_session_name`), which puts a second reader on a format
+`_tmux_session_name` used to own outright. Acceptable: the format is four fields, it is
+tested both directions, and an unrecognized key falls back to Claude rather than failing.
+
 ## 2026-09-11 - sessions are launched per harness, and a new session is a new session
 
 Reading opencode conversations but only ever launching Claude was worse than it looked.

@@ -22,8 +22,11 @@ git history for the full list of fixes and smaller changes.
   Claude. Set `OPENCODE_CMD` in `settings_local.py` if `opencode` is not on
   PATH or in `~/.opencode/bin`.
 - opencode conversations show as active while running, and the session bar
-  works for them. This only covers sessions started from contexts - opencode
-  publishes nothing we can read about ones started elsewhere.
+  works for them.
+- Sessions started from a shell are adopted, if their tmux session is named
+  the way contexts names its own (`ctx-<dir>-<hash>`, plus the harness key for
+  anything but Claude). Wrap your agent in `tmux new-session -s <that name>`
+  and a terminal-started session appears in the UI with a working session bar.
 - A session whose command is missing or dies on startup now returns an error
   instead of reporting success with a dead session.
 

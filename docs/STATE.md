@@ -24,7 +24,9 @@ computed at read time.
 
 **Sessions are launched per harness too** (2026-09-11). `launch_argv` on the adapter owns
 the flags, `LaunchedSession` records what we started so an opencode conversation can show
-as active, and a new session no longer reuses the live one for its directory. The tmux
+as active, and a new session no longer reuses the live one for its directory. Sessions
+started from a shell are adopted on sight if their tmux session is named the way we name
+ours, which is what the `~/bin/claude` and `~/bin/opencode` wrappers arrange. The tmux
 substrate (2026-08-22..24) is otherwise unchanged. Plans, skills and memories stay
 Claude-only - they reach `CLAUDE_DIR` through `harness.claude_adapter()`.
 
@@ -35,9 +37,10 @@ harnesses each one reads is per-instance `settings_local` and differs by machine
 
 - **The launchers that start from nothing are still Claude-only** - the new-session screen
   and the repos `+ New` button. See `IDEAS.md`.
-- **opencode sessions started outside contexts never show as active.** opencode publishes
-  nothing we can read; liveness comes from our own `LaunchedSession` records, so a TUI
-  someone started in a terminal is invisible.
+- **An adopted session that is resuming shows no conversation until it is used.** opencode
+  publishes nothing we can read, so `identify` recognizes a resumed session only once its
+  row is touched. A session started in a terminal *outside* a `ctx-` tmux session is
+  invisible entirely - that is what the shell wrappers are for.
 - **Cron runs leave idle tmux sessions behind.** See `IDEAS.md`.
 - `/api/sessions` lists *all* tmux sessions, including non-claude ones with an empty
   `conversation_id`; the frontend filters by `conversation_id` so they are ignored. The

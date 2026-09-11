@@ -146,8 +146,13 @@ HARNESSES = ["claude", "opencode"]
 
 Sessions can be launched, resumed and forked for any harness that knows how, with
 the same buttons — the conversation's own agent is the one that starts, never a
-hardcoded one. opencode publishes no liveness signal of its own, so a session only
-shows as active if contexts started it.
+hardcoded one.
+
+Sessions you start in a terminal show up too, if you launch them inside a tmux
+session named the way contexts names its own — `ctx-<dir>-<hash>`, plus the
+harness key for anything but Claude. A small shell wrapper that re-execs the real
+binary under `tmux new-session -s <that name>` is the whole integration; contexts
+adopts anything matching and leaves everything else alone.
 
 Adding another agent means writing one adapter; see `docs/HARNESSES.md`.
 

@@ -168,6 +168,25 @@ Rows are pruned when their tmux session dies. `_active_session_ids` is the union
 the harnesses report and what these records pair, which is what makes an opencode
 conversation show as live and makes the "already active" guard on resume work for it.
 
+### Adopting sessions started from a shell
+
+A session started in a terminal is recorded the same way, as long as its tmux session is
+named the way we name ours: `_adopt_tmux_sessions` claims any live `ctx-` session it has
+no row for, reading the harness back out of the name and taking the start directory and
+creation time from tmux itself. From there it is indistinguishable from one we launched.
+
+That makes a shell wrapper the whole integration. `~/bin/claude` and `~/bin/opencode` on
+lorien re-exec the real binary inside `tmux new-session -s ctx-<dir>-<hash>[-<harness>]`,
+which is all it takes for a terminal-started session to appear in the UI with a working
+session bar. Anything that names its session that way gets adopted; nothing else is
+touched.
+
+The catch is what `identify` can then say. A session created after the process started is
+found outright. A *resumed* one is not - its row predates the process - so the fallback
+matches on `time_updated` instead, which only becomes true once the user sends something.
+An adopted TUI sitting at an empty prompt therefore shows as a live session with no
+conversation attached, which is the truth.
+
 ## Claude-only features
 
 Plans, skills and memories read `CLAUDE_DIR` directly and are not part of this
