@@ -56,3 +56,22 @@ class CronJobRun(models.Model):
     trigger_type = models.CharField(max_length=10, default="scheduled")
     pid = models.IntegerField(null=True, blank=True)
     tmux_session = models.CharField(max_length=128, blank=True, default="")
+
+
+class LaunchedSession(models.Model):
+    """A tmux session this app started, and the conversation it works in.
+
+    Claude writes a session file keyed by pid, so its conversation can be read
+    off the process itself. No other harness does, and opencode has nothing we
+    can read at all - so for those, the link only exists because we recorded
+    the launch. `conversation_id` is blank until the harness commits one; see
+    `_resolve_launched_sessions` in views.
+
+    Rows are pruned when their tmux session dies, so this stays small.
+    """
+
+    tmux_session = models.CharField(max_length=128, unique=True)
+    source = models.CharField(max_length=32, default="claude")
+    cwd = models.CharField(max_length=512, default="")
+    conversation_id = models.CharField(max_length=64, blank=True, default="")
+    started_at = models.DateTimeField(auto_now_add=True)
