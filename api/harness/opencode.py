@@ -133,6 +133,44 @@ class OpencodeHarness(base.Harness):
     def owns(self, conversation_id):
         return conversation_id.startswith("ses_")
 
+    # -- launching ---------------------------------------------------------
+
+    def launch_argv(self, *, conversation_id="", prompt="", fork=False):
+        # opencode spells all three differently from Claude: resume is
+        # `--session` (not `--resume`), fork is `--fork`, and a starting prompt
+        # is a flag rather than a positional. Verified against 1.18.30.
+        argv = [settings.OPENCODE_CMD]
+        if conversation_id:
+            argv += ["--session", conversation_id]
+            if fork:
+                argv.append("--fork")
+        if prompt:
+            argv += ["--prompt", prompt]
+        return argv
+
+    def identify(self, cwd, since_ms):
+        """Newest session in `cwd` created since `since_ms`, or "".
+
+        opencode has no liveness signal we can read - its lock directories are
+        transient and hash a project rather than a session - so a launch we did
+        not hand a session id has to be recognized by what it writes. A session
+        row only appears once the first message is sent, so this returns ""
+        for a TUI that is open but untouched, which is the honest answer.
+        """
+        try:
+            with _connect(self.db_path) as conn:
+                row = conn.execute(
+                    "select id from session"
+                    " where directory = ? and time_created >= ?"
+                    " and parent_id is null"
+                    " order by time_created desc limit 1",
+                    (cwd, since_ms),
+                ).fetchone()
+        except (sqlite3.Error, TypeError):
+            logger.exception("opencode identify failed")
+            return ""
+        return row["id"] if row else ""
+
     # -- discovery ---------------------------------------------------------
 
     def list_refs(self):

@@ -103,6 +103,7 @@ HARNESSES = ["claude"]
 
 # opencode's database. Read-only and never written; see api/harness/opencode.py.
 OPENCODE_DB = Path.home() / ".local/share/opencode/opencode.db"
+OPENCODE_CMD = "opencode"
 
 # Session substrate + viewer defaults, autodetected for the current machine.
 # All of these can be overridden in settings_local (see below).

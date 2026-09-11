@@ -6,6 +6,7 @@ import mimetypes
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,8 +33,17 @@ _KNOWN_FORGE_DOMAINS = {
 
 
 def _active_session_ids():
-    """Return set of session IDs that have a running process."""
-    return harness.active_ids()
+    """Return set of session IDs that have a running process.
+
+    Two sources, unioned: what each harness can tell about its own processes
+    (Claude's session files; nothing at all from opencode), plus the tmux
+    sessions we started ourselves. The second is what makes an opencode
+    conversation ever show as live - see `_resolve_launched_sessions`.
+    """
+    ids = harness.active_ids()
+    ids |= {r["conversation_id"] for r in _session_registry() if r["conversation_id"]}
+    ids.discard("")
+    return ids
 
 
 @api_view(["GET"])
@@ -367,12 +377,16 @@ def conversation_detail(request, conversation_id):
                 "cache_read_tokens": ci.cache_read_tokens,
                 "cache_write_tokens": ci.cache_write_tokens,
                 **_usage_with_descendants(conversation_id, _cached_summary(ci)),
+                "can_launch": harness.can_launch(ci.source),
                 "file_missing": True,
             }
         )
 
     data = conv.detail()
     data["active"] = conversation_id in _active_session_ids()
+    # Whether the session buttons do anything, rather than the UI inferring it
+    # from a source name it would have to keep a list of.
+    data["can_launch"] = harness.can_launch(conv.source)
     data.update(_usage_with_descendants(conv.id, conv.usage()))
     return Response(data)
 
@@ -421,7 +435,7 @@ def _usage_with_descendants(conversation_id, own):
 
 
 def _find_conversation(conversation_id):
-    """Path to a Claude transcript. Claude-only: used by resume/fork and skills."""
+    """Path to a Claude transcript. Claude-only: used by cron skill pairing."""
     path, _ = harness.claude_adapter()._find_file(conversation_id)
     return path
 
@@ -556,20 +570,91 @@ def _session_files():
     return result
 
 
+def _record_launch(name, source, cwd, conversation_id=""):
+    """Remember that we started `name`, so its conversation stays knowable."""
+    from api.models import LaunchedSession
+
+    try:
+        LaunchedSession.objects.update_or_create(
+            tmux_session=name,
+            defaults={
+                "source": source,
+                "cwd": os.path.abspath(cwd),
+                "conversation_id": conversation_id,
+            },
+        )
+    except Exception:
+        logger.exception("could not record launch of %s", name)
+
+
+def _resolve_launched_sessions(live):
+    """Pair our launches to conversations, and forget the dead ones.
+
+    Returns {tmux_session: row} for live sessions we started. A launch we
+    handed a session id to is already paired; the rest - a new session, or a
+    fork, where the harness picks the id - are asked about on every call until
+    the harness has one to give, which for opencode is the moment the first
+    message lands.
+    """
+    from api.models import LaunchedSession
+
+    try:
+        rows = list(LaunchedSession.objects.all())
+    except Exception:
+        logger.exception("could not read launched sessions")
+        return {}
+
+    paired = {}
+    dead = []
+    for row in rows:
+        if row.tmux_session not in live:
+            dead.append(row.pk)
+            continue
+        if not row.conversation_id:
+            adapter = harness.get(row.source)
+            if adapter is not None:
+                try:
+                    found = adapter.identify(row.cwd, row.started_at.timestamp() * 1000)
+                except Exception:
+                    logger.exception("harness %s failed identify()", row.source)
+                    found = ""
+                if found:
+                    row.conversation_id = found
+                    row.save(update_fields=["conversation_id"])
+        paired[row.tmux_session] = row
+    if dead:
+        LaunchedSession.objects.filter(pk__in=dead).delete()
+    return paired
+
+
 def _session_registry():
-    """Merge live tmux sessions with Claude session files into UI records."""
+    """Merge live tmux sessions with per-harness session state into UI records.
+
+    Claude's own session file wins where there is one - it is written by the
+    process itself and survives a restart of this app. Our launch records cover
+    everything else, and the gap before Claude writes its file.
+    """
     if not settings.USE_TMUX:
         return []
     files = _session_files()
+    live = _tmux_sessions()
+    try:
+        launched = _resolve_launched_sessions(live)
+    except Exception:
+        logger.exception("launch pairing error")
+        launched = {}
     records = []
-    for name, pid in sorted(_tmux_sessions().items()):
+    for name, pid in sorted(live.items()):
         data = files.get(pid, {})
+        row = launched.get(name)
         records.append(
             {
                 "session": name,
                 "pid": pid,
-                "conversation_id": data.get("sessionId", ""),
-                "cwd": data.get("cwd", ""),
+                "conversation_id": data.get("sessionId", "")
+                or (row.conversation_id if row else ""),
+                "cwd": data.get("cwd", "") or (row.cwd if row else ""),
+                "source": row.source if row else "claude",
                 "status": data.get("status", ""),
                 "waiting_for": data.get("waitingFor", ""),
                 "claude_name": data.get("name", ""),
@@ -578,17 +663,24 @@ def _session_registry():
     return records
 
 
-def _tmux_session_name(cwd, mode="singleton"):
+def _tmux_session_name(cwd, mode="singleton", source="claude"):
     """Derive a tmux session name from a context path.
 
     ``singleton`` returns the stable per-context name; ``new`` appends the
     lowest free numeric suffix so a fresh session never collides.
+
+    The harness key is part of the name for everything but Claude. Without it
+    an opencode launch in a directory that already has a live Claude session
+    would look ``reused`` and its prompt would be typed into Claude. Claude
+    keeps the bare name so existing sessions stay addressable.
     """
     cwd = os.path.abspath(cwd)
     base = os.path.basename(cwd.rstrip("/")) or "root"
     base = re.sub(r"[^a-zA-Z0-9]+", "-", base).strip("-").lower() or "ctx"
     short = hashlib.sha1(cwd.encode()).hexdigest()[:4]
     name = f"{settings.TMUX_SESSION_PREFIX}-{base}-{short}"
+    if source and source != "claude":
+        name = f"{name}-{source}"
     if mode != "new":
         return name
     live = _tmux_sessions()
@@ -693,20 +785,61 @@ def _spawn_terminal(cmd, cwd):
         return Response({"error": "terminal emulator not found"}, status=500)
 
 
-def _spawn_session(cmd, cwd, *, mode="singleton", view=None, prompt=None):
-    """Launch a Claude session, preferring a headless tmux session with an
-    optional attached viewer terminal. Falls back to a plain terminal spawn
+# Per-user install dirs to check when a command is not on PATH. An agent
+# installed by its own one-line installer lands in one of these, and neither a
+# desktop-launched dev server nor a long-lived tmux server necessarily has them.
+_EXTRA_BIN_DIRS = (".opencode/bin", ".local/bin", "bin")
+
+
+def _resolve_cmd(cmd):
+    """Absolutize argv[0], or return None when the binary cannot be found.
+
+    Two different stale environments make this necessary. A tmux server keeps
+    whatever PATH it was started with - possibly weeks ago - so handing it a
+    bare name is a coin flip. And this server's own PATH depends on how it was
+    launched; the one running here came up from a node toolchain and has no
+    ~/.opencode/bin either. So: our PATH first, then the usual install dirs.
+    """
+    if not cmd:
+        return None
+    found = shutil.which(cmd[0])
+    if not found and not os.path.isabs(cmd[0]):
+        for d in _EXTRA_BIN_DIRS:
+            candidate = Path.home() / d / cmd[0]
+            if os.access(candidate, os.X_OK):
+                found = str(candidate)
+                break
+    if not found:
+        return None
+    return [found, *cmd[1:]]
+
+
+def _spawn_session(
+    cmd, cwd, *, mode="new", source="claude", view=None, prompt=None, conversation_id=""
+):
+    """Launch a coding-agent session, preferring a headless tmux session with
+    an optional attached viewer terminal. Falls back to a plain terminal spawn
     when tmux is unavailable.
 
-    When a singleton session is already live, ``prompt`` (if given) is delivered
-    to it via send-keys instead of starting a duplicate.
+    ``mode`` defaults to ``new``: a new session means a new session. The
+    ``singleton`` mode - reuse the live session for this directory, delivering
+    ``prompt`` to it via send-keys - is only right for a caller that explicitly
+    wants one conversation per repo, and nothing does today.
 
     Returns a DRF Response with {status, pid, session, reused, attached}.
     """
+    wanted = cmd[0] if cmd else ""
+    cmd = _resolve_cmd(cmd)
+    if cmd is None:
+        logger.error("%r not found on PATH", wanted)
+        return Response(
+            {"error": f"{wanted} not found - set its *_CMD to an absolute path"},
+            status=500,
+        )
     if not settings.USE_TMUX:
         return _spawn_terminal(cmd, cwd)
 
-    name = _tmux_session_name(cwd, mode)
+    name = _tmux_session_name(cwd, mode, source)
     env = _clean_env()
     reused = name in _tmux_sessions()
     if reused:
@@ -721,6 +854,15 @@ def _spawn_session(cmd, cwd, *, mode="singleton", view=None, prompt=None):
             logger.error("tmux new-session failed (%d): %s", rc, out)
             return Response({"error": "tmux failed to start session"}, status=500)
         logger.info("started tmux session %s: %s", name, cmd)
+        # tmux reports success for a command that starts and immediately dies -
+        # the pane goes with it, so an unlaunchable agent used to come back as
+        # {"status": "ok", "pid": null} and look like it worked. Whatever the
+        # process managed to print is the only diagnosis available, so say it.
+        if name not in _tmux_sessions():
+            out = out.strip() or "the command exited immediately"
+            logger.error("session %s died on startup: %s", name, out)
+            return Response({"error": f"session did not start: {out}"}, status=500)
+        _record_launch(name, source, cwd, conversation_id)
 
     want_view = settings.TERMINAL_VIEWER if view is None else view
     attached = _open_viewer(["tmux", "attach", "-t", name], env) if want_view else False
@@ -754,6 +896,7 @@ def terminal_run(request):
 @api_view(["POST"])
 def session_new(request):
     prompt = request.data.get("prompt", "").strip()
+    source = request.data.get("source", "").strip() or "claude"
 
     cwd = request.data.get("cwd", "")
     if cwd:
@@ -762,65 +905,62 @@ def session_new(request):
     else:
         cwd = str(Path.home())
 
-    cmd = settings.CLAUDE_CMD
-    return _spawn_session(
-        [cmd, prompt] if prompt else [cmd], cwd, prompt=prompt or None
-    )
+    argv = harness.launch_argv(source, prompt=prompt)
+    if argv is None:
+        return Response({"error": f"{source} cannot be launched"}, status=400)
+    return _spawn_session(argv, cwd, source=source)
+
+
+def _resume_target(request):
+    """(adapter, conversation_id, cwd) for a resume/fork, or an error Response."""
+    from api.models import ConversationIndex
+
+    conversation_id = request.data.get("conversation_id", "").strip()
+    if not conversation_id:
+        return Response({"error": "conversation_id is required"}, status=400)
+
+    ci = ConversationIndex.objects.filter(conversation_id=conversation_id).first()
+    adapter = harness.owner_of(conversation_id, ci.source if ci else "")
+    if adapter is None:
+        return Response({"error": "conversation not found"}, status=404)
+
+    cwd = request.data.get("cwd", "") or (ci.project if ci else "")
+    if not cwd or not Path(cwd).is_dir():
+        cwd = str(Path.home())
+    return adapter, conversation_id, cwd
 
 
 @api_view(["POST"])
 def session_resume(request):
-    conversation_id = request.data.get("conversation_id", "").strip()
-    if not conversation_id:
-        return Response({"error": "conversation_id is required"}, status=400)
+    target = _resume_target(request)
+    if isinstance(target, Response):
+        return target
+    adapter, conversation_id, cwd = target
 
     if conversation_id in _active_session_ids():
         return Response({"error": "session is already active"}, status=409)
 
-    jsonl_file = _find_conversation(conversation_id)
-    if not jsonl_file:
-        return Response({"error": "conversation not found"}, status=404)
-
-    cwd = request.data.get("cwd", "")
-    if not cwd:
-        try:
-            with open(jsonl_file) as f:
-                first_line = json.loads(f.readline())
-                cwd = first_line.get("cwd", "")
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    if not cwd or not Path(cwd).is_dir():
-        cwd = str(Path.home())
-
-    return _spawn_session([settings.CLAUDE_CMD, "--resume", conversation_id], cwd)
+    argv = harness.launch_argv(adapter.key, conversation_id=conversation_id)
+    if argv is None:
+        return Response({"error": f"{adapter.key} cannot be launched"}, status=400)
+    return _spawn_session(
+        argv, cwd, source=adapter.key, conversation_id=conversation_id
+    )
 
 
 @api_view(["POST"])
 def session_fork(request):
-    conversation_id = request.data.get("conversation_id", "").strip()
-    if not conversation_id:
-        return Response({"error": "conversation_id is required"}, status=400)
+    target = _resume_target(request)
+    if isinstance(target, Response):
+        return target
+    adapter, conversation_id, cwd = target
 
-    jsonl_file = _find_conversation(conversation_id)
-    if not jsonl_file:
-        return Response({"error": "conversation not found"}, status=404)
-
-    cwd = request.data.get("cwd", "")
-    if not cwd:
-        try:
-            with open(jsonl_file) as f:
-                first_line = json.loads(f.readline())
-                cwd = first_line.get("cwd", "")
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    if not cwd or not Path(cwd).is_dir():
-        cwd = str(Path.home())
-
-    return _spawn_session(
-        [settings.CLAUDE_CMD, "--resume", conversation_id, "--fork-session"], cwd
-    )
+    argv = harness.launch_argv(adapter.key, conversation_id=conversation_id, fork=True)
+    if argv is None:
+        return Response({"error": f"{adapter.key} cannot be launched"}, status=400)
+    # No conversation_id on the launch: a fork works in a *new* conversation
+    # whose id only the harness knows, so it gets resolved like a fresh one.
+    return _spawn_session(argv, cwd, source=adapter.key)
 
 
 @api_view(["GET"])

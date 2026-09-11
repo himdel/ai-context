@@ -1237,10 +1237,18 @@
               mainEl.innerHTML = '';
               setCurrentCwd(data.cwd || null);
 
+              // Every session button acts through the conversation's own
+              // harness, never a hardcoded one - launching Claude from an
+              // opencode conversation would be a silent switch of agent.
+              const harnessSource = data.source || 'claude';
+              const harnessName = data.source_label || harnessSource;
+
               const toolbar = document.createElement('div');
               toolbar.className = 'conversation-toolbar';
               toolbar.innerHTML =
-                '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="fork-conv" title="Fork and resume in terminal">&#x2442;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
+                '<span class="header-btns"><span class="scroll-bottom" title="Scroll to bottom">&#x2193;</span><span class="new-here" title="New ' +
+                esc(harnessName) +
+                ' session in this directory">+</span><span class="resume-conv" title="Resume in terminal">&#x25b6;</span><span class="fork-conv" title="Fork and resume in terminal">&#x2442;</span><span class="reload-conv" title="Reload">&#x21bb;</span><span class="close-conv" title="Close">&times;</span></span>';
               const project = data.cwd
                 ? data.cwd.replace(/^\/home\/[^/]+\//, '~/')
                 : '';
@@ -1382,7 +1390,10 @@
                 fetch('/api/sessions/new/', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ cwd: data.cwd }),
+                  body: JSON.stringify({
+                    cwd: data.cwd,
+                    source: harnessSource,
+                  }),
                 })
                   .then((r) => r.json().then((d) => ({ ok: r.ok, data: d })))
                   .then(({ ok }) => {
@@ -1392,7 +1403,13 @@
                     }, 2000);
                   });
               };
-              if (data.file_missing) {
+              // A harness we can only read gets no session buttons at all,
+              // rather than buttons that fail once pressed.
+              if (data.can_launch === false) {
+                ['.new-here', '.resume-conv', '.fork-conv'].forEach((sel) => {
+                  toolbar.querySelector(sel).style.display = 'none';
+                });
+              } else if (data.file_missing) {
                 toolbar.querySelector('.resume-conv').style.display = 'none';
                 toolbar.querySelector('.fork-conv').style.display = 'none';
               }

@@ -341,6 +341,21 @@ class ClaudeHarness(base.Harness):
                 ids.add(data.get("sessionId", ""))
         return ids
 
+    # -- launching ---------------------------------------------------------
+
+    def launch_argv(self, *, conversation_id="", prompt="", fork=False):
+        argv = [settings.CLAUDE_CMD]
+        if conversation_id:
+            argv += ["--resume", conversation_id]
+            if fork:
+                argv.append("--fork-session")
+        if prompt:
+            argv.append(prompt)
+        return argv
+
+    # `identify` stays the base no-op: Claude writes its own session file
+    # keyed by pid, which `active_ids` above already reads and is exact.
+
     # -- loading -----------------------------------------------------------
 
     def load(self, conversation_id):

@@ -213,3 +213,25 @@ class Harness:
     def active_ids(self):
         """Ids whose session is currently live. Empty when not detectable."""
         return set()
+
+    # -- launching ---------------------------------------------------------
+    #
+    # Optional: a harness we can only read still works, it just gets no
+    # session buttons in the UI. `launch_argv` returning None is the signal.
+
+    def launch_argv(self, *, conversation_id="", prompt="", fork=False):
+        """Argv that starts this harness, optionally resuming or forking.
+
+        Return None when this harness cannot be launched. The first element is
+        a command name; the caller resolves it against PATH.
+        """
+        return None
+
+    def identify(self, cwd, since_ms):
+        """Id of the session a just-launched process in `cwd` is working in.
+
+        Called only for a launch whose id we could not know up front (a new
+        session, or a fork). Return "" while it cannot be told yet - the caller
+        retries, so guessing early is worse than answering later.
+        """
+        return ""
