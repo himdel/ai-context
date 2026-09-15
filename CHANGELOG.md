@@ -4,6 +4,13 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-09-15
+
+### New features
+
+- `BIND = "0.0.0.0"` in `settings_local.py` makes contexts reachable from
+  other machines; see README, Remote access (`ecd3081`).
+
 ## 2026-09-11
 
 ### Action required
