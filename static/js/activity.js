@@ -21,6 +21,19 @@ function timeRanges() {
   var now = new Date();
   var y = now.getFullYear();
   var m = now.getMonth();
+  // The previous few calendar months, by name; the year is added only once
+  // they reach back past January.
+  var pastMonths = [1, 2, 3].map(function (back) {
+    var start = new Date(y, m - back, 1);
+    var label = start.toLocaleString('en', { month: 'long' });
+    if (start.getFullYear() !== y) label += ' ' + start.getFullYear();
+    return {
+      value: 'month-' + ymd(start).slice(0, 7),
+      label: label,
+      from: ymd(start),
+      to: ymd(new Date(y, m - back + 1, 0)),
+    };
+  });
   return [
     { value: 'all', label: 'All time', from: '', to: '' },
     { value: '31', label: 'Last 31 days', from: daysAgo(30), to: '' },
@@ -31,20 +44,17 @@ function timeRanges() {
       from: ymd(new Date(y, m, 1)),
       to: '',
     },
-    {
-      value: 'last-month',
-      label: 'Last month',
-      from: ymd(new Date(y, m - 1, 1)),
-      to: ymd(new Date(y, m, 0)),
-    },
-    { value: 'this-year', label: 'This year', from: y + '-01-01', to: '' },
-    {
-      value: 'last-year',
-      label: 'Last year',
-      from: y - 1 + '-01-01',
-      to: y - 1 + '-12-31',
-    },
-  ];
+  ]
+    .concat(pastMonths)
+    .concat([
+      { value: 'this-year', label: 'This year', from: y + '-01-01', to: '' },
+      {
+        value: 'last-year',
+        label: 'Last year',
+        from: y - 1 + '-01-01',
+        to: y - 1 + '-12-31',
+      },
+    ]);
 }
 
 function makeRangeSelect(ranges, onChange) {
