@@ -1761,12 +1761,29 @@
           });
       }
 
+      // navigator.clipboard only exists in secure contexts (https, localhost), so
+      // over plain http from another machine fall back to execCommand.
+      function copyText(text) {
+        if (navigator.clipboard) return navigator.clipboard.writeText(text);
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        ta.remove();
+        return ok
+          ? Promise.resolve()
+          : Promise.reject(new Error('copy failed'));
+      }
+
       document.addEventListener('click', function (e) {
         var copyBtn = e.target.closest('.copy-msg');
         if (copyBtn) {
           var msgEl = copyBtn.closest('.message');
           var md = messageToMarkdown(msgEl);
-          navigator.clipboard.writeText(md).then(function () {
+          copyText(md).then(function () {
             copyBtn.textContent = '\u2713';
             setTimeout(function () {
               copyBtn.innerHTML = '\u2398';
