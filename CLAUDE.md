@@ -87,7 +87,7 @@ ordinary fixes and refactors.
 ## Invariants
 
 - No containers, everything runs locally via uv
-- No auth, CSRF, HTTPS - localhost only
+- No auth, CSRF, HTTPS - localhost by default; `BIND` opts into a trusted LAN
 - Static files served from `static/` on `/`, with index.html for directories
 - REST API on `/api/`
 - All URL routes must work with and without trailing slash

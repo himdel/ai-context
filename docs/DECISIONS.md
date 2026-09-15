@@ -8,6 +8,25 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-15 - remote access is a setting, and opt-in
+
+himdel wanted contexts reachable from other machines. It had been hardwired to
+127.0.0.1 in the Makefile, with `ALLOWED_HOSTS` to match.
+
+- **Bind address is `BIND` in settings, not an env var.** controlpanel starts contexts
+  with a bare `make run`, and everything else that differs per machine already lives in
+  `settings_local.py`. An env var would have meant editing the launcher on every machine.
+  runserver has no setting for its address, so `api` overrides the `runserver` command to
+  read `default_addr` from `BIND`, and has to sit ahead of staticfiles in
+  `INSTALLED_APPS` for its override to win.
+- **Opt-in, loopback by default.** The repo is published and there is no auth; the API
+  launches agents that run arbitrary commands, so a default of 0.0.0.0 would hand a shell
+  to anyone on the network of someone who just cloned it.
+- **A non-loopback `BIND` turns the Host check off.** Once reachable by name or IP from
+  elsewhere, listing hostnames is busywork (same stance as the Vite dev servers). On
+  loopback the check stays: it is what stops a DNS-rebinding page in a local browser from
+  reaching the launch endpoints. `ALLOWED_HOSTS` in `settings_local` still wins if set.
+
 ## 2026-09-11 - a session is ours if tmux says it is named like ours
 
 Sessions started in a terminal were invisible, and for opencode that was most of them.

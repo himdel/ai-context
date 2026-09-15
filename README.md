@@ -189,6 +189,22 @@ make
 open http://localhost:8062
 ```
 
+### Remote access
+
+`make run` listens on 127.0.0.1 only. To reach contexts from other machines,
+set the bind address in `contexts/settings_local.py`:
+
+```python
+BIND = "0.0.0.0"
+```
+
+This also turns off Django's Host header check, so any hostname works, unless
+you set `ALLOWED_HOSTS` there yourself. There is no authentication, and anyone
+who can reach the port can launch agents that run commands as you - only do
+this on a network you trust. Sessions launched remotely still open their
+terminal viewer on the server's display; set `TERMINAL_VIEWER = False` if
+nobody is sitting there.
+
 The terminal emulator, X display, tmux usage, and notifier are autodetected.
 Override them in `contexts/settings_local.py` if needed; see
 `contexts/settings.py` for all available settings.

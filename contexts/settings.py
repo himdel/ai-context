@@ -14,12 +14,20 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
+# Address `make run` listens on. Loopback by default; set "0.0.0.0" in
+# settings_local to reach contexts from other machines. There is no auth, and
+# the API launches agents that run commands, so only do that on a network you
+# trust. Any other address also turns off the Host header check (ALLOWED_HOSTS
+# becomes ["*"]) unless settings_local sets ALLOWED_HOSTS itself.
+BIND = "127.0.0.1"
+
+# "api" before staticfiles: its runserver (which honors BIND) must win.
 INSTALLED_APPS = [
+    "api",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
     "rest_framework",
-    "api",
 ]
 
 MIDDLEWARE = [
@@ -142,4 +150,7 @@ try:
         if _k.isupper():
             globals()[_k] = getattr(_mod, _k)
 except ImportError:
-    pass
+    _mod = None
+
+if BIND not in ("127.0.0.1", "localhost") and not hasattr(_mod, "ALLOWED_HOSTS"):
+    ALLOWED_HOSTS = ["*"]

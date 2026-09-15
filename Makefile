@@ -1,5 +1,5 @@
 run:
-	uv run python manage.py runserver 127.0.0.1:$${PORT:-8062}
+	uv run python manage.py runserver $${PORT:-8062}
 
 lint:
 	uv run ruff check
