@@ -128,7 +128,9 @@ out to a few external tools:
   disagree; see `TERMINAL_EXEC` in `contexts/capabilities.py`.
 - **Optional:** `systemctl --user`, used for persistent cronjob timers when the
   user systemd manager is available. Jobs can explicitly use either systemd or
-  the in-process scheduler.
+  the in-process scheduler. Systemd-backed jobs run `%h/bin/wait-for-network`
+  before the worker so persistent wake-up runs wait for ordinary network/DNS
+  readiness; this check deliberately does not wait for a VPN.
 - **Optional:** `gh`, used for GitHub pull-request lookup. Without it, repository
   and branch links still work, but PR metadata is unavailable.
 

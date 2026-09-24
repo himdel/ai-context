@@ -291,6 +291,7 @@ Environment=PYTHONUNBUFFERED=1
 TimeoutStartSec=infinity
 StandardOutput=journal
 StandardError=journal
+ExecStartPre=%h/bin/wait-for-network
 ExecStart={argv}
 """
 

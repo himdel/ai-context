@@ -54,6 +54,10 @@ class CronjobBackendTests(SimpleTestCase):
         self.assertIn("Persistent=true", text)
         self.assertIn("AccuracySec=1s", text)
 
+    def test_systemd_service_waits_for_ordinary_network(self):
+        text = cronjobs._service_text(self.make_job())
+        self.assertIn("ExecStartPre=%h/bin/wait-for-network", text)
+
     def test_calendar_preserves_cron_day_or_semantics(self):
         self.assertEqual(
             calendar_expressions("0 9 1 * 1"),

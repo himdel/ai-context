@@ -8,6 +8,20 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-24 - wait for ordinary network before persistent cron workers
+
+Persistent user timers correctly catch up after suspend, but they can start before
+NetworkManager has reconnected Wi-Fi. The shared host helper at
+`%h/bin/wait-for-network` waits for ordinary DNS/network readiness with a bounded
+timeout and deliberately does not wait for a VPN, so contexts workers for Claude
+and opencode do not race the resume path.
+
+Contexts-owned systemd cron services run the helper with `ExecStartPre`. The
+dotfiles crontab generator uses the same precondition by default and provides an
+explicit `# local-only` opt-out for jobs such as backups, notes, and wallpaper
+rotation. Command inspection is intentionally avoided: shell commands do not
+reliably reveal whether they need a network.
+
 ## 2026-09-24 - use GitHub coauthor trailers for assistant attribution
 
 GitHub contributor statistics count the standard `Co-Authored-By` trailer, not the local
