@@ -30,6 +30,17 @@ Options considered: surface open terminals/sessions somewhere in the UI so they 
 attached or closed, and/or an "end session" button on the conversation detail view next
 to the existing session-bar controls, killing the tmux session on demand.
 
+## Cron run completion and skill arguments
+
+Systemd-backed cron runs currently record whether the tmux agent started, not whether the
+agent later completed. The worker deliberately exits after launch so the agent remains a
+normal interactive tmux session. A future completion state should be harness-aware and
+must not mistake an idle interactive TUI for a completed run.
+
+Cron `params` remain free-form skill arguments. Skill frontmatter may eventually provide
+an argument hint or schema for a richer editor, but free-form input should remain the
+fallback for skills that do not declare one.
+
 ## ACP (Agent Client Protocol)
 
 Zed's JSON-RPC protocol between editor (client) and agent (server); Zed ships a
