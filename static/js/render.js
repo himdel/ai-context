@@ -410,6 +410,16 @@ function formatJson(str) {
   }
 }
 
+function markdownFence(text, language) {
+  var maxRun = 0;
+  var runs = String(text).match(/`+/g) || [];
+  runs.forEach(function (run) {
+    if (run.length > maxRun) maxRun = run.length;
+  });
+  var fence = '`'.repeat(Math.max(3, maxRun + 1));
+  return fence + (language || '') + '\n' + text + '\n' + fence;
+}
+
 export var taskSubjects = {};
 
 function scrollToBlock(selector) {
@@ -426,8 +436,8 @@ function scrollToBlock(selector) {
 
 // `todos` and `running_agents` are derived server-side, by the harness adapter
 // that knows how its own logs record them - Claude replays TaskCreate/TaskUpdate
-// mutations, opencode reads the last todowrite snapshot. Both arrive here as the
-// same plain list.
+// mutations, opencode replays todowrite snapshots. Both arrive here as the same
+// plain list.
 function buildStatusBar(conversation) {
   var todos = (conversation && conversation.todos) || [];
   var agents = (conversation && conversation.running_agents) || [];
@@ -446,11 +456,17 @@ function buildStatusBar(conversation) {
     todos.forEach(function (t) {
       var item = document.createElement('span');
       item.className = 'status-bar-task ' + t.status;
+      if (t.current === true) item.className += ' current';
+      if (t.current === false) item.className += ' history';
       item.textContent = '#' + t.id + ' ' + t.subject;
       item.title =
         '#' + t.id + ' [' + t.status.replace('_', ' ') + '] ' + t.subject;
       item.onclick = function () {
-        scrollToBlock('[data-task-id="' + t.id + '"]');
+        var selector =
+          t.current === undefined
+            ? '[data-task-id="' + t.id + '"]'
+            : '[data-todo-subject="' + CSS.escape(t.subject) + '"]';
+        scrollToBlock(selector);
       };
       tasksEl.appendChild(item);
     });
@@ -584,7 +600,17 @@ function renderToolInput(name, input) {
         return '<div class="' + cls + '">' + esc(line) + '</div>';
       })
       .join('');
-    return '<div class="edit-diff patch-text">' + body + '</div>';
+    var patchBody = '<div class="edit-diff patch-text">' + body + '</div>';
+    if (lines.length > 80 || patch.length > 3000) {
+      return (
+        '<details class="patch-details"><summary>patch (' +
+        lines.length +
+        ' lines)</summary>' +
+        patchBody +
+        '</details>'
+      );
+    }
+    return patchBody;
   }
   if (name === 'Patch') {
     var files = input.files || [];
@@ -626,6 +652,41 @@ function renderToolInput(name, input) {
   }
   if (name === 'EnterPlanMode') {
     return '<em>Entering plan mode...</em>';
+  }
+  if (name === 'TodoWrite') {
+    var todos = Array.isArray(input.todos) ? input.todos : [];
+    var todoHtml =
+      '<div class="todo-snapshot-summary">' +
+      todos.length +
+      (todos.length === 1 ? ' task' : ' tasks') +
+      '</div>';
+    if (todos.length) {
+      todoHtml += '<ul class="todo-snapshot-list">';
+      todos.forEach(function (todo) {
+        var status = todo.status || 'pending';
+        var statusClass = /^(pending|in_progress|completed)$/.test(status)
+          ? status
+          : 'pending';
+        todoHtml +=
+          '<li class="todo-snapshot-item ' +
+          statusClass +
+          '" data-todo-subject="' +
+          esc(todo.content || '') +
+          '">' +
+          '<span class="todo-snapshot-status">' +
+          esc(status.replace('_', ' ')) +
+          '</span>' +
+          esc(todo.content || '') +
+          (todo.priority
+            ? '<span class="todo-snapshot-priority">' +
+              esc(todo.priority) +
+              '</span>'
+            : '') +
+          '</li>';
+      });
+      todoHtml += '</ul>';
+    }
+    return todoHtml;
   }
   if (name === 'Grep') {
     skip = ['pattern', 'path', 'head_limit', 'output_mode', '-A', '-B', '-C'];
@@ -814,7 +875,10 @@ function renderToolInput(name, input) {
         '</div>';
     return wfHtml;
   }
-  if (main === null && name.indexOf('mcp__') === 0) {
+  if (
+    main === null &&
+    (name.indexOf('mcp__') === 0 || name.indexOf('jira_') === 0)
+  ) {
     skip = ['cloudId', 'responseContentFormat', 'contentFormat'];
     if (input.issueIdOrKey) {
       skip.push('issueIdOrKey');
@@ -873,13 +937,13 @@ function blockToMarkdown(block) {
         }
       }
       if (hasExtra)
-        md += '\n```json\n' + JSON.stringify(extra, null, 2) + '\n```';
+        md += '\n' + markdownFence(JSON.stringify(extra, null, 2), 'json');
       return md;
     }
     var md = '**' + (block.name || 'Tool') + '**';
     if (block.input)
-      md += '\n```json\n' + JSON.stringify(block.input, null, 2) + '\n```';
-    if (block.result) md += '\n**output**\n```\n' + block.result + '\n```';
+      md += '\n' + markdownFence(JSON.stringify(block.input, null, 2), 'json');
+    if (block.result) md += '\n**output**\n' + markdownFence(block.result, '');
     if (block.subagent) md += '\n\n' + subagentToMarkdown(block.subagent);
     return md;
   }
@@ -913,13 +977,23 @@ export function messageToMarkdown(msgEl) {
 
 function renderToolResult(block) {
   if (!block.result && !block.subagent) return '';
-  var useMarkdown = block.subagent || block.name === 'ExitPlanMode';
+  var useMarkdown =
+    block.subagent ||
+    block.name === 'ExitPlanMode' ||
+    block.name === 'WebFetch';
   var html = '';
 
   if (block.subagent) {
     html += renderSubagent(block.subagent);
   }
   if (block.result) {
+    var resultObject = null;
+    try {
+      resultObject = JSON.parse(block.result);
+    } catch (e) {
+      /* Non-JSON tool output is normal. */
+    }
+    var failed = resultObject && resultObject.error === true;
     var resultBody = useMarkdown
       ? renderMarkdown(block.result)
       : formatJson(block.result) || esc(block.result);
@@ -931,7 +1005,11 @@ function renderToolResult(block) {
         '</div></details>';
     } else {
       html +=
-        '<details class="tool-result-inline"><summary>output <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
+        '<details class="tool-result-inline' +
+        (failed ? ' tool-result-error' : '') +
+        '"><summary>' +
+        (failed ? 'error' : 'output') +
+        ' <span class="expand-all" title="Expand/collapse all">&#x29C9;</span></summary>' +
         '<div class="tool-output">' +
         resultBody +
         '</div></details>';

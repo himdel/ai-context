@@ -28,7 +28,8 @@ directory and sorted by date. Everything else is Claude-only.
 - Resume, fork, or start new sessions from the UI
 - Live session dock: queue prompts, answer tool/permission prompts inline,
   open an attached terminal, and see live idle/busy/waiting status
-- Active session indicator, status bar with running tasks and agents
+- Active session indicator, full task history with the current snapshot highlighted,
+  and running agents
 - Deleted logs stay visible from DB cache, live tailing for active sessions
 - Estimated cost per conversation (list + detail), computed from transcript token
   usage for Claude and read from the harness for other agents

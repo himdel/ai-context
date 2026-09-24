@@ -8,6 +8,40 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-24 - normalize opencode tool presentation through the existing renderer
+
+The opencode transcript exercised the same canonical block model as Claude, but several
+tools still looked like raw JSON because their names and payloads differed. The adapter
+already normalizes tool blocks; the remaining choice was to improve the shared renderer
+rather than create an opencode-only view layer.
+
+- `TodoWrite` gets a compact task snapshot view and its history pills scroll to the matching
+  snapshot item.
+- `jira_*` names use the same semantic input view as the older `mcp__*` names.
+- `WebFetch` results are rendered as Markdown, like plan and agent results, because the
+  tool returns page content rather than a structured response.
+- JSON error results are visibly marked as errors instead of ordinary output.
+- Large patches collapse by default, and copy-as-Markdown chooses a fence longer than any
+  embedded backtick run so copied transcripts remain valid Markdown.
+
+These are presentation changes only: the canonical adapter data remains available in full.
+
+## 2026-09-24 - preserve opencode task history while highlighting the current plan
+
+Opencode's `todowrite` calls contain complete snapshots, not mutations. Treating the
+last snapshot as the whole conversation state hid completed work whenever the agent
+moved to a new phase, even though Claude's task replay keeps that history visible.
+
+- **Keep one entry per task subject.** Opencode provides no stable task identifier, so
+  repeated subjects are the only safe identity available and receive session-local IDs.
+- **Keep the latest status.** A repeated subject updates its existing history entry rather
+  than creating a duplicate for every snapshot.
+- **Mark the final snapshot.** Entries present in the last snapshot get `current: true` so
+  the status bar can emphasize the current plan without discarding earlier work.
+
+This preserves the full useful history while avoiding one UI item for every repeated
+`todowrite` call.
+
 ## 2026-09-24 - systemd owns persistent cron wakeups when available
 
 The original cronjob scheduler lived in the Django process, so a suspended laptop or a

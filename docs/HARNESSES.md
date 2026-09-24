@@ -57,7 +57,9 @@ uses `size:mtime`, opencode uses `time_updated:message_count`. Do not assume a f
 plus `messages`, and two fields of derived state the UI used to rebuild in JS:
 
 - **`todos`** - `[{id, subject, status}]`. Claude replays `TaskCreate`/`TaskUpdate`;
-  opencode reads the last `todowrite` call's list. The status bar just renders it.
+  opencode replays all `todowrite` snapshots into a deduplicated history and marks
+  entries from the final snapshot with `current: true`. The status bar renders the
+  history and highlights the current snapshot.
 - **`running_agents`** - `[{description, type}]`, for agents still in flight.
 
 Blocks are `text`, `thinking`, or `tool_use`. A `tool_use` block carries its **merged

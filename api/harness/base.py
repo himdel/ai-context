@@ -109,7 +109,7 @@ class Conversation:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     # Derived harness state the UI used to reconstruct in JS.
-    todos: list = field(default_factory=list)  # [{id, subject, status}]
+    todos: list = field(default_factory=list)  # [{id, subject, status, current?}]
     running_agents: list = field(default_factory=list)  # [{description, type}]
 
     def usage(self):

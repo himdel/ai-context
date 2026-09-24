@@ -371,21 +371,43 @@ def _tool_blocks(messages):
 
 
 def _derive_todos(messages):
-    """opencode writes the whole list on every call, so the last one is the state."""
+    """Replay opencode's snapshots into a deduplicated task history.
+
+    Unlike Claude's task mutations, opencode writes the whole visible list on
+    every call. A later snapshot can therefore hide completed work from the
+    conversation history. Task content is the only stable identity opencode
+    gives us, so repeated subjects are merged and the final snapshot is marked
+    as the current one for the status bar.
+    """
     todos = []
+    by_subject = {}
+    current_subjects = set()
     for block in _tool_blocks(messages):
         if block.get("name") != base.TODO_WRITE:
             continue
         items = (block.get("input") or {}).get("todos") or []
-        todos = [
-            {
-                "id": str(i + 1),
-                "subject": t.get("content", ""),
-                "status": t.get("status", "pending"),
-            }
-            for i, t in enumerate(items)
-            if isinstance(t, dict)
-        ]
+        current_subjects = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            subject = item.get("content", "")
+            if not subject:
+                continue
+            current_subjects.add(subject)
+            task = by_subject.get(subject)
+            if task is None:
+                task = {
+                    "id": str(len(todos) + 1),
+                    "subject": subject,
+                    "status": "pending",
+                    "current": False,
+                }
+                by_subject[subject] = task
+                todos.append(task)
+            task["status"] = item.get("status", "pending")
+
+    for task in todos:
+        task["current"] = task["subject"] in current_subjects
     return [t for t in todos if t["status"] != "deleted"]
 
 
