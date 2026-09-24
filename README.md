@@ -129,6 +129,8 @@ out to a few external tools:
 - **Optional:** `systemctl --user`, used for persistent cronjob timers when the
   user systemd manager is available. Jobs can explicitly use either systemd or
   the in-process scheduler.
+- **Optional:** `gh`, used for GitHub pull-request lookup. Without it, repository
+  and branch links still work, but PR metadata is unavailable.
 
 These are autodetected per platform at startup; override any of them in
 `contexts/settings_local.py` (see `contexts/settings.py` for the full list).
@@ -147,6 +149,15 @@ HARNESSES = ["claude", "opencode"]
   database at `~/.local/share/opencode/opencode.db` (`OPENCODE_DB`), read strictly
   read-only and safe to read while opencode is running. If it is missing, the
   harness is skipped silently.
+
+For exact branch and PR metadata after the checkout moves on, optionally register
+`contrib/opencode/repo-context.js` as a global opencode plugin. The companion plugin
+injects repository context into new prompts and writes one metadata record per session
+under `~/.cache/opencode-contexts/`; contexts reads those records read-only. It refreshes
+at session creation and idle, before a new prompt, and after VCS or PR commands.
+Refreshes are timestamped in `~/.cache/opencode-contexts/refresh.log` for tuning.
+Register it in the global `opencode.json` plugin array, using an absolute `file://` URL
+for the checkout path.
 
 Sessions can be launched, resumed and forked for any harness that knows how, with
 the same buttons — the conversation's own agent is the one that starts, never a

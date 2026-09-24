@@ -124,6 +124,11 @@ opens it read-only, autocommit, and short-lived, and the docstring there explain
 of those matters - read it before changing how it opens. In particular: **never pass
 `immutable=1`**, which silently ignores the WAL and returns stale or torn data.
 
+Opencode does not store the git branch in its session rows. When the optional repository
+context plugin is installed, the adapter reads the session's captured metadata from
+`~/.cache/opencode-contexts/<session-id>.json`; otherwise it falls back to the branch in
+the current checkout.
+
 ## Launching
 
 `launch_argv` is the only place that knows an agent's flags. They do not rhyme - Claude

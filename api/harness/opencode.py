@@ -13,8 +13,10 @@ comment there before changing how it opens.
 import json
 import logging
 import sqlite3
+import subprocess
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from django.conf import settings
 
@@ -104,6 +106,34 @@ def _iso(ms):
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+def _git_branch(path):
+    """Return the checkout's branch; opencode does not store one in SQLite."""
+    if not path:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["git", "-C", path, "branch", "--show-current"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def _cached_context(conversation_id, directory):
+    path = Path(settings.OPENCODE_CONTEXT_CACHE_DIR) / f"{conversation_id}.json"
+    try:
+        context = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    if (
+        context.get("session_id") != conversation_id
+        or context.get("directory") != directory
+    ):
+        return {}
+    return context
 
 
 def _canonical_tool(name, input_):
@@ -253,6 +283,11 @@ class OpencodeHarness(base.Harness):
             if sub is not None:
                 block["subagent"] = sub
 
+        directory = session["directory"] or ""
+        repo_context = _cached_context(conversation_id, directory)
+        branch = (
+            repo_context.get("branch", "") if repo_context else _git_branch(directory)
+        )
         model = _json(session["model"]).get("id", "") or session["agent"] or ""
         return Conversation(
             id=conversation_id,
@@ -261,8 +296,8 @@ class OpencodeHarness(base.Harness):
             parent_id=session["parent_id"] or "",
             agent_type=session["agent"] or "",
             messages=messages,
-            cwd=session["directory"] or "",
-            branch="",
+            cwd=directory,
+            branch=branch,
             model=model,
             version=session["version"] or "",
             blurb=(session["title"] or "")[:200],

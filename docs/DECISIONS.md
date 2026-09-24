@@ -8,6 +8,34 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-24 - refresh opencode repository metadata at session boundaries
+
+The opencode database does not retain the branch or pull request associated with a
+session. Reading the current checkout later can therefore show the wrong branch after
+the user switches work. A companion plugin now writes one record per session under
+`~/.cache/opencode-contexts/<session-id>.json`.
+
+The record is refreshed on session creation and idle, before a new prompt, after a VCS or
+PR tool call, and on branch-change events. Refreshes are debounced for five seconds, so
+ordinary tool-heavy turns do not run `git`/`gh` once per tool. Missing plugin/cache data
+falls back to the current checkout branch.
+
+The cache is metadata, not a conversation message: injecting it with `noReply` would
+pollute the transcript and could affect title/topic detection. The plugin's system
+transform injects the refreshed snapshot into model context, while contexts reads the
+cache read-only.
+
+## 2026-09-24 - derive opencode branch links from the checkout
+
+Opencode's session table records the working directory but not the git branch. Leaving
+the canonical branch field empty meant opencode conversation headers could not link to
+the branch or its pull request, even when the directory was a forge checkout.
+
+The adapter now asks git for the current branch while loading the conversation and falls
+back to an empty branch for missing, detached, or non-git directories. This keeps the
+existing graceful behavior without pretending opencode has historical branch metadata it
+does not store.
+
 ## 2026-09-24 - normalize opencode tool presentation through the existing renderer
 
 The opencode transcript exercised the same canonical block model as Claude, but several

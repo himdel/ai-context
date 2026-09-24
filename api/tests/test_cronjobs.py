@@ -1,13 +1,22 @@
+import json
 from datetime import timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 
 from api import cronjobs
 from api.croncalendar import CronCalendarError, calendar_expressions
 from api.harness import base
-from api.harness.opencode import _block_from_part, _derive_todos
+from api.harness.opencode import (
+    _block_from_part,
+    _cached_context,
+    _derive_todos,
+    _git_branch,
+)
 
 
 class CronjobBackendTests(SimpleTestCase):
@@ -63,6 +72,35 @@ class CronjobBackendTests(SimpleTestCase):
 
 
 class OpencodeTodoTests(SimpleTestCase):
+    def test_reads_matching_cached_context(self):
+        with TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "ses_test.json"
+            cache.write_text(
+                json.dumps(
+                    {
+                        "session_id": "ses_test",
+                        "directory": "/tmp/repo",
+                        "branch": "feature/demo",
+                    }
+                )
+            )
+            with override_settings(OPENCODE_CONTEXT_CACHE_DIR=Path(tmp)):
+                self.assertEqual(
+                    _cached_context("ses_test", "/tmp/repo")["branch"],
+                    "feature/demo",
+                )
+
+    @mock.patch("api.harness.opencode.subprocess.check_output")
+    def test_reads_branch_from_checkout(self, check_output):
+        check_output.return_value = "main\n"
+
+        self.assertEqual(_git_branch("/tmp/repo"), "main")
+        check_output.assert_called_once_with(
+            ["git", "-C", "/tmp/repo", "branch", "--show-current"],
+            stderr=mock.ANY,
+            text=True,
+        )
+
     def test_maps_target_tool_parts_to_canonical_blocks(self):
         todo = _block_from_part(
             {
