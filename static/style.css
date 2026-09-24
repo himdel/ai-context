@@ -1948,6 +1948,10 @@ details > summary {
   background: #ffe4e6;
   color: #9f1239;
 }
+.badge-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
 
 .create-skill-form .form-status {
   display: inline-block;

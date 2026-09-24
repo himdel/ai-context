@@ -18,6 +18,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from api import harness
+from api import cronjobs as cronjob_service
 from api.models import CronJob, CronJobRun
 
 logger = logging.getLogger(__name__)
@@ -1281,6 +1282,17 @@ def _resolve_run_conversations(runs):
         skill = run.cronjob.skill_name if run.cronjob_id else ""
         run_ts = run.triggered_at.timestamp() * 1000
 
+        # The launch registry is the canonical pairing path for harnesses that
+        # do not write Claude-compatible session files, notably opencode.
+        if run.tmux_session:
+            from api.models import LaunchedSession
+
+            launch = LaunchedSession.objects.filter(
+                tmux_session=run.tmux_session
+            ).first()
+            if launch and launch.conversation_id:
+                session_id = launch.conversation_id
+
         # Deterministic pairing: the pane_pid we recorded at spawn keys Claude's
         # session file directly (the pane runs claude with no shell wrapper, so
         # pane_pid == claude pid == <pid>.json). We deliberately do NOT map the
@@ -1288,7 +1300,7 @@ def _resolve_run_conversations(runs):
         # runs, so a stale run would grab whatever session now holds its name.
         # The cwd guard stops a recycled pid from masquerading as our run.
         data = pid_to_data.get(run.pid)
-        if data:
+        if not session_id and data:
             sid = data.get("sessionId", "")
             if sid and sid not in used_ids and (not repo or data.get("cwd") == repo):
                 session_id = sid
@@ -1379,6 +1391,7 @@ def _next_run_at(cj):
 
 
 def _serialize_cronjob(cj):
+    backend = cronjob_service.effective_backend(cj)
     return {
         "id": cj.id,
         "skill_name": cj.skill_name,
@@ -1386,6 +1399,11 @@ def _serialize_cronjob(cj):
         "cron_expression": cj.cron_expression,
         "params": cj.params,
         "enabled": cj.enabled,
+        "backend": cj.backend,
+        "effective_backend": backend,
+        "runner": cj.runner,
+        "model": cj.model,
+        "effort": cj.effort,
         "last_run_at": cj.last_run_at.isoformat() if cj.last_run_at else None,
         "next_run_at": _next_run_at(cj),
         "created_at": cj.created_at.isoformat(),
@@ -1394,38 +1412,8 @@ def _serialize_cronjob(cj):
 
 
 def _execute_cronjob(cj, trigger_type="scheduled"):
-    prompt = "/" + cj.skill_name
-    if cj.params.strip():
-        prompt += " " + cj.params
-
-    if not Path(cj.repo).is_dir():
-        return Response({"error": "repo directory not found"}, status=400)
-
-    # Cron sessions run headless (no auto-opened window); a notification lets
-    # the user open the terminal on demand. Each run gets its own session
-    # (mode="new") so multiple cron jobs on the same repo don't collapse onto a
-    # single singleton where all but the first are silently skipped as "reused".
-    result = _spawn_session(
-        [settings.CLAUDE_CMD, prompt], cj.repo, mode="new", view=False
-    )
-
-    ok = result.status_code == 200
-    pid = result.data.get("pid") if ok else None
-    tmux_session = result.data.get("session", "") if ok else ""
-    CronJobRun.objects.create(
-        cronjob=cj, trigger_type=trigger_type, pid=pid, tmux_session=tmux_session
-    )
-    cj.last_run_at = datetime.now(timezone.utc)
-    cj.save(update_fields=["last_run_at"])
-
-    if ok and tmux_session:
-        _notify_session(
-            tmux_session,
-            f"Cron: /{cj.skill_name}",
-            f"Started in {cj.repo}",
-        )
-
-    return result
+    result = cronjob_service.execute_cronjob(cj, trigger_type=trigger_type)
+    return Response(result, status=200 if result["status"] == "started" else 400)
 
 
 @api_view(["GET", "POST"])
@@ -1435,6 +1423,10 @@ def cronjobs_list(request):
         repo = request.data.get("repo", "").strip()
         cron_expression = request.data.get("cron_expression", "").strip()
         params = request.data.get("params", "")
+        backend = request.data.get("backend", CronJob.BACKEND_SYSTEMD)
+        runner = request.data.get("runner", "claude")
+        model = request.data.get("model", "")
+        effort = request.data.get("effort", "")
 
         if not skill_name or not repo or not cron_expression:
             return Response(
@@ -1445,13 +1437,23 @@ def cronjobs_list(request):
             return Response({"error": "repo is not a valid directory"}, status=400)
         if not croniter.is_valid(cron_expression):
             return Response({"error": "invalid cron expression"}, status=400)
+        config_error = cronjob_service.validate_job_config(
+            backend, runner, model, effort, cron_expression
+        )
+        if config_error:
+            return Response({"error": config_error}, status=400)
 
         cj = CronJob.objects.create(
             skill_name=skill_name,
             repo=repo,
             cron_expression=cron_expression,
             params=params,
+            backend=backend,
+            runner=runner,
+            model=model,
+            effort=effort,
         )
+        cronjob_service.reconcile_systemd_jobs()
         return Response(_serialize_cronjob(cj), status=201)
 
     cronjobs = CronJob.objects.all().order_by("-created_at")
@@ -1467,9 +1469,28 @@ def cronjob_detail(request, cronjob_id):
 
     if request.method == "DELETE":
         cj.delete()
+        cronjob_service.reconcile_systemd_jobs()
         return Response({"status": "deleted"})
 
     if request.method == "PUT":
+        values = {
+            field: request.data[field]
+            for field in ("backend", "runner", "model", "effort")
+            if field in request.data
+        }
+        backend = values.get("backend", cj.backend)
+        runner = values.get("runner", cj.runner)
+        model = values.get("model", cj.model)
+        effort = values.get("effort", cj.effort)
+        config_error = cronjob_service.validate_job_config(
+            backend,
+            runner,
+            model,
+            effort,
+            request.data.get("cron_expression", cj.cron_expression),
+        )
+        if config_error:
+            return Response({"error": config_error}, status=400)
         for field in ("skill_name", "repo", "cron_expression", "params"):
             if field in request.data:
                 setattr(cj, field, request.data[field])
@@ -1479,7 +1500,10 @@ def cronjob_detail(request, cronjob_id):
             return Response({"error": "invalid cron expression"}, status=400)
         if cj.repo and not Path(cj.repo).is_dir():
             return Response({"error": "repo is not a valid directory"}, status=400)
+        for field, value in values.items():
+            setattr(cj, field, value)
         cj.save()
+        cronjob_service.reconcile_systemd_jobs()
 
     runs = list(CronJobRun.objects.filter(cronjob=cj).order_by("-triggered_at")[:20])
     _resolve_run_conversations(runs)
@@ -1492,6 +1516,8 @@ def cronjob_detail(request, cronjob_id):
             "triggered_at": r.triggered_at.isoformat(),
             "trigger_type": r.trigger_type,
             "pid": r.pid,
+            "status": r.status,
+            "error": r.error,
         }
         for r in runs
     ]
@@ -1504,7 +1530,24 @@ def cronjob_run(request, cronjob_id):
         cj = CronJob.objects.get(id=cronjob_id)
     except CronJob.DoesNotExist:
         return Response({"error": "not found"}, status=404)
+    if cronjob_service.effective_backend(cj) == CronJob.BACKEND_SYSTEMD:
+        result = cronjob_service.queue_systemd_manual(cj)
+        return Response(
+            result,
+            status=202 if result["status"] == "queued" else 400,
+        )
     return _execute_cronjob(cj, trigger_type="manual")
+
+
+@api_view(["GET"])
+def cronjob_options(request):
+    return Response(
+        {
+            "backends": cronjob_service.backend_options(),
+            "runners": cronjob_service.runner_options(),
+            "efforts": ["", "low", "medium", "high", "xhigh", "max"],
+        }
+    )
 
 
 @api_view(["GET"])

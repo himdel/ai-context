@@ -4,6 +4,20 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-09-24
+
+### Action required
+
+- New migration: `make migrate` (or `make migrate-<name>` for an extra instance).
+  Existing cronjobs move to persistent systemd user timers; choose the internal
+  scheduler explicitly if systemd is not wanted.
+
+### New features
+
+- Cronjobs can use contexts-owned systemd timers without losing tmux launch or
+  conversation pairing. Runner, model, effort, and scheduler backend are now
+  configurable per job.
+
 ## 2026-09-15
 
 ### New features

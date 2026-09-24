@@ -125,6 +125,9 @@ out to a few external tools:
   `osascript`) and a notifier (`notify-send` on Linux, `osascript` on macOS).
   Each terminal is launched with the flag it wants for a command, since they
   disagree; see `TERMINAL_EXEC` in `contexts/capabilities.py`.
+- **Optional:** `systemctl --user`, used for persistent cronjob timers when the
+  user systemd manager is available. Jobs can explicitly use either systemd or
+  the in-process scheduler.
 
 These are autodetected per platform at startup; override any of them in
 `contexts/settings_local.py` (see `contexts/settings.py` for the full list).

@@ -96,14 +96,20 @@ def active_ids():
     return ids
 
 
-def launch_argv(source, *, conversation_id="", prompt="", fork=False):
+def launch_argv(
+    source, *, conversation_id="", prompt="", fork=False, model="", effort=""
+):
     """Argv starting `source`, or None when it is enabled but not launchable."""
     adapter = get(source or "claude")
     if adapter is None:
         return None
     try:
         return adapter.launch_argv(
-            conversation_id=conversation_id, prompt=prompt, fork=fork
+            conversation_id=conversation_id,
+            prompt=prompt,
+            fork=fork,
+            model=model,
+            effort=effort,
         )
     except Exception:
         logger.exception("harness %s failed launch_argv()", adapter.key)

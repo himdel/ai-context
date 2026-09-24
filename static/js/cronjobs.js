@@ -4,6 +4,120 @@ import { renderMarkdown, renderRichBlocks } from '/js/render.js';
 let cronjobListEl, mainEl, setActiveScreen, closeConversation, loadConversation;
 let getActiveCronjobId;
 let RepoIdentity, navigateToSkillByName;
+let cronjobOptionsPromise;
+let cronConfigCounter = 0;
+
+function loadCronjobOptions() {
+  if (!cronjobOptionsPromise) {
+    cronjobOptionsPromise = fetch('/api/cronjobs/options/').then(function (r) {
+      return r.json();
+    });
+  }
+  return cronjobOptionsPromise;
+}
+
+function addCronConfigFields(form, data) {
+  var backendLabel = document.createElement('label');
+  backendLabel.textContent = 'Scheduler';
+  var backendSelect = document.createElement('select');
+  backendLabel.appendChild(backendSelect);
+  form.appendChild(backendLabel);
+
+  var runnerLabel = document.createElement('label');
+  runnerLabel.textContent = 'Runner';
+  var runnerSelect = document.createElement('select');
+  runnerLabel.appendChild(runnerSelect);
+  form.appendChild(runnerLabel);
+
+  var modelLabel = document.createElement('label');
+  modelLabel.textContent = 'Model (optional)';
+  var modelInput = document.createElement('input');
+  modelInput.type = 'text';
+  modelInput.value = data.model || '';
+  modelInput.placeholder = 'runner or skill default';
+  var modelList = document.createElement('datalist');
+  modelList.id = 'cron-model-options-' + ++cronConfigCounter;
+  modelInput.setAttribute('list', modelList.id);
+  modelLabel.appendChild(modelInput);
+  form.appendChild(modelLabel);
+  form.appendChild(modelList);
+
+  var effortLabel = document.createElement('label');
+  effortLabel.textContent = 'Effort (optional)';
+  var effortSelect = document.createElement('select');
+  effortLabel.appendChild(effortSelect);
+  form.appendChild(effortLabel);
+
+  loadCronjobOptions().then(function (options) {
+    backendSelect.innerHTML = '';
+    options.backends.forEach(function (option) {
+      var el = document.createElement('option');
+      el.value = option.key;
+      el.textContent = option.label;
+      if (option.key === (data.backend || 'systemd')) el.selected = true;
+      backendSelect.appendChild(el);
+    });
+
+    runnerSelect.innerHTML = '';
+    var runners = options.runners.slice();
+    if (
+      data.runner &&
+      !runners.some(function (runner) {
+        return runner.key === data.runner;
+      })
+    ) {
+      runners.push({
+        key: data.runner,
+        label: data.runner + ' (unavailable)',
+        supports_model: false,
+        supports_effort: false,
+        efforts: [''],
+      });
+    }
+    runners.forEach(function (option) {
+      var el = document.createElement('option');
+      el.value = option.key;
+      el.textContent = option.label;
+      if (option.key === (data.runner || 'claude')) el.selected = true;
+      runnerSelect.appendChild(el);
+    });
+
+    function updateEffortOptions() {
+      var runner = runners.find(function (item) {
+        return item.key === runnerSelect.value;
+      });
+      var efforts = runner && runner.supports_effort ? runner.efforts : [''];
+      effortSelect.innerHTML = '';
+      efforts.forEach(function (effort) {
+        var el = document.createElement('option');
+        el.value = effort;
+        el.textContent = effort || 'Runner default';
+        if (effort === (data.effort || '')) el.selected = true;
+        effortSelect.appendChild(el);
+      });
+      effortSelect.disabled = !(runner && runner.supports_effort);
+      modelInput.disabled = !(runner && runner.supports_model);
+      modelList.innerHTML = '';
+      var models = runner && runner.models ? runner.models.slice() : [];
+      if (data.model && !models.includes(data.model)) models.push(data.model);
+      models.forEach(function (model) {
+        var option = document.createElement('option');
+        option.value = model;
+        modelList.appendChild(option);
+      });
+    }
+
+    runnerSelect.onchange = updateEffortOptions;
+    updateEffortOptions();
+  });
+
+  return {
+    backend: backendSelect,
+    runner: runnerSelect,
+    model: modelInput,
+    effort: effortSelect,
+  };
+}
 
 export function initCronjobs(deps) {
   cronjobListEl = deps.cronjobListEl;
@@ -249,6 +363,8 @@ export function loadCronjob(cronjobId, pushHistory) {
       repoLabel.appendChild(repoSelect);
       form.appendChild(repoLabel);
 
+      var configFields = addCronConfigFields(form, data);
+
       // Params
       var paramsLabel = document.createElement('label');
       paramsLabel.textContent = 'Params';
@@ -321,6 +437,10 @@ export function loadCronjob(cronjobId, pushHistory) {
             params: paramsInput.value,
             cron_expression: cronInput.value,
             enabled: enabledCheck.checked,
+            backend: configFields.backend.value || data.backend || 'systemd',
+            runner: configFields.runner.value || data.runner || 'claude',
+            model: configFields.model.value,
+            effort: configFields.effort.value,
           }),
         })
           .then(function (r) {
@@ -396,7 +516,11 @@ export function loadCronjob(cronjobId, pushHistory) {
           var item = document.createElement('div');
           item.className = 'cronjob-run-item';
           var badgeClass =
-            run.trigger_type === 'manual' ? 'badge-manual' : 'badge-scheduled';
+            run.status === 'failed'
+              ? 'badge-failed'
+              : run.trigger_type === 'manual'
+                ? 'badge-manual'
+                : 'badge-scheduled';
           var convLink = run.conversation_id
             ? '<a href="/conversations/' +
               esc(run.conversation_id) +
@@ -411,11 +535,16 @@ export function loadCronjob(cronjobId, pushHistory) {
             '<span class="badge ' +
             badgeClass +
             '">' +
-            esc(run.trigger_type) +
+            esc(run.status === 'failed' ? 'failed' : run.trigger_type) +
             '</span>' +
             '<span>' +
             convLink +
-            '</span>';
+            '</span>' +
+            (run.error
+              ? '<span style="color:#b91c1c;font-size:12px">' +
+                esc(run.error) +
+                '</span>'
+              : '');
           if (run.conversation_id) {
             item.style.cursor = 'pointer';
             item.onclick = function (e) {
@@ -519,6 +648,13 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   repoLabel.appendChild(repoSelect);
   form.appendChild(repoLabel);
 
+  var configFields = addCronConfigFields(form, {
+    backend: 'systemd',
+    runner: 'claude',
+    model: '',
+    effort: '',
+  });
+
   // Params
   var paramsLabel = document.createElement('label');
   paramsLabel.textContent = 'Params';
@@ -587,6 +723,10 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
         repo: repoSelect.value,
         params: paramsInput.value,
         cron_expression: cronInput.value,
+        backend: configFields.backend.value || 'systemd',
+        runner: configFields.runner.value || 'claude',
+        model: configFields.model.value,
+        effort: configFields.effort.value,
       }),
     })
       .then(function (r) {

@@ -39,7 +39,8 @@ class Harness:
     def active_ids(self)           -> set[str]      # empty when not detectable
 
     # optional - a read-only harness just gets no session buttons
-    def launch_argv(self, *, conversation_id="", prompt="", fork=False) -> list | None
+    def launch_argv(self, *, conversation_id="", prompt="", fork=False,
+                    model="", effort="") -> list | None
     def identify(self, cwd, since_ms) -> str        # "" until it can be told
 ```
 
@@ -128,6 +129,11 @@ resumes with `--resume <id>` and forks with `--fork-session`; opencode resumes w
 `--session <id>`, forks with `--fork`, and takes a starting prompt as `--prompt` rather
 than a positional. Returning None means "readable but not launchable", and the UI drops
 the session buttons for that conversation (`can_launch` in the detail payload).
+
+Cronjobs use the same adapter registry for launching. Adapters may advertise support for
+cron model and effort overrides; an empty override leaves the runner and skill defaults in
+control. Cron skill parameters remain prompt arguments and are deliberately separate from
+runner flags.
 
 Three rules the substrate enforces around it:
 

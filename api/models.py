@@ -41,11 +41,24 @@ class ConversationIndex(models.Model):
 
 
 class CronJob(models.Model):
+    BACKEND_INTERNAL = "internal"
+    BACKEND_SYSTEMD = "systemd"
+    BACKEND_CHOICES = (
+        (BACKEND_INTERNAL, "Contexts process"),
+        (BACKEND_SYSTEMD, "systemd user timer"),
+    )
+
     skill_name = models.CharField(max_length=255)
     repo = models.CharField(max_length=512)
     cron_expression = models.CharField(max_length=100)
     params = models.TextField(default="", blank=True)
     enabled = models.BooleanField(default=True)
+    backend = models.CharField(
+        max_length=16, choices=BACKEND_CHOICES, default=BACKEND_SYSTEMD
+    )
+    runner = models.CharField(max_length=32, default="claude")
+    model = models.CharField(max_length=255, default="", blank=True)
+    effort = models.CharField(max_length=16, default="", blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -57,6 +70,8 @@ class CronJobRun(models.Model):
     trigger_type = models.CharField(max_length=10, default="scheduled")
     pid = models.IntegerField(null=True, blank=True)
     tmux_session = models.CharField(max_length=128, blank=True, default="")
+    status = models.CharField(max_length=16, default="started")
+    error = models.TextField(blank=True, default="")
 
 
 class LaunchedSession(models.Model):

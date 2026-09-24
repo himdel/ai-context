@@ -135,11 +135,23 @@ class OpencodeHarness(base.Harness):
 
     # -- launching ---------------------------------------------------------
 
-    def launch_argv(self, *, conversation_id="", prompt="", fork=False):
+    supports_cron_model = True
+    supports_cron_effort = False
+    cron_model_choices = [
+        "openai/gpt-6-luna",
+        "openai/gpt-6-sol",
+        "openai/gpt-6-astra",
+    ]
+
+    def launch_argv(
+        self, *, conversation_id="", prompt="", fork=False, model="", effort=""
+    ):
         # opencode spells all three differently from Claude: resume is
         # `--session` (not `--resume`), fork is `--fork`, and a starting prompt
         # is a flag rather than a positional. Verified against 1.18.30.
         argv = [settings.OPENCODE_CMD]
+        if model:
+            argv += ["--model", model]
         if conversation_id:
             argv += ["--session", conversation_id]
             if fork:

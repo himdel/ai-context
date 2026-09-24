@@ -26,9 +26,18 @@ def _start_scheduler():
 
 def _scheduler_loop():
     time.sleep(10)
+    from api.cronjobs import systemd_available
+
+    systemd = systemd_available()
+    try:
+        from api.cronjobs import reconcile_systemd_jobs
+
+        reconcile_systemd_jobs()
+    except Exception:
+        logger.exception("systemd cron reconciliation error")
     while True:
         try:
-            _check_cronjobs()
+            _check_cronjobs(systemd)
         except Exception:
             logger.exception("scheduler error")
         try:
@@ -44,23 +53,25 @@ def _resolve_cron_conversations():
     _resolve_all_unresolved_runs()
 
 
-def _check_cronjobs():
+def _check_cronjobs(systemd=None):
     from datetime import datetime, timezone
 
-    from croniter import croniter
-
+    from api.cronjobs import (
+        effective_backend,
+        execute_cronjob,
+        next_run_at,
+        systemd_available,
+    )
     from api.models import CronJob
 
-    now = datetime.now(timezone.utc)
+    if systemd is None:
+        systemd = systemd_available()
     for cj in CronJob.objects.filter(enabled=True):
+        if effective_backend(cj, available=systemd) != CronJob.BACKEND_INTERNAL:
+            continue
         try:
-            base = cj.last_run_at or cj.created_at
-            if base.tzinfo is None:
-                base = base.replace(tzinfo=timezone.utc)
-            cron = croniter(cj.cron_expression, base)
-            next_run = cron.get_next(datetime)
-            if next_run.tzinfo is None:
-                next_run = next_run.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            next_run = next_run_at(cj, now)
             if next_run <= now:
                 if (now - next_run).total_seconds() > 60:
                     logger.info(
@@ -71,15 +82,12 @@ def _check_cronjobs():
                     cj.last_run_at = now
                     cj.save(update_fields=["last_run_at"])
                     continue
-
-                from api.views import _execute_cronjob
-
                 logger.info(
                     "triggering cronjob %d (/%s in %s)",
                     cj.id,
                     cj.skill_name,
                     cj.repo,
                 )
-                _execute_cronjob(cj, trigger_type="scheduled")
+                execute_cronjob(cj, trigger_type="scheduled")
         except Exception:
             logger.exception("error checking cronjob %d", cj.id)

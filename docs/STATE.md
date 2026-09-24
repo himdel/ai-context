@@ -1,6 +1,6 @@
 # State
 
-_Last updated: 2026-09-11_
+_Last updated: 2026-09-24_
 
 ## Where we are
 
@@ -32,6 +32,12 @@ Claude-only - they reach `CLAUDE_DIR` through `harness.claude_adapter()`.
 
 Multi-instance (2026-07-16) is in use: default on :8062, personal on :8063. Which
 harnesses each one reads is per-instance `settings_local` and differs by machine.
+
+Cronjobs now have a backend boundary. Existing and new jobs use contexts-owned
+persistent systemd user timers by default; the in-process scheduler remains available
+as an explicit backend. The database remains authoritative; units use the
+`contexts-cron-*` prefix and invoke the direct Django worker, preserving tmux and
+conversation pairing.
 
 ## Known gaps
 

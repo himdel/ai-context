@@ -47,6 +47,8 @@ urlpatterns = [
     path("sessions/attach", views.session_attach),
     path("cronjobs/", views.cronjobs_list),
     path("cronjobs", views.cronjobs_list),
+    path("cronjobs/options/", views.cronjob_options),
+    path("cronjobs/options", views.cronjob_options),
     path("cronjobs/<int:cronjob_id>/", views.cronjob_detail),
     path("cronjobs/<int:cronjob_id>", views.cronjob_detail),
     path("cronjobs/<int:cronjob_id>/run/", views.cronjob_run),

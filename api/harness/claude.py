@@ -343,8 +343,18 @@ class ClaudeHarness(base.Harness):
 
     # -- launching ---------------------------------------------------------
 
-    def launch_argv(self, *, conversation_id="", prompt="", fork=False):
+    supports_cron_model = True
+    supports_cron_effort = True
+    cron_model_choices = ["sonnet", "opus", "haiku", "fable"]
+
+    def launch_argv(
+        self, *, conversation_id="", prompt="", fork=False, model="", effort=""
+    ):
         argv = [settings.CLAUDE_CMD]
+        if model:
+            argv += ["--model", model]
+        if effort:
+            argv += ["--effort", effort]
         if conversation_id:
             argv += ["--resume", conversation_id]
             if fork:

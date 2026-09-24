@@ -8,6 +8,30 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-24 - systemd owns persistent cron wakeups when available
+
+The original cronjob scheduler lived in the Django process, so a suspended laptop or a
+stopped contexts server could miss a run. The separate dotfiles `crontab` wrapper is not a
+fit: contexts jobs belong to SQLite and need the existing tmux/conversation integration.
+
+- **Keep the database authoritative.** Contexts generates its own `contexts-cron-*` units;
+  it does not write the user's dotfiles crontab and does not manage `user-cron-*` units.
+- **Use an exact persistent systemd calendar.** Cron expressions are translated to
+  `OnCalendar=` entries when units are reconciled, so weekly jobs do not wake every
+  minute. `Persistent=true` provides one catch-up invocation after suspend.
+- **Run a direct Django worker.** A timer does not call the HTTP API or require the web
+  process to be running. The worker uses the same launch path as manual runs, so tmux and
+  conversation pairing remain intact.
+- **Make ownership explicit.** Jobs default to `systemd`; `internal` remains available
+  as an explicit choice for machines or troubleshooting where the user manager is not
+  wanted. There is no runtime auto-switch that could create duplicate ownership.
+- **Keep runner options in the harness registry.** Claude and opencode own their model and
+  effort flag dialects; cronjobs pass optional overrides through that same adapter rather
+  than inventing a second runner configuration.
+
+This intentionally does not promise agent completion tracking: the worker records whether
+the tmux session started, while the agent itself remains an independent process.
+
 ## 2026-09-15 - remote access is a setting, and opt-in
 
 himdel wanted contexts reachable from other machines. It had been hardwired to
