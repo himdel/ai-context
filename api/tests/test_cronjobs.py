@@ -58,6 +58,17 @@ class CronjobBackendTests(SimpleTestCase):
         text = cronjobs._service_text(self.make_job())
         self.assertIn("ExecStartPre=%h/bin/wait-for-network", text)
 
+    def test_systemd_service_keeps_manager_environment_for_agents(self):
+        text = cronjobs._service_text(self.make_job())
+        self.assertIn("Environment=HOME=%h", text)
+        self.assertIn("Environment=XDG_RUNTIME_DIR=/run/user/%U", text)
+        self.assertIn(
+            "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus",
+            text,
+        )
+        self.assertNotIn("Environment=PATH=", text)
+        self.assertNotIn("Environment=SHELL=", text)
+
     def test_calendar_preserves_cron_day_or_semantics(self):
         self.assertEqual(
             calendar_expressions("0 9 1 * 1"),

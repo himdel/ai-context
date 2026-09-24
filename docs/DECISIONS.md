@@ -22,6 +22,14 @@ explicit `# local-only` opt-out for jobs such as backups, notes, and wallpaper
 rotation. Command inspection is intentionally avoided: shell commands do not
 reliably reveal whether they need a network.
 
+Contexts workers intentionally do not replace `PATH` or `SHELL`: their user
+systemd manager environment carries the per-user tool paths, OpenAI credentials,
+SSH agent, and other launch context needed by tmux and the agent wrappers. The
+generated unit pins only `HOME`, the runtime directory, and the user D-Bus
+address. Claude's Vertex variables remain wrapper-owned: `claude.work` sources
+`~/keys/claude.env` inside the tmux command so a stale tmux server cannot lose
+them.
+
 ## 2026-09-24 - use GitHub coauthor trailers for assistant attribution
 
 GitHub contributor statistics count the standard `Co-Authored-By` trailer, not the local

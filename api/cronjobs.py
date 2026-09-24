@@ -286,6 +286,10 @@ Description=Contexts cronjob /{job.skill_name} ({job.id})
 [Service]
 Type=oneshot
 WorkingDirectory={_unit_quote(str(settings.BASE_DIR))}
+# Keep the user-manager PATH/SHELL and credentials for agent wrappers.
+Environment=HOME=%h
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 Environment=CONTEXTS_INSTANCE={_unit_quote(instance)}
 Environment=PYTHONUNBUFFERED=1
 TimeoutStartSec=infinity
