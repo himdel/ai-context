@@ -46,7 +46,7 @@ same commit.
 ## Commits
 
 - Work directly on `main` - no feature branches unless asked.
-- When and how to commit, message style, and the `Assisted-by` trailer:
+- When and how to commit, message style, and the `Co-Authored-By` trailer:
   see `~/.claude/CLAUDE.md`.
 - Run `make fix` before staging.
 

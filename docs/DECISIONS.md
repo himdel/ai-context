@@ -8,6 +8,17 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-24 - use GitHub coauthor trailers for assistant attribution
+
+GitHub contributor statistics count the standard `Co-Authored-By` trailer, not the local
+`Assisted-by` convention used by many earlier commits. Claude therefore appears as 75
+contributions even though the commits remain authored and committed by Martin Hradil.
+
+Future assistant commits use `Co-Authored-By` with the assistant's vendor noreply address.
+The OpenAI address currently resolves to GitHub's `codex` account, so that is the identity
+GitHub will display for this mode. Existing commits are left unchanged; rewriting pushed
+history only to change attribution would provide little value.
+
 ## 2026-09-24 - refresh opencode repository metadata at session boundaries
 
 The opencode database does not retain the branch or pull request associated with a
