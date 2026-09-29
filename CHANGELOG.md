@@ -4,6 +4,18 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-09-29
+
+### Action required
+
+- New migration: `make migrate` (or `make migrate-<name>` for an extra instance).
+
+### New features
+
+- Cronjobs can send a selected skill as a natural-language request, which helps
+  opencode use skills already listed in its context instead of treating `/skill`
+  as an unknown command (`5062aed`).
+
 ## 2026-09-24
 
 ### Action required
