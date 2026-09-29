@@ -8,6 +8,19 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-09-29 - make cron skill wording selectable
+
+Cronjobs previously always launched a slash command. That is the right native
+interface for Claude, but opencode can treat an unknown slash command as a reset
+instead of using the skill list already present in its context.
+
+The cron job now stores a natural-language wording choice. The default remains
+the existing slash command for compatibility; the UI checks the option when a
+job is switched to opencode, and the natural form asks the agent to run the
+named skill while preserving the existing params field. This stays harness-
+agnostic and leaves room for a future custom prompt without hardcoding one
+runner's behavior into the execution layer.
+
 ## 2026-09-24 - wait for ordinary network before persistent cron workers
 
 Persistent user timers correctly catch up after suspend, but they can start before

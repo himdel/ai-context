@@ -375,6 +375,26 @@ export function loadCronjob(cronjobId, pushHistory) {
       paramsLabel.appendChild(paramsInput);
       form.appendChild(paramsLabel);
 
+      var naturalLabel = document.createElement('label');
+      naturalLabel.style.flexDirection = 'row';
+      naturalLabel.style.alignItems = 'center';
+      naturalLabel.style.gap = '8px';
+      var naturalCheck = document.createElement('input');
+      naturalCheck.type = 'checkbox';
+      naturalCheck.checked =
+        data.natural_language || data.runner === 'opencode';
+      naturalLabel.appendChild(naturalCheck);
+      naturalLabel.appendChild(
+        document.createTextNode(
+          'Ask the agent in natural language (instead of /skill)',
+        ),
+      );
+      configFields.runner.addEventListener('change', function () {
+        if (configFields.runner.value === 'opencode')
+          naturalCheck.checked = true;
+      });
+      form.appendChild(naturalLabel);
+
       // Schedule
       var schedLabel = document.createElement('label');
       schedLabel.textContent = 'Schedule (cron expression)';
@@ -435,6 +455,7 @@ export function loadCronjob(cronjobId, pushHistory) {
             skill_name: skillSelect.value || data.skill_name,
             repo: repoSelect.value || data.repo,
             params: paramsInput.value,
+            natural_language: naturalCheck.checked,
             cron_expression: cronInput.value,
             enabled: enabledCheck.checked,
             backend: configFields.backend.value || data.backend || 'systemd',
@@ -664,6 +685,23 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   paramsLabel.appendChild(paramsInput);
   form.appendChild(paramsLabel);
 
+  var naturalLabel = document.createElement('label');
+  naturalLabel.style.flexDirection = 'row';
+  naturalLabel.style.alignItems = 'center';
+  naturalLabel.style.gap = '8px';
+  var naturalCheck = document.createElement('input');
+  naturalCheck.type = 'checkbox';
+  naturalLabel.appendChild(naturalCheck);
+  naturalLabel.appendChild(
+    document.createTextNode(
+      'Ask the agent in natural language (instead of /skill)',
+    ),
+  );
+  configFields.runner.addEventListener('change', function () {
+    if (configFields.runner.value === 'opencode') naturalCheck.checked = true;
+  });
+  form.appendChild(naturalLabel);
+
   // Schedule
   var schedLabel = document.createElement('label');
   schedLabel.textContent = 'Schedule (cron expression)';
@@ -722,6 +760,7 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
         skill_name: skillSelect.value,
         repo: repoSelect.value,
         params: paramsInput.value,
+        natural_language: naturalCheck.checked,
         cron_expression: cronInput.value,
         backend: configFields.backend.value || 'systemd',
         runner: configFields.runner.value || 'claude',

@@ -112,7 +112,10 @@ def validate_job_config(backend, runner, model, effort, cron_expression=""):
 
 
 def _prompt(job):
-    prompt = "/" + job.skill_name
+    if getattr(job, "natural_language", False):
+        prompt = "Please run the skill " + job.skill_name
+    else:
+        prompt = "/" + job.skill_name
     if job.params.strip():
         prompt += " " + job.params
     return prompt
@@ -181,7 +184,7 @@ def execute_cronjob(job, trigger_type="scheduled"):
     if ok and tmux_session:
         _notify_session(
             tmux_session,
-            f"Cron: /{job.skill_name}",
+            f"Cron: {_prompt(job)}",
             f"Started in {job.repo}",
         )
 

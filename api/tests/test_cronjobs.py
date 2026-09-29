@@ -85,6 +85,18 @@ class CronjobBackendTests(SimpleTestCase):
         with self.assertRaises(CronCalendarError):
             calendar_expressions("@reboot")
 
+    def test_prompt_uses_slash_command_by_default(self):
+        self.assertEqual(
+            cronjobs._prompt(self.make_job(params="--full")),
+            "/daily-check --full",
+        )
+
+    def test_prompt_can_use_natural_language(self):
+        self.assertEqual(
+            cronjobs._prompt(self.make_job(natural_language=True, params="--full")),
+            "Please run the skill daily-check --full",
+        )
+
 
 class OpencodeTodoTests(SimpleTestCase):
     def test_reads_matching_cached_context(self):

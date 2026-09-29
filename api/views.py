@@ -1398,6 +1398,7 @@ def _serialize_cronjob(cj):
         "repo": cj.repo,
         "cron_expression": cj.cron_expression,
         "params": cj.params,
+        "natural_language": cj.natural_language,
         "enabled": cj.enabled,
         "backend": cj.backend,
         "effective_backend": backend,
@@ -1427,6 +1428,7 @@ def cronjobs_list(request):
         runner = request.data.get("runner", "claude")
         model = request.data.get("model", "")
         effort = request.data.get("effort", "")
+        natural_language = request.data.get("natural_language", runner == "opencode")
 
         if not skill_name or not repo or not cron_expression:
             return Response(
@@ -1448,6 +1450,7 @@ def cronjobs_list(request):
             repo=repo,
             cron_expression=cron_expression,
             params=params,
+            natural_language=natural_language,
             backend=backend,
             runner=runner,
             model=model,
@@ -1491,7 +1494,13 @@ def cronjob_detail(request, cronjob_id):
         )
         if config_error:
             return Response({"error": config_error}, status=400)
-        for field in ("skill_name", "repo", "cron_expression", "params"):
+        for field in (
+            "skill_name",
+            "repo",
+            "cron_expression",
+            "params",
+            "natural_language",
+        ):
             if field in request.data:
                 setattr(cj, field, request.data[field])
         if "enabled" in request.data:

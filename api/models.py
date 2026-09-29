@@ -52,6 +52,7 @@ class CronJob(models.Model):
     repo = models.CharField(max_length=512)
     cron_expression = models.CharField(max_length=100)
     params = models.TextField(default="", blank=True)
+    natural_language = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
     backend = models.CharField(
         max_length=16, choices=BACKEND_CHOICES, default=BACKEND_SYSTEMD
