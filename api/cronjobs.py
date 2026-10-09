@@ -63,6 +63,7 @@ def runner_options():
                 "label": getattr(adapter, "label", adapter.key),
                 "supports_model": bool(getattr(adapter, "supports_cron_model", False)),
                 "models": list(getattr(adapter, "cron_model_choices", [])),
+                "supports_agent": bool(getattr(adapter, "supports_cron_agent", False)),
                 "supports_effort": bool(
                     getattr(adapter, "supports_cron_effort", False)
                 ),
@@ -78,7 +79,7 @@ def backend_options():
     return [{"key": key, "label": label} for key, label in CronJob.BACKEND_CHOICES]
 
 
-def validate_job_config(backend, runner, model, effort, cron_expression=""):
+def validate_job_config(backend, runner, model, effort, cron_expression="", agent=""):
     valid_backends = {key for key, _ in CronJob.BACKEND_CHOICES}
     if backend not in valid_backends:
         return f"invalid backend: {backend}"
@@ -87,6 +88,8 @@ def validate_job_config(backend, runner, model, effort, cron_expression=""):
         return f"runner is unavailable: {runner}"
     if model and not getattr(adapter, "supports_cron_model", False):
         return f"runner does not support model selection: {runner}"
+    if agent and not getattr(adapter, "supports_cron_agent", False):
+        return f"runner does not support agent selection: {runner}"
     if effort and not getattr(adapter, "supports_cron_effort", False):
         return f"runner does not support effort selection: {runner}"
     if effort and effort not in _EFFORTS:
@@ -130,6 +133,7 @@ def _launch_argv(job):
     argv = harness.launch_argv(
         job.runner or "claude",
         prompt=_prompt(job),
+        agent=job.agent,
         model=job.model,
         effort=job.effort,
     )

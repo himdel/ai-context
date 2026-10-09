@@ -11,7 +11,9 @@ from django.utils import timezone
 from api import cronjobs
 from api.croncalendar import CronCalendarError, calendar_expressions
 from api.harness import base
+from api.harness.claude import ClaudeHarness
 from api.harness.opencode import (
+    OpencodeHarness,
     _block_from_part,
     _cached_context,
     _derive_todos,
@@ -25,6 +27,7 @@ class CronjobBackendTests(SimpleTestCase):
             "id": 7,
             "backend": "systemd",
             "runner": "claude",
+            "agent": "",
             "model": "",
             "effort": "",
             "skill_name": "daily-check",
@@ -95,6 +98,61 @@ class CronjobBackendTests(SimpleTestCase):
         self.assertEqual(
             cronjobs._prompt(self.make_job(natural_language=True, params="--full")),
             "Please run the skill daily-check --full",
+        )
+
+    def test_launch_argv_passes_the_selected_agent(self):
+        job = self.make_job(runner="opencode", agent="sol")
+        with (
+            mock.patch.object(cronjobs.harness, "get", return_value=SimpleNamespace()),
+            mock.patch.object(
+                cronjobs.harness, "launch_argv", return_value=["opencode"]
+            ) as launch,
+        ):
+            self.assertEqual(cronjobs._launch_argv(job), ["opencode"])
+
+        launch.assert_called_once_with(
+            "opencode",
+            prompt="/daily-check",
+            agent="sol",
+            model="",
+            effort="",
+        )
+
+    def test_agent_selection_requires_runner_support(self):
+        adapter = SimpleNamespace(
+            supports_cron_agent=False,
+            supports_cron_model=False,
+            supports_cron_effort=False,
+        )
+        with mock.patch.object(cronjobs.harness, "get", return_value=adapter):
+            error = cronjobs.validate_job_config(
+                "internal", "claude", "", "", "0 9 * * 1", "sol"
+            )
+
+        self.assertEqual(error, "runner does not support agent selection: claude")
+
+
+class OpencodeLaunchTests(SimpleTestCase):
+    @override_settings(OPENCODE_CMD="opencode")
+    def test_launch_argv_selects_configured_agent(self):
+        self.assertEqual(
+            OpencodeHarness().launch_argv(agent="sol", prompt="Please run learnings"),
+            [
+                "opencode",
+                "--agent",
+                "sol",
+                "--prompt",
+                "Please run learnings",
+            ],
+        )
+
+
+class ClaudeLaunchTests(SimpleTestCase):
+    @override_settings(CLAUDE_CMD="claude")
+    def test_launch_argv_selects_configured_agent(self):
+        self.assertEqual(
+            ClaudeHarness().launch_argv(agent="reviewer", prompt="Review this"),
+            ["claude", "--agent", "reviewer", "Review this"],
         )
 
 

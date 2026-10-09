@@ -1403,6 +1403,7 @@ def _serialize_cronjob(cj):
         "backend": cj.backend,
         "effective_backend": backend,
         "runner": cj.runner,
+        "agent": cj.agent,
         "model": cj.model,
         "effort": cj.effort,
         "last_run_at": cj.last_run_at.isoformat() if cj.last_run_at else None,
@@ -1426,6 +1427,7 @@ def cronjobs_list(request):
         params = request.data.get("params", "")
         backend = request.data.get("backend", CronJob.BACKEND_SYSTEMD)
         runner = request.data.get("runner", "claude")
+        agent = request.data.get("agent", "")
         model = request.data.get("model", "")
         effort = request.data.get("effort", "")
         natural_language = request.data.get("natural_language", runner == "opencode")
@@ -1440,7 +1442,7 @@ def cronjobs_list(request):
         if not croniter.is_valid(cron_expression):
             return Response({"error": "invalid cron expression"}, status=400)
         config_error = cronjob_service.validate_job_config(
-            backend, runner, model, effort, cron_expression
+            backend, runner, model, effort, cron_expression, agent
         )
         if config_error:
             return Response({"error": config_error}, status=400)
@@ -1453,6 +1455,7 @@ def cronjobs_list(request):
             natural_language=natural_language,
             backend=backend,
             runner=runner,
+            agent=agent,
             model=model,
             effort=effort,
         )
@@ -1478,19 +1481,21 @@ def cronjob_detail(request, cronjob_id):
     if request.method == "PUT":
         values = {
             field: request.data[field]
-            for field in ("backend", "runner", "model", "effort")
+            for field in ("backend", "runner", "agent", "model", "effort")
             if field in request.data
         }
         backend = values.get("backend", cj.backend)
         runner = values.get("runner", cj.runner)
         model = values.get("model", cj.model)
         effort = values.get("effort", cj.effort)
+        agent = values.get("agent", cj.agent)
         config_error = cronjob_service.validate_job_config(
             backend,
             runner,
             model,
             effort,
             request.data.get("cron_expression", cj.cron_expression),
+            agent,
         )
         if config_error:
             return Response({"error": config_error}, status=400)

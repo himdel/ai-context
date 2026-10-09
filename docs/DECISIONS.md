@@ -8,6 +8,13 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-10-09 - select a named agent per cronjob
+
+Cronjobs could choose a model, but a named agent can carry its own model and behavior.
+Persist an optional agent name per job and let each runner translate it to its native
+`--agent` option. Keep the value opaque and runner-owned so hosts can configure agents
+independently for Claude Code and OpenCode.
+
 ## 2026-09-29 - make cron skill wording selectable
 
 Cronjobs previously always launched a slash command. That is the right native

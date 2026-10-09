@@ -220,7 +220,14 @@ class Harness:
     # session buttons in the UI. `launch_argv` returning None is the signal.
 
     def launch_argv(
-        self, *, conversation_id="", prompt="", fork=False, model="", effort=""
+        self,
+        *,
+        conversation_id="",
+        prompt="",
+        fork=False,
+        agent="",
+        model="",
+        effort="",
     ):
         """Argv that starts this harness, optionally resuming or forking.
 

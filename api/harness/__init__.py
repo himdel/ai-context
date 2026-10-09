@@ -97,7 +97,14 @@ def active_ids():
 
 
 def launch_argv(
-    source, *, conversation_id="", prompt="", fork=False, model="", effort=""
+    source,
+    *,
+    conversation_id="",
+    prompt="",
+    fork=False,
+    agent="",
+    model="",
+    effort="",
 ):
     """Argv starting `source`, or None when it is enabled but not launchable."""
     adapter = get(source or "claude")
@@ -108,6 +115,7 @@ def launch_argv(
             conversation_id=conversation_id,
             prompt=prompt,
             fork=fork,
+            agent=agent,
             model=model,
             effort=effort,
         )

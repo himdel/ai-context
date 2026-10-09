@@ -29,6 +29,15 @@ function addCronConfigFields(form, data) {
   runnerLabel.appendChild(runnerSelect);
   form.appendChild(runnerLabel);
 
+  var agentLabel = document.createElement('label');
+  agentLabel.textContent = 'Agent (optional)';
+  var agentInput = document.createElement('input');
+  agentInput.type = 'text';
+  agentInput.value = data.agent || '';
+  agentInput.placeholder = 'runner default';
+  agentLabel.appendChild(agentInput);
+  form.appendChild(agentLabel);
+
   var modelLabel = document.createElement('label');
   modelLabel.textContent = 'Model (optional)';
   var modelInput = document.createElement('input');
@@ -70,6 +79,7 @@ function addCronConfigFields(form, data) {
         key: data.runner,
         label: data.runner + ' (unavailable)',
         supports_model: false,
+        supports_agent: false,
         supports_effort: false,
         efforts: [''],
       });
@@ -96,6 +106,7 @@ function addCronConfigFields(form, data) {
         effortSelect.appendChild(el);
       });
       effortSelect.disabled = !(runner && runner.supports_effort);
+      agentInput.disabled = !(runner && runner.supports_agent);
       modelInput.disabled = !(runner && runner.supports_model);
       modelList.innerHTML = '';
       var models = runner && runner.models ? runner.models.slice() : [];
@@ -107,13 +118,20 @@ function addCronConfigFields(form, data) {
       });
     }
 
-    runnerSelect.onchange = updateEffortOptions;
+    runnerSelect.onchange = function () {
+      updateEffortOptions();
+      var runner = runners.find(function (item) {
+        return item.key === runnerSelect.value;
+      });
+      if (!runner || !runner.supports_agent) agentInput.value = '';
+    };
     updateEffortOptions();
   });
 
   return {
     backend: backendSelect,
     runner: runnerSelect,
+    agent: agentInput,
     model: modelInput,
     effort: effortSelect,
   };
@@ -460,6 +478,7 @@ export function loadCronjob(cronjobId, pushHistory) {
             enabled: enabledCheck.checked,
             backend: configFields.backend.value || data.backend || 'systemd',
             runner: configFields.runner.value || data.runner || 'claude',
+            agent: configFields.agent.value,
             model: configFields.model.value,
             effort: configFields.effort.value,
           }),
@@ -672,6 +691,7 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   var configFields = addCronConfigFields(form, {
     backend: 'systemd',
     runner: 'claude',
+    agent: '',
     model: '',
     effort: '',
   });
@@ -764,6 +784,7 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
         cron_expression: cronInput.value,
         backend: configFields.backend.value || 'systemd',
         runner: configFields.runner.value || 'claude',
+        agent: configFields.agent.value,
         model: configFields.model.value,
         effort: configFields.effort.value,
       }),

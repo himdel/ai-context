@@ -58,6 +58,7 @@ class CronJob(models.Model):
         max_length=16, choices=BACKEND_CHOICES, default=BACKEND_SYSTEMD
     )
     runner = models.CharField(max_length=32, default="claude")
+    agent = models.CharField(max_length=128, default="", blank=True)
     model = models.CharField(max_length=255, default="", blank=True)
     effort = models.CharField(max_length=16, default="", blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
