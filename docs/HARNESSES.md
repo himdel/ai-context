@@ -13,7 +13,7 @@ separate database.
 | `api/harness/base.py` | `Conversation`, `Message`, `ConvRef`, block builders, canonical tool names, `Harness` |
 | `api/harness/__init__.py` | The registry: `enabled()`, `get()`, `owner_of()`, `load()`, `active_ids()`, `claude_adapter()` |
 | `api/harness/claude.py` | Claude Code - `CLAUDE_DIR/projects/<dashed-cwd>/<uuid>.jsonl` |
-| `api/harness/opencode.py` | opencode - `~/.local/share/opencode/opencode.db` (SQLite, read-only) |
+| `api/harness/opencode.py` | opencode V1 and V2 - `~/.local/share/opencode/opencode.db` (SQLite, read-only) |
 
 ## Configuration
 
@@ -48,7 +48,7 @@ down the conversation list.
 
 `ConvRef.revision` is an **opaque staleness token** compared against the cached copy in
 `ConversationIndex`. Anything that changes when the conversation changes will do - Claude
-uses `size:mtime`, opencode uses `time_updated:message_count`. Do not assume a file.
+uses `size:mtime`, opencode uses `table:time_updated:message_count`. Do not assume a file.
 
 ## The canonical model
 
@@ -120,6 +120,11 @@ opencode's database belongs to a program that may be running. `_connect` in `ope
 opens it read-only, autocommit, and short-lived, and the docstring there explains why each
 of those matters - read it before changing how it opens. In particular: **never pass
 `immutable=1`**, which silently ignores the WAL and returns stale or torn data.
+
+V2 writes sessions to `session_v2` and ordered, inline-content rows to
+`session_message`. Migrated V1 rows may exist in both schemas. Discovery
+deduplicates by ID and prefers V2; V1-only rows remain readable. The schema
+name in the revision forces a one-time reindex of migrated conversations.
 
 ## Launching
 

@@ -5,6 +5,16 @@ it is picked up or settled.
 
 ---
 
+## Restore OpenCode V2 fork launching
+
+OpenCode V2.0.26 does not accept the V1 CLI `--fork` flag, although the V2
+server exposes `POST /api/session/{sessionID}/fork`. The existing fork button
+still launches with that old flag. Integrate the API fork with the tmux launch
+and identity flow, or hide the button for V2 until that path works. Discovered
+2026-10-11 while restoring V2 conversation visibility; separate from reading
+the new SQLite schema.
+
+
 ## `x-terminal-emulator` hides which terminal is really being launched
 
 `TERMINAL_EXEC` in `contexts/capabilities.py` keys the exec flag and

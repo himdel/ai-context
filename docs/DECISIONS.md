@@ -8,6 +8,20 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-10-11 - read both OpenCode schemas behind one harness
+
+OpenCode V2 migrates V1 sessions into `session_v2`, but keeps the old `session`
+table around and only writes new conversations to `session_v2`. V2 message
+content lives inline in `session_message`, not in separate `message` and `part`
+rows. Reading only the V1 tables silently showed old history but no new sessions.
+
+Keep one opencode harness, with two storage readers: IDs, launching and the
+canonical conversation model are shared. Discover both tables to retain any
+unmigrated V1 rows, deduplicate IDs in favour of V2, and include the table in
+the revision so cached V1 parses refresh. A separate V2 harness would list
+migrated sessions twice and duplicate the shared behaviour.
+
+
 ## 2026-09-15 - remote access is a setting, and opt-in
 
 himdel wanted contexts reachable from other machines. It had been hardwired to
