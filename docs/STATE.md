@@ -37,10 +37,6 @@ harnesses each one reads is per-instance `settings_local` and differs by machine
 
 ## Known gaps
 
-- OpenCode V2 no longer advertises `--fork`, but the opencode launch adapter still
-  uses that V1 flag for the fork button. Forking through the V2 API needs separate
-  launch work; browsing V2 conversations does not depend on it.
-
 - **The launchers that start from nothing are still Claude-only** - the new-session screen
   and the repos `+ New` button. See `IDEAS.md`.
 - **An adopted session that is resuming shows no conversation until it is used.** opencode

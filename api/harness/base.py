@@ -227,6 +227,14 @@ class Harness:
         """
         return None
 
+    def fork_session(self, conversation_id):
+        """Create a fork ahead of launching, returning its ID, or None for CLI forks.
+
+        Harnesses whose CLI forks on launch leave this unimplemented. An error
+        creating the fork must raise, not silently start a different session.
+        """
+        return None
+
     def identify(self, cwd, since_ms):
         """Id of the session a just-launched process in `cwd` is working in.
 

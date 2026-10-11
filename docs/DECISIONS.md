@@ -8,6 +8,20 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-10-11 - create OpenCode V2 forks before launching the terminal
+
+V2 removed the CLI `--fork` flag, but offers a service API fork operation that
+returns the new session ID. Use `opencode api` to reach the same service and
+authentication as the TUI, create the fork before launch, then pass that ID to
+`--session` and record it as the terminal's conversation. This is exact pairing,
+unlike V1's fork-on-launch heuristic. A failed API call must not launch a fresh
+session masquerading as a fork. V1 keeps its CLI flag.
+
+The API call prefers OpenCode's installed binary when `OPENCODE_CMD` is bare:
+the shell's `opencode` may be a wrapper that starts a tmux TUI for every
+invocation, and an API request is not an interactive session.
+
+
 ## 2026-10-11 - read both OpenCode schemas behind one harness
 
 OpenCode V2 migrates V1 sessions into `session_v2`, but keeps the old `session`

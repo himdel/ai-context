@@ -1044,6 +1044,20 @@ def session_fork(request):
         return target
     adapter, conversation_id, cwd = target
 
+    try:
+        fork_id = adapter.fork_session(conversation_id)
+    except Exception:
+        logger.exception("harness %s failed to fork %s", adapter.key, conversation_id)
+        return Response(
+            {"error": f"{adapter.key} could not fork the session"}, status=502
+        )
+
+    if fork_id:
+        argv = harness.launch_argv(adapter.key, conversation_id=fork_id)
+        if argv is None:
+            return Response({"error": f"{adapter.key} cannot be launched"}, status=400)
+        return _spawn_session(argv, cwd, source=adapter.key, conversation_id=fork_id)
+
     argv = harness.launch_argv(adapter.key, conversation_id=conversation_id, fork=True)
     if argv is None:
         return Response({"error": f"{adapter.key} cannot be launched"}, status=400)

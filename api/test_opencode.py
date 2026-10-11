@@ -2,12 +2,17 @@
 
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+from rest_framework.response import Response
+from rest_framework.test import APIRequestFactory
 from django.test import SimpleTestCase, override_settings
 
 from api.harness.opencode import OpencodeHarness
+from api.views import session_fork
 
 
 class OpencodeHarnessTests(SimpleTestCase):
@@ -72,6 +77,7 @@ class OpencodeHarnessTests(SimpleTestCase):
         conv = self.adapter.load("ses_old")
         self.assertEqual(conv.messages[0].blocks[0]["text"], "hello")
         self.assertEqual(conv.output_tokens, 7)
+        self.assertIsNone(self.adapter.fork_session("ses_old"))
 
     def test_v2_sessions_and_migrated_v1_ids(self):
         with sqlite3.connect(self.path) as conn:
@@ -225,3 +231,89 @@ class OpencodeHarnessTests(SimpleTestCase):
             tool["subagent"]["messages"][0]["content"][0]["text"], "child answer"
         )
         self.assertEqual(conv.output_tokens, 5)
+
+        with patch("api.harness.opencode.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                [], 0, '{"data":{"id":"ses_forked"}}', ""
+            )
+            self.assertEqual(self.adapter.fork_session("ses_new"), "ses_forked")
+            run.assert_called_once()
+            argv = run.call_args.args[0]
+            self.assertEqual(
+                argv[1:], ["api", "post", "/api/session/ses_new/fork", "--data", "{}"]
+            )
+            self.assertEqual(
+                self.adapter.launch_argv(conversation_id="ses_forked"),
+                ["opencode", "--session", "ses_forked"],
+            )
+            run.return_value = subprocess.CompletedProcess([], 0, '{"data":{}}', "")
+            with self.assertRaisesRegex(RuntimeError, "no session ID"):
+                self.adapter.fork_session("ses_new")
+        with self.assertRaisesRegex(RuntimeError, "not available"):
+            self.adapter.fork_session("ses_unmigrated")
+
+    def test_v2_fork_launches_exact_api_id_and_fails_closed(self):
+        request = APIRequestFactory().post(
+            "/api/sessions/fork", {"conversation_id": "ses_new"}
+        )
+        with (
+            patch(
+                "api.views._resume_target",
+                return_value=(self.adapter, "ses_new", "/work"),
+            ),
+            patch(
+                "api.views.harness.launch_argv",
+                return_value=["opencode", "--session", "ses_forked"],
+            ),
+            patch.object(self.adapter, "fork_session", return_value="ses_forked"),
+            patch(
+                "api.views._spawn_session", return_value=Response({"status": "ok"})
+            ) as spawn,
+        ):
+            self.assertEqual(session_fork(request).status_code, 200)
+            spawn.assert_called_once_with(
+                ["opencode", "--session", "ses_forked"],
+                "/work",
+                source="opencode",
+                conversation_id="ses_forked",
+            )
+
+        with (
+            patch(
+                "api.views._resume_target",
+                return_value=(self.adapter, "ses_old", "/work"),
+            ),
+            patch.object(self.adapter, "fork_session", return_value=None),
+            patch(
+                "api.views.harness.launch_argv",
+                return_value=["opencode", "--session", "ses_old", "--fork"],
+            ) as launch,
+            patch(
+                "api.views._spawn_session", return_value=Response({"status": "ok"})
+            ) as spawn,
+        ):
+            self.assertEqual(session_fork(request).status_code, 200)
+            launch.assert_called_once_with(
+                "opencode", conversation_id="ses_old", fork=True
+            )
+            spawn.assert_called_once_with(
+                ["opencode", "--session", "ses_old", "--fork"],
+                "/work",
+                source="opencode",
+            )
+
+        with (
+            patch(
+                "api.views._resume_target",
+                return_value=(self.adapter, "ses_new", "/work"),
+            ),
+            patch.object(
+                self.adapter,
+                "fork_session",
+                side_effect=RuntimeError("service unavailable"),
+            ),
+            patch("api.views._spawn_session") as spawn,
+            self.assertLogs("api.views", level="ERROR"),
+        ):
+            self.assertEqual(session_fork(request).status_code, 502)
+            spawn.assert_not_called()

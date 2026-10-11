@@ -13,8 +13,12 @@ comment there before changing how it opens.
 import json
 import logging
 import sqlite3
+import subprocess
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
+from shutil import which
+from urllib.parse import quote
 
 from django.conf import settings
 
@@ -136,9 +140,8 @@ class OpencodeHarness(base.Harness):
     # -- launching ---------------------------------------------------------
 
     def launch_argv(self, *, conversation_id="", prompt="", fork=False):
-        # opencode spells all three differently from Claude: resume is
-        # `--session` (not `--resume`), fork is `--fork`, and a starting prompt
-        # is a flag rather than a positional. Verified against 1.18.30.
+        # V1 forks on launch with --fork. V2 creates the fork through its API
+        # first, then resumes the returned ID with --session.
         argv = [settings.OPENCODE_CMD]
         if conversation_id:
             argv += ["--session", conversation_id]
@@ -147,6 +150,64 @@ class OpencodeHarness(base.Harness):
         if prompt:
             argv += ["--prompt", prompt]
         return argv
+
+    def fork_session(self, conversation_id):
+        """V2 forks via the service API; V1 still uses the CLI's --fork flag."""
+        try:
+            with _connect(self.db_path) as conn:
+                if not _has_table(conn, "session_v2"):
+                    return None
+                if not conn.execute(
+                    "select 1 from session_v2 where id = ?", (conversation_id,)
+                ).fetchone():
+                    raise RuntimeError(
+                        "session is not available to the OpenCode V2 fork API"
+                    )
+        except (sqlite3.Error, TypeError) as exc:
+            raise RuntimeError("cannot inspect OpenCode session for forking") from exc
+
+        # `opencode api` discovers/authenticates with the same service as the
+        # TUI. Prefer the installed binary over a shell's TUI-only wrapper
+        # (which may start an extra tmux session for any command it receives).
+        binary = Path.home() / ".opencode/bin/opencode"
+        command = (
+            str(binary)
+            if settings.OPENCODE_CMD == "opencode" and binary.is_file()
+            else settings.OPENCODE_CMD
+        )
+        if not Path(command).is_absolute():
+            command = which(command) or command
+        try:
+            result = subprocess.run(
+                [
+                    command,
+                    "api",
+                    "post",
+                    f"/api/session/{quote(conversation_id, safe='')}/fork",
+                    "--data",
+                    "{}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError("OpenCode fork API could not be reached") from exc
+        if result.returncode:
+            logger.error("OpenCode fork API failed: %s", result.stderr.strip())
+            raise RuntimeError("OpenCode fork API failed")
+        try:
+            fork_id = json.loads(result.stdout)["data"]["id"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError("OpenCode fork API returned no session ID") from exc
+        if (
+            not isinstance(fork_id, str)
+            or not fork_id.startswith("ses_")
+            or fork_id == conversation_id
+        ):
+            raise RuntimeError("OpenCode fork API returned an invalid session ID")
+        return fork_id
 
     def identify(self, cwd, since_ms):
         """The session in `cwd` that a process started at `since_ms` is in, or "".
