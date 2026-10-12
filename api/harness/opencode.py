@@ -1,7 +1,7 @@
 """opencode adapter: a live SQLite database, not files on disk.
 
-`session` / `message` / `part`, where `part.data` is JSON typed `text`,
-`reasoning`, `tool`, `step-start`, `step-finish` or `patch`. Several things
+V1 uses `session` / `message` / `part`; V2 uses `session_v2` /
+`session_message`, with content embedded in each message. Several things
 Claude makes us reconstruct are already right here: a tool call carries its own
 result, a subagent names its child session outright, and cost is a column.
 
@@ -17,6 +17,8 @@ import subprocess
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from shutil import which
+from urllib.parse import quote
 
 from django.conf import settings
 
@@ -200,6 +202,64 @@ class OpencodeHarness(base.Harness):
             argv += ["--prompt", prompt]
         return argv
 
+    def fork_session(self, conversation_id):
+        """V2 forks via the service API; V1 still uses the CLI's --fork flag."""
+        try:
+            with _connect(self.db_path) as conn:
+                if not _has_table(conn, "session_v2"):
+                    return None
+                if not conn.execute(
+                    "select 1 from session_v2 where id = ?", (conversation_id,)
+                ).fetchone():
+                    raise RuntimeError(
+                        "session is not available to the OpenCode V2 fork API"
+                    )
+        except (sqlite3.Error, TypeError) as exc:
+            raise RuntimeError("cannot inspect OpenCode session for forking") from exc
+
+        # `opencode api` discovers/authenticates with the same service as the
+        # TUI. Prefer the installed binary over a shell's TUI-only wrapper
+        # (which may start an extra tmux session for any command it receives).
+        binary = Path.home() / ".opencode/bin/opencode"
+        command = (
+            str(binary)
+            if settings.OPENCODE_CMD == "opencode" and binary.is_file()
+            else settings.OPENCODE_CMD
+        )
+        if not Path(command).is_absolute():
+            command = which(command) or command
+        try:
+            result = subprocess.run(
+                [
+                    command,
+                    "api",
+                    "post",
+                    f"/api/session/{quote(conversation_id, safe='')}/fork",
+                    "--data",
+                    "{}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError("OpenCode fork API could not be reached") from exc
+        if result.returncode:
+            logger.error("OpenCode fork API failed: %s", result.stderr.strip())
+            raise RuntimeError("OpenCode fork API failed")
+        try:
+            fork_id = json.loads(result.stdout)["data"]["id"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError("OpenCode fork API returned no session ID") from exc
+        if (
+            not isinstance(fork_id, str)
+            or not fork_id.startswith("ses_")
+            or fork_id == conversation_id
+        ):
+            raise RuntimeError("OpenCode fork API returned an invalid session ID")
+        return fork_id
+
     def identify(self, cwd, since_ms):
         """The session in `cwd` that a process started at `since_ms` is in, or "".
 
@@ -214,21 +274,25 @@ class OpencodeHarness(base.Harness):
         is the fallback, and the only thing that can identify `opencode -c` or
         a resume started from a shell, where the row long predates the process.
         """
-        for column in ("time_created", "time_updated"):
-            try:
-                with _connect(self.db_path) as conn:
-                    row = conn.execute(
-                        "select id from session"
-                        f" where directory = ? and {column} >= ?"
-                        " and parent_id is null"
-                        f" order by {column} desc limit 1",
-                        (cwd, since_ms),
-                    ).fetchone()
-            except (sqlite3.Error, TypeError):
-                logger.exception("opencode identify failed")
-                return ""
-            if row:
-                return row["id"]
+        try:
+            with _connect(self.db_path) as conn:
+                table = _session_table(conn)
+                sources = (table, "session") if table == "session_v2" else (table,)
+                for column in ("time_created", "time_updated"):
+                    for source in sources:
+                        if source != table and not _has_table(conn, source):
+                            continue
+                        row = conn.execute(
+                            f"select id from {source}"
+                            f" where directory = ? and {column} >= ?"
+                            " and parent_id is null"
+                            f" order by {column} desc limit 1",
+                            (cwd, since_ms),
+                        ).fetchone()
+                        if row:
+                            return row["id"]
+        except (sqlite3.Error, TypeError):
+            logger.exception("opencode identify failed")
         return ""
 
     # -- discovery ---------------------------------------------------------
@@ -236,18 +300,33 @@ class OpencodeHarness(base.Harness):
     def list_refs(self):
         try:
             with _connect(self.db_path) as conn:
-                rows = conn.execute(
-                    "select s.id, s.parent_id, s.agent, s.time_updated,"
-                    " (select count(*) from message m where m.session_id = s.id) n"
-                    " from session s"
-                ).fetchall()
+                table = _session_table(conn)
+                rows = []
+                for source, messages in (
+                    ("session_v2", "session_message"),
+                    ("session", "message"),
+                ):
+                    if source != table and not _has_table(conn, source):
+                        continue
+                    rows.extend(
+                        (source, r)
+                        for r in conn.execute(
+                            "select s.id, s.parent_id, s.agent, s.time_updated,"
+                            f" (select count(*) from {messages} m where m.session_id = s.id) n"
+                            f" from {source} s"
+                        ).fetchall()
+                    )
         except (sqlite3.Error, TypeError):
             logger.exception("opencode list_refs failed")
             return
-        for r in rows:
+        seen = set()
+        for source, r in rows:
+            if r["id"] in seen:
+                continue
+            seen.add(r["id"])
             yield ConvRef(
                 id=r["id"],
-                revision=f"{r['time_updated']}:{r['n']}",
+                revision=f"{source}:{r['time_updated']}:{r['n']}",
                 parent_id=r["parent_id"] or "",
                 agent_type=r["agent"] or "",
             )
@@ -259,22 +338,41 @@ class OpencodeHarness(base.Harness):
             return None
         try:
             with _connect(self.db_path) as conn:
+                table = _session_table(conn)
+                # During migration both tables may hold the same ID. The V2
+                # copy is authoritative; V1 is a fallback for older installs.
                 session = conn.execute(
-                    "select * from session where id = ?", (conversation_id,)
+                    f"select * from {table} where id = ?", (conversation_id,)
                 ).fetchone()
+                if (
+                    session is None
+                    and table == "session_v2"
+                    and _has_table(conn, "session")
+                ):
+                    table = "session"
+                    session = conn.execute(
+                        "select * from session where id = ?", (conversation_id,)
+                    ).fetchone()
                 if session is None:
                     return None
-                rows = conn.execute(
-                    "select m.id mid, m.data mdata, p.data pdata"
-                    " from message m left join part p on p.message_id = m.id"
-                    " where m.session_id = ?"
-                    " order by m.time_created, m.id, p.id",
-                    (conversation_id,),
-                ).fetchall()
+                if table == "session_v2":
+                    rows = conn.execute(
+                        "select type, data from session_message"
+                        " where session_id = ? order by seq",
+                        (conversation_id,),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "select m.id mid, m.data mdata, p.data pdata"
+                        " from message m left join part p on p.message_id = m.id"
+                        " where m.session_id = ?"
+                        " order by m.time_created, m.id, p.id",
+                        (conversation_id,),
+                    ).fetchall()
                 children = {
                     r["id"]: r["title"]
                     for r in conn.execute(
-                        "select id, title from session where parent_id = ?",
+                        f"select id, title from {table} where parent_id = ?",
                         (conversation_id,),
                     ).fetchall()
                 }
@@ -282,7 +380,10 @@ class OpencodeHarness(base.Harness):
             logger.exception("opencode load %s failed", conversation_id)
             return None
 
-        messages, text_parts = self._build_messages(rows)
+        if table == "session_v2":
+            messages, text_parts = self._build_v2_messages(rows)
+        else:
+            messages, text_parts = self._build_messages(rows)
         for block in _tool_blocks(messages):
             sid = block.pop("_session_id", None)
             # _depth guards against a cycle in parent_id; agents nest a few
@@ -363,6 +464,32 @@ class OpencodeHarness(base.Harness):
             messages[-1].blocks.append(block)
         return [m for m in messages if m.blocks], text_parts
 
+    def _build_v2_messages(self, rows):
+        """V2 keeps user text and assistant content inline in ordered messages."""
+        messages, text_parts = [], []
+        for row in rows:
+            data = _json(row["data"])
+            role = row["type"]
+            if role == "user":
+                blocks = [base.text_block(data["text"])] if data.get("text") else []
+            elif role == "assistant":
+                blocks = [_v2_block(part) for part in data.get("content") or []]
+                blocks = [block for block in blocks if block is not None]
+            else:
+                continue
+            if not blocks:
+                continue
+            text_parts.extend(
+                block["text"] for block in blocks if block["type"] == "text"
+            )
+            if role == "assistant" and messages and messages[-1].role == "assistant":
+                messages[-1].blocks.extend(blocks)
+            else:
+                messages.append(
+                    Message(role, blocks, _iso((data.get("time") or {}).get("created")))
+                )
+        return messages, text_parts
+
     def _load_subagent(self, session_id, title, depth):
         """A child session, shaped for embedding in the parent's Agent block."""
         conv = self.load(session_id, _depth=depth)
@@ -406,6 +533,47 @@ def _block_from_part(part):
         return block
     # step-start / step-finish are turn bookkeeping, not conversation content.
     return None
+
+
+def _session_table(conn):
+    """V2 migrated V1 sessions but does not write new ones to the V1 tables."""
+    return "session_v2" if _has_table(conn, "session_v2") else "session"
+
+
+def _has_table(conn, name):
+    return bool(
+        conn.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?", (name,)
+        ).fetchone()
+    )
+
+
+def _v2_block(part):
+    kind = part.get("type")
+    if kind == "text":
+        text = part.get("text") or ""
+        return base.text_block(text) if text.strip() else None
+    if kind == "reasoning":
+        text = part.get("text") or ""
+        return base.thinking_block(text) if text.strip() else None
+    if kind != "tool":
+        return None
+    state = part.get("state") or {}
+    name, input_ = _canonical_tool(part.get("name", ""), state.get("input") or {})
+    if state.get("status") == "error":
+        error = state.get("error") or {}
+        result = error.get("message", "") if isinstance(error, dict) else str(error)
+    elif state.get("status") == "completed":
+        result = "\n".join(
+            item.get("text", "")
+            for item in state.get("content") or []
+            if item.get("type") == "text"
+        )
+    else:
+        result = None
+    block = base.tool_block(name, input_, result=result)
+    block["_session_id"] = (state.get("metadata") or {}).get("sessionId") or ""
+    return block
 
 
 def _tool_blocks(messages):

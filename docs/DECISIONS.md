@@ -8,6 +8,32 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-10-11 - create OpenCode V2 forks before launching the terminal
+
+V2 removed the CLI `--fork` flag, but offers a service API fork operation that
+returns the new session ID. Use `opencode api` to reach the same service and
+authentication as the TUI, create the fork before launch, then pass that ID to
+`--session` and record it as the terminal's conversation. This is exact pairing,
+unlike V1's fork-on-launch heuristic. A failed API call must not launch a fresh
+session masquerading as a fork. V1 keeps its CLI flag.
+
+The API call prefers OpenCode's installed binary when `OPENCODE_CMD` is bare:
+the shell's `opencode` may be a wrapper that starts a tmux TUI for every
+invocation, and an API request is not an interactive session.
+
+## 2026-10-11 - read both OpenCode schemas behind one harness
+
+OpenCode V2 migrates V1 sessions into `session_v2`, but keeps the old `session`
+table around and only writes new conversations to `session_v2`. V2 message
+content lives inline in `session_message`, not in separate `message` and `part`
+rows. Reading only the V1 tables silently showed old history but no new sessions.
+
+Keep one opencode harness, with two storage readers: IDs, launching and the
+canonical conversation model are shared. Discover both tables to retain any
+unmigrated V1 rows, deduplicate IDs in favour of V2, and include the table in
+the revision so cached V1 parses refresh. A separate V2 harness would list
+migrated sessions twice and duplicate the shared behaviour.
+
 ## 2026-10-09 - select a named agent per cronjob
 
 Cronjobs could choose a model, but a named agent can carry its own model and behavior.
@@ -146,7 +172,6 @@ fit: contexts jobs belong to SQLite and need the existing tmux/conversation inte
 
 This intentionally does not promise agent completion tracking: the worker records whether
 the tmux session started, while the agent itself remains an independent process.
-
 ## 2026-09-15 - remote access is a setting, and opt-in
 
 himdel wanted contexts reachable from other machines. It had been hardwired to

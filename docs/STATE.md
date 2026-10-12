@@ -1,6 +1,6 @@
 # State
 
-_Last updated: 2026-09-29_
+_Last updated: 2026-10-12_
 
 ## Where we are
 
@@ -14,8 +14,10 @@ are SQLite like opencode. The contract is in `docs/HARNESSES.md`, the reasoning 
 - `claude.py` - owns every Claude peculiarity: split tool_use/tool_result, the
   `<task-notification>` async-agent rewrite, subagent matching by `toolUseId` with a
   timestamp fallback, cost summed from `usage` blocks.
-- `opencode.py` - reads opencode's live SQLite database read-only. Subagent links are
-  exact (`state.metadata.sessionId`), cost is a column, tool results arrive merged.
+- `opencode.py` - reads opencode's live SQLite database read-only, both the V1
+  `session`/`message`/`part` schema and V2 `session_v2`/`session_message`.
+  Subagent links are exact (`state.metadata.sessionId`), cost is a column,
+  tool results arrive merged.
 - `__init__.py` - the registry, driven by `settings.HARNESSES`.
 
 Subagents are first-class: nested inline in the conversation *and* listed under their

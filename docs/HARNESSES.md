@@ -13,7 +13,7 @@ separate database.
 | `api/harness/base.py` | `Conversation`, `Message`, `ConvRef`, block builders, canonical tool names, `Harness` |
 | `api/harness/__init__.py` | The registry: `enabled()`, `get()`, `owner_of()`, `load()`, `active_ids()`, `claude_adapter()` |
 | `api/harness/claude.py` | Claude Code - `CLAUDE_DIR/projects/<dashed-cwd>/<uuid>.jsonl` |
-| `api/harness/opencode.py` | opencode - `~/.local/share/opencode/opencode.db` (SQLite, read-only) |
+| `api/harness/opencode.py` | opencode V1 and V2 - `~/.local/share/opencode/opencode.db` (SQLite, read-only) |
 
 ## Configuration
 
@@ -40,7 +40,8 @@ class Harness:
 
     # optional - a read-only harness just gets no session buttons
     def launch_argv(self, *, conversation_id="", prompt="", fork=False,
-                    model="", effort="") -> list | None
+                    agent="", model="", effort="") -> list | None
+    def fork_session(self, conversation_id) -> str | None  # pre-create, or CLI fork
     def identify(self, cwd, since_ms) -> str        # "" until it can be told
 ```
 
@@ -49,7 +50,7 @@ down the conversation list.
 
 `ConvRef.revision` is an **opaque staleness token** compared against the cached copy in
 `ConversationIndex`. Anything that changes when the conversation changes will do - Claude
-uses `size:mtime`, opencode uses `time_updated:message_count`. Do not assume a file.
+uses `size:mtime`, opencode uses `table:time_updated:message_count`. Do not assume a file.
 
 ## The canonical model
 
@@ -129,13 +130,20 @@ context plugin is installed, the adapter reads the session's captured metadata f
 `~/.cache/opencode-contexts/<session-id>.json`; otherwise it falls back to the branch in
 the current checkout.
 
+V2 writes sessions to `session_v2` and ordered, inline-content rows to
+`session_message`. Migrated V1 rows may exist in both schemas. Discovery
+deduplicates by ID and prefers V2; V1-only rows remain readable. The schema
+name in the revision forces a one-time reindex of migrated conversations.
+
 ## Launching
 
-`launch_argv` is the only place that knows an agent's flags. They do not rhyme - Claude
-resumes with `--resume <id>` and forks with `--fork-session`; opencode resumes with
-`--session <id>`, forks with `--fork`, and takes a starting prompt as `--prompt` rather
-than a positional. Returning None means "readable but not launchable", and the UI drops
-the session buttons for that conversation (`can_launch` in the detail payload).
+`launch_argv` owns the flags. They do not rhyme - Claude resumes with
+`--resume <id>` and forks with `--fork-session`; opencode resumes with
+`--session <id>` and takes a starting prompt as `--prompt` rather than a
+positional. V1 opencode forks with `--fork`; V2 has no CLI fork flag, so
+`fork_session` first calls its service API and returns the new ID to resume.
+Returning None from `launch_argv` means "readable but not launchable", and
+the UI drops the session buttons (`can_launch` in the detail payload).
 
 Cronjobs use the same adapter registry for launching. Adapters may advertise support for
 cron model and effort overrides; an empty override leaves the runner and skill defaults in
@@ -172,7 +180,9 @@ session, harness, cwd and start time, and `_resolve_launched_sessions` (`views.p
 in the conversation:
 
 - A **resume** was handed an id, so it is paired from the start - exact, no guessing.
-- A **new session or a fork** gets its id from the harness, via `identify(cwd, since_ms)`:
+- A **V2 opencode fork** gets an id from its API before launch, so it is also paired
+  exactly. A failed API call does not launch a session.
+- A **new session or a V1 fork** gets its id from the harness, via `identify(cwd, since_ms)`:
   the newest top-level session in that directory started after we launched. It is asked on
   every poll and answers "" until there is something to answer with, so a TUI sitting open
   and untouched simply has no conversation yet.

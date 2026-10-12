@@ -4,6 +4,25 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-10-11
+
+### New features
+
+- OpenCode V2 conversations now appear alongside V1 history. Migrated sessions
+  reindex automatically; no configuration change is needed.
+
+## 2026-10-09
+
+### Action required
+
+- Named cron agents add a migration (`74ef349`).
+  - **Breaks:** contexts refuses to start with unapplied migrations.
+  - **Cope:** run `make migrate` (or `make migrate-<name>` for an extra instance).
+
+### New features
+
+- Cronjobs can select a named agent with its own model and behavior (`74ef349`).
+
 ## 2026-09-29
 
 ### Action required
