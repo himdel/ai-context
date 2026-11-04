@@ -131,8 +131,9 @@ out to a few external tools:
 - **Optional:** `systemctl --user`, used for persistent cronjob timers when the
   user systemd manager is available. Jobs can explicitly use either systemd or
   the in-process scheduler. Systemd-backed jobs run `%h/bin/wait-for-network`
-  before the worker so persistent wake-up runs wait for ordinary network/DNS
-  readiness; this check deliberately does not wait for a VPN. Timer workers
+  before the worker so persistent wake-up runs allow a short settling period and
+  wait for a default route plus ordinary DNS readiness; this check deliberately
+  does not wait for a VPN. Timer workers
   retain the user-manager PATH and environment so tmux, agent wrappers, and
   agent credentials work the same way as interactive launches.
 - **Optional:** `gh`, used for GitHub pull-request lookup. Without it, repository

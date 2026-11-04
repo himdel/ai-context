@@ -58,9 +58,11 @@ runner's behavior into the execution layer.
 
 Persistent user timers correctly catch up after suspend, but they can start before
 NetworkManager has reconnected Wi-Fi. The shared host helper at
-`%h/bin/wait-for-network` waits for ordinary DNS/network readiness with a bounded
-timeout and deliberately does not wait for a VPN, so contexts workers for Claude
-and opencode do not race the resume path.
+`%h/bin/wait-for-network` now allows a short settling period, then requires both
+a default route and ordinary DNS readiness with a bounded timeout. It deliberately
+does not wait for a VPN, so contexts workers for Claude and opencode do not race
+the resume path while avoiding the DNS-only false positive observed on
+November 4, 2026.
 
 Contexts-owned systemd cron services run the helper with `ExecStartPre`. The
 dotfiles crontab generator uses the same precondition by default and provides an
