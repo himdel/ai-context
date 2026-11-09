@@ -9,7 +9,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("cronjob_id", type=int)
-        parser.add_argument("--scheduled", action="store_true")
+        trigger = parser.add_mutually_exclusive_group()
+        trigger.add_argument("--scheduled", action="store_true")
+        trigger.add_argument("--manual", action="store_true")
 
     def handle(self, *args, **options):
         try:
