@@ -244,7 +244,7 @@ class OpencodeHarnessTests(SimpleTestCase):
             )
             self.assertEqual(
                 self.adapter.launch_argv(conversation_id="ses_forked"),
-                ["opencode", "--session", "ses_forked"],
+                ["opencode", "run", "--session", "ses_forked"],
             )
             run.return_value = subprocess.CompletedProcess([], 0, '{"data":{}}', "")
             with self.assertRaisesRegex(RuntimeError, "no session ID"):
@@ -263,7 +263,7 @@ class OpencodeHarnessTests(SimpleTestCase):
             ),
             patch(
                 "api.views.harness.launch_argv",
-                return_value=["opencode", "--session", "ses_forked"],
+                return_value=["opencode", "run", "--session", "ses_forked"],
             ),
             patch.object(self.adapter, "fork_session", return_value="ses_forked"),
             patch(
@@ -272,7 +272,7 @@ class OpencodeHarnessTests(SimpleTestCase):
         ):
             self.assertEqual(session_fork(request).status_code, 200)
             spawn.assert_called_once_with(
-                ["opencode", "--session", "ses_forked"],
+                ["opencode", "run", "--session", "ses_forked"],
                 "/work",
                 source="opencode",
                 conversation_id="ses_forked",
@@ -286,7 +286,7 @@ class OpencodeHarnessTests(SimpleTestCase):
             patch.object(self.adapter, "fork_session", return_value=None),
             patch(
                 "api.views.harness.launch_argv",
-                return_value=["opencode", "--session", "ses_old", "--fork"],
+                return_value=["opencode", "run", "--session", "ses_old", "--fork"],
             ) as launch,
             patch(
                 "api.views._spawn_session", return_value=Response({"status": "ok"})
@@ -297,7 +297,7 @@ class OpencodeHarnessTests(SimpleTestCase):
                 "opencode", conversation_id="ses_old", fork=True
             )
             spawn.assert_called_once_with(
-                ["opencode", "--session", "ses_old", "--fork"],
+                ["opencode", "run", "--session", "ses_old", "--fork"],
                 "/work",
                 source="opencode",
             )

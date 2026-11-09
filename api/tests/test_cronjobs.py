@@ -139,9 +139,9 @@ class OpencodeLaunchTests(SimpleTestCase):
             OpencodeHarness().launch_argv(agent="sol", prompt="Please run learnings"),
             [
                 "opencode",
+                "run",
                 "--agent",
                 "sol",
-                "--prompt",
                 "Please run learnings",
             ],
         )

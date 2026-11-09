@@ -186,10 +186,10 @@ class OpencodeHarness(base.Harness):
         model="",
         effort="",
     ):
-        # opencode spells all three differently from Claude: resume is
-        # `--session` (not `--resume`), fork is `--fork`, and a starting prompt
-        # is a flag rather than a positional. Verified against 1.18.30.
-        argv = [settings.OPENCODE_CMD]
+        # Current OpenCode puts non-interactive execution under `run`: resume is
+        # `--session`, fork is `--fork`, and the starting prompt is positional.
+        # The old top-level `--agent`/`--prompt` form was removed by the V2 CLI.
+        argv = [settings.OPENCODE_CMD, "run"]
         if agent:
             argv += ["--agent", agent]
         if model:
@@ -199,7 +199,7 @@ class OpencodeHarness(base.Harness):
             if fork:
                 argv.append("--fork")
         if prompt:
-            argv += ["--prompt", prompt]
+            argv.append(prompt)
         return argv
 
     def fork_session(self, conversation_id):
