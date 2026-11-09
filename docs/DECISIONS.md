@@ -8,6 +8,19 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-10-22 - port the repository-context plugin to OpenCode V2
+
+OpenCode V2 does not execute V1 plugin functions. Keep the repository/branch/PR
+context behavior by moving it to V2's `setup`, session-context hook, event
+subscription, and tool hook, while reading event payloads from `data` and
+session directories from the V2 session record. The contexts app still reads
+both V1 and V2 conversation storage; this plugin port changes only metadata
+capture and injection.
+
+The same optional plugin is enabled on both of Martin's OpenCode machines, but
+each global config keeps its own absolute checkout path and model/provider
+settings.
+
 ## 2026-10-11 - create OpenCode V2 forks before launching the terminal
 
 V2 removed the CLI `--fork` flag, but offers a service API fork operation that

@@ -4,6 +4,15 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-10-22
+
+### Action required
+
+- The optional `contrib/opencode/repo-context.js` plugin now uses OpenCode 2's
+  plugin API.
+  - **Breaks:** OpenCode 1 does not load the V2 implementation.
+  - **Cope:** use OpenCode 2, or restore the previous plugin from Git history.
+
 ## 2026-10-11
 
 ### New features

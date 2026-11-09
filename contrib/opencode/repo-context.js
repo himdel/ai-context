@@ -1,5 +1,5 @@
-// Captures repository metadata for contexts and injects it into opencode's
-// system context. Register this file as a global opencode plugin.
+// Captures repository metadata for contexts and injects it into OpenCode's
+// system context. Register this file as a global OpenCode 2 plugin.
 
 import fs from "node:fs"
 import os from "node:os"
@@ -148,57 +148,79 @@ async function refresh(sessionID, directory) {
   return task
 }
 
-export default async ({ directory, client }) => {
-  await refresh("", directory)
+function sessionIDFromToolEvent(event) {
+  return event.sessionID
+}
 
-  async function directoryFor(sessionID) {
-    if (!sessionID) return directory
-    if (sessionDirectories.has(sessionID)) return sessionDirectories.get(sessionID)
-    try {
-      const result = await client.session.get({ path: { id: sessionID } })
-      const info = result.data || result
-      const sessionDirectory = info.directory || directory
-      sessionDirectories.set(sessionID, sessionDirectory)
-      return sessionDirectory
-    } catch {
-      return directory
-    }
-  }
+function commandFromToolEvent(event) {
+  const input = event.input
+  if (!input || typeof input !== "object") return ""
+  return input.command || input.args?.command || ""
+}
 
-  return {
-    event: async ({ event }) => {
-      const properties = event.properties || {}
-      if (event.type === "session.created") {
-        const info = properties.info || {}
-        if (info.id) sessionDirectories.set(info.id, info.directory || directory)
-        if (info.id) await refresh(info.id, info.directory || directory)
-      } else if (event.type === "session.idle") {
-        const sessionDirectory = await directoryFor(properties.sessionID)
-        await refresh(properties.sessionID, sessionDirectory)
-      } else if (event.type === "session.status" && properties.status?.type === "idle") {
-        const sessionDirectory = await directoryFor(properties.sessionID)
-        await refresh(properties.sessionID, sessionDirectory)
-      } else if (event.type === "vcs.branch.updated") {
-        for (const [sessionID, sessionDirectory] of sessionDirectories) {
-          await refresh(sessionID, sessionDirectory)
-        }
+export default {
+  id: "contexts.repo-context",
+  async setup(ctx) {
+    const directory = ctx.location.directory
+    await refresh("", directory)
+
+    async function directoryFor(sessionID) {
+      if (!sessionID) return directory
+      if (sessionDirectories.has(sessionID)) return sessionDirectories.get(sessionID)
+      try {
+        const info = await ctx.session.get({ sessionID })
+        const sessionDirectory = info.location?.directory || directory
+        sessionDirectories.set(sessionID, sessionDirectory)
+        return sessionDirectory
+      } catch {
+        return directory
       }
-    },
-    "chat.message": async (input) => {
-      const sessionDirectory = await directoryFor(input.sessionID)
-      await refresh(input.sessionID, sessionDirectory)
-    },
-    "experimental.chat.system.transform": async (input, output) => {
-      const sessionDirectory = await directoryFor(input.sessionID)
-      const snapshot = await refresh(input.sessionID, sessionDirectory)
-      if (snapshot) output.system.push(contextText(snapshot))
-    },
-    "tool.execute.after": async (input) => {
-      if (input.tool !== "bash") return
-      const commandText = input.args?.command || ""
+    }
+
+    await ctx.session.hook("context", async (event) => {
+      const sessionDirectory = await directoryFor(event.sessionID)
+      const snapshot = await refresh(event.sessionID, sessionDirectory)
+      if (snapshot) event.system.push({ type: "text", text: contextText(snapshot) })
+    })
+
+    await ctx.tool.hook("execute.after", async (event) => {
+      if (event.tool !== "shell" && event.tool !== "bash") return
+      const commandText = commandFromToolEvent(event)
       if (!/\b(git\s+(push|checkout|switch|branch|fetch|pull)|gh\s+pr\s+(create|edit|close|reopen))\b/.test(commandText)) return
-      const sessionDirectory = await directoryFor(input.sessionID)
-      await refresh(input.sessionID, sessionDirectory)
-    },
-  }
+      const sessionID = sessionIDFromToolEvent(event)
+      const sessionDirectory = await directoryFor(sessionID)
+      await refresh(sessionID, sessionDirectory)
+    })
+
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          const data = event.data || {}
+          if (event.type === "session.created") {
+            const sessionID = data.sessionID
+            const sessionDirectory = data.location?.directory || event.location?.directory || directory
+            if (sessionID) sessionDirectories.set(sessionID, sessionDirectory)
+            if (sessionID) await refresh(sessionID, sessionDirectory)
+          } else if (event.type === "session.idle") {
+            const sessionID = data.sessionID
+            const sessionDirectory = await directoryFor(sessionID)
+            await refresh(sessionID, sessionDirectory)
+          } else if (event.type === "session.status" && data.status?.type === "idle") {
+            const sessionID = data.sessionID
+            const sessionDirectory = await directoryFor(sessionID)
+            await refresh(sessionID, sessionDirectory)
+          } else if (event.type === "vcs.branch.updated") {
+            for (const [sessionID, sessionDirectory] of sessionDirectories) {
+              await refresh(sessionID, sessionDirectory)
+            }
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) console.error("repo-context event subscription failed", error)
+      }
+    })()
+
+    return () => controller.abort()
+  },
 }
