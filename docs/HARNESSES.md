@@ -138,10 +138,10 @@ name in the revision forces a one-time reindex of migrated conversations.
 ## Launching
 
 `launch_argv` owns the flags. They do not rhyme - Claude resumes with
-`--resume <id>` and forks with `--fork-session`; opencode resumes with
-`--session <id>` and takes a starting prompt as `--prompt` rather than a
-positional. V1 opencode forks with `--fork`; V2 has no CLI fork flag, so
-`fork_session` first calls its service API and returns the new ID to resume.
+`--resume <id>` and forks with `--fork-session`; opencode V2 runs through the
+`run` subcommand, resumes with `--session <id>`, takes a starting prompt as a
+positional message, and accepts `--agent` and `--model` there. V2 forks through
+the service API first, and `fork_session` returns the new ID to resume.
 Returning None from `launch_argv` means "readable but not launchable", and
 the UI drops the session buttons (`can_launch` in the detail payload).
 

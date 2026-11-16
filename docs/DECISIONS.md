@@ -8,6 +8,14 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-16 - let the OpenCode wrapper own all CLI dispatch
+
+Contexts normally launches `~/bin/opencode`, so the wrapper must understand both
+agent invocations and administrative commands. Keep `run` inside tmux with a generated
+session ID inserted after the subcommand, while passing `api` and other service/config
+subcommands directly to the installed binary. This removes a caller-specific raw-binary
+escape hatch from the harness and keeps absolute wrapper configurations correct too.
+
 ## 2026-11-16 - tolerate simultaneous cron launch bookkeeping
 
 Persistent timers can all catch up immediately after a resume, so four cron workers may

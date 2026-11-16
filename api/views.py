@@ -527,6 +527,22 @@ def _capture_pane(name):
     return out if rc == 0 else ""
 
 
+def _wait_for_tmux_start(name, grace=1.0, poll=0.05):
+    """Require a new tmux command to survive a short startup grace period."""
+    deadline = time.monotonic() + grace
+    seen = False
+    while True:
+        live = name in _tmux_sessions()
+        if live:
+            seen = True
+        elif seen:
+            return False
+        now = time.monotonic()
+        if now >= deadline:
+            return seen
+        time.sleep(poll)
+
+
 _OPTION_RE = re.compile(r"^[\s│|>❯»*]*(\d+)[.)]\s+(.+?)\s*$")
 
 
@@ -956,12 +972,15 @@ def _spawn_session(
             logger.error("tmux new-session failed (%d): %s", rc, out)
             return Response({"error": "tmux failed to start session"}, status=500)
         logger.info("started tmux session %s: %s", name, cmd)
-        # tmux reports success for a command that starts and immediately dies -
-        # the pane goes with it, so an unlaunchable agent used to come back as
-        # {"status": "ok", "pid": null} and look like it worked. Whatever the
-        # process managed to print is the only diagnosis available, so say it.
-        if name not in _tmux_sessions():
-            out = out.strip() or "the command exited immediately"
+        # tmux reports success before a command has necessarily survived
+        # startup. Wait briefly so CLI/configuration failures do not become a
+        # successful launch notification.
+        if not _wait_for_tmux_start(name):
+            out = (
+                _capture_pane(name).strip()
+                or out.strip()
+                or "the command exited immediately"
+            )
             logger.error("session %s died on startup: %s", name, out)
             return Response({"error": f"session did not start: {out}"}, status=500)
         _record_launch(name, source, cwd, conversation_id)

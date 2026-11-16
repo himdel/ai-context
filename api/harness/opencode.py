@@ -217,15 +217,10 @@ class OpencodeHarness(base.Harness):
         except (sqlite3.Error, TypeError) as exc:
             raise RuntimeError("cannot inspect OpenCode session for forking") from exc
 
-        # `opencode api` discovers/authenticates with the same service as the
-        # TUI. Prefer the installed binary over a shell's TUI-only wrapper
-        # (which may start an extra tmux session for any command it receives).
-        binary = Path.home() / ".opencode/bin/opencode"
-        command = (
-            str(binary)
-            if settings.OPENCODE_CMD == "opencode" and binary.is_file()
-            else settings.OPENCODE_CMD
-        )
+        # The shell wrapper passes administrative subcommands, including
+        # `api`, directly to the installed binary. Keep this path consistent
+        # with ordinary launches so an absolute wrapper setting works too.
+        command = settings.OPENCODE_CMD
         if not Path(command).is_absolute():
             command = which(command) or command
         try:

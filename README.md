@@ -116,8 +116,8 @@ out to a few external tools:
   the database. A bare name is resolved against `PATH` and the usual per-user
   install dirs, `~/.opencode/bin` included; set an absolute path if yours is
   somewhere else. V2 forks use `opencode api` against the local OpenCode service;
-  with a bare `OPENCODE_CMD`, the installed `~/.opencode/bin/opencode` is used
-  for this call instead of a shell wrapper that might launch a TUI.
+  the standard wrapper passes administrative subcommands directly to the
+  installed binary instead of creating a tmux session.
 - **Default, with fallback:** `tmux` — sessions run inside a headless tmux
   session by default (enabling naming, reuse, and reliable conversation
   pairing). If `tmux` is absent the app falls back to launching a terminal
