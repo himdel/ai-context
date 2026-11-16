@@ -142,6 +142,8 @@ name in the revision forces a one-time reindex of migrated conversations.
 `run` subcommand, resumes with `--session <id>`, takes a starting prompt as a
 positional message, and accepts `--agent` and `--model` there. V2 forks through
 the service API first, and `fork_session` returns the new ID to resume.
+Interactive resume and fork launches use the top-level TUI form; cron launches
+explicitly select the non-interactive `run` form.
 Returning None from `launch_argv` means "readable but not launchable", and
 the UI drops the session buttons (`can_launch` in the detail payload).
 

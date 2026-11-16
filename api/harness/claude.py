@@ -357,6 +357,7 @@ class ClaudeHarness(base.Harness):
         agent="",
         model="",
         effort="",
+        interactive=True,
     ):
         argv = [settings.CLAUDE_CMD]
         if agent:

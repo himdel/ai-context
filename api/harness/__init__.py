@@ -105,6 +105,7 @@ def launch_argv(
     agent="",
     model="",
     effort="",
+    interactive=True,
 ):
     """Argv starting `source`, or None when it is enabled but not launchable."""
     adapter = get(source or "claude")
@@ -118,6 +119,7 @@ def launch_argv(
             agent=agent,
             model=model,
             effort=effort,
+            interactive=interactive,
         )
     except Exception:
         logger.exception("harness %s failed launch_argv()", adapter.key)

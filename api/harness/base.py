@@ -228,6 +228,7 @@ class Harness:
         agent="",
         model="",
         effort="",
+        interactive=True,
     ):
         """Argv that starts this harness, optionally resuming or forking.
 

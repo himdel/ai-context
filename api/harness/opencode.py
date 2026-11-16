@@ -185,10 +185,19 @@ class OpencodeHarness(base.Harness):
         agent="",
         model="",
         effort="",
+        interactive=True,
     ):
-        # Current OpenCode puts non-interactive execution under `run`: resume is
-        # `--session`, fork is `--fork`, and the starting prompt is positional.
-        # The old top-level `--agent`/`--prompt` form was removed by the V2 CLI.
+        # Interactive launches use the top-level TUI. Cron and other
+        # non-interactive callers use `run`, whose prompt is positional.
+        # Resume is `--session`; a CLI fork is only used by the V1 fallback.
+        if interactive and not (agent or model or effort or fork):
+            argv = [settings.OPENCODE_CMD]
+            if conversation_id:
+                argv += ["--session", conversation_id]
+            if prompt:
+                argv += ["--prompt", prompt]
+            return argv
+
         argv = [settings.OPENCODE_CMD, "run"]
         if agent:
             argv += ["--agent", agent]

@@ -116,6 +116,7 @@ class CronjobBackendTests(SimpleTestCase):
             agent="sol",
             model="",
             effort="",
+            interactive=False,
         )
 
     def test_agent_selection_requires_runner_support(self):
@@ -136,7 +137,9 @@ class OpencodeLaunchTests(SimpleTestCase):
     @override_settings(OPENCODE_CMD="opencode")
     def test_launch_argv_selects_configured_agent(self):
         self.assertEqual(
-            OpencodeHarness().launch_argv(agent="sol", prompt="Please run learnings"),
+            OpencodeHarness().launch_argv(
+                agent="sol", prompt="Please run learnings", interactive=False
+            ),
             [
                 "opencode",
                 "run",
@@ -144,6 +147,20 @@ class OpencodeLaunchTests(SimpleTestCase):
                 "sol",
                 "Please run learnings",
             ],
+        )
+
+    @override_settings(OPENCODE_CMD="opencode")
+    def test_interactive_resume_uses_the_tui(self):
+        self.assertEqual(
+            OpencodeHarness().launch_argv(conversation_id="ses_existing"),
+            ["opencode", "--session", "ses_existing"],
+        )
+
+    @override_settings(OPENCODE_CMD="opencode")
+    def test_interactive_prompt_uses_the_tui(self):
+        self.assertEqual(
+            OpencodeHarness().launch_argv(prompt="start here"),
+            ["opencode", "--prompt", "start here"],
         )
 
 

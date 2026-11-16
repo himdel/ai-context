@@ -136,6 +136,7 @@ def _launch_argv(job):
         agent=job.agent,
         model=job.model,
         effort=job.effort,
+        interactive=False,
     )
     if argv is None:
         raise ValueError(f"runner cannot launch sessions: {job.runner}")
