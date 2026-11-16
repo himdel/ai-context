@@ -8,6 +8,18 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-16 - tolerate simultaneous cron launch bookkeeping
+
+Persistent timers can all catch up immediately after a resume, so four cron workers may
+write the SQLite `LaunchedSession` table at once. SQLite serializes writers; one transient
+lock only loses pairing metadata and does not prevent the tmux agent from starting.
+
+Keep that metadata write best-effort, but configure a 30-second SQLite busy timeout and
+retry only `database is locked` failures with a short exponential backoff. Do not retry
+unrelated database errors or add launch serialization: the agent launch itself is already
+independent, and the existing adoption path can recover a live session whose bookkeeping
+write was interrupted.
+
 ## 2026-10-22 - port the repository-context plugin to OpenCode V2
 
 OpenCode V2 does not execute V1 plugin functions. Keep the repository/branch/PR

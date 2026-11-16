@@ -8,10 +8,12 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from django.conf import settings
+from django.db import OperationalError, close_old_connections
 from django.http import FileResponse
 from croniter import croniter
 from rest_framework.decorators import api_view
@@ -603,7 +605,17 @@ def _record_launch(name, source, cwd, conversation_id="", started_at=None):
     if started_at is not None:
         defaults["started_at"] = started_at
     try:
-        LaunchedSession.objects.update_or_create(tmux_session=name, defaults=defaults)
+        for attempt in range(4):
+            try:
+                LaunchedSession.objects.update_or_create(
+                    tmux_session=name, defaults=defaults
+                )
+                return
+            except OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 3:
+                    raise
+                close_old_connections()
+                time.sleep(0.1 * (2**attempt))
     except Exception:
         logger.exception("could not record launch of %s", name)
 

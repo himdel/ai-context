@@ -48,6 +48,9 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        # Several persistent cron services can catch up together after resume.
+        # Let short writer contention clear before reporting a lock error.
+        "OPTIONS": {"timeout": 30},
     }
 }
 
