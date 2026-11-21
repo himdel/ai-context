@@ -65,6 +65,7 @@ same commit.
 - `static/js/utils.js` - pure utility functions, no app state
 - `static/js/forge.js` - git forge (GitHub/GitLab/Gitea) URL builders
 - `static/js/render.js` - markdown rendering, tool/block rendering, rich diagrams
+- `static/vendor/plantuml/` - vendored PlantUML browser engine and support assets
 - `static/js/activity.js`, `memories.js`, `repos.js`, `plans.js`, `skills.js`, `cronjobs.js` - per-screen modules
 - Screen modules receive shared app state via `initX(deps)` pattern, not direct imports from index.html
 - `index.html` is the glue: state management, routing, sidebar, conversations, init wiring

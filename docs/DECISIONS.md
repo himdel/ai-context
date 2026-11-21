@@ -8,6 +8,22 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-21 - render PlantUML in the browser
+
+The old renderer compressed each PlantUML block and sent it to the public
+`plantuml.com` service. That exposed diagram source and made rendering depend on
+the network.
+
+Vendor the official `@plantuml/core` JavaScript build instead. It is PlantUML's
+own engine compiled with TeaVM, so it avoids Java, a server, and a Graphviz
+binary while preserving PlantUML syntax. The no-build frontend keeps the exact
+`1.2026.10` browser assets under `static/vendor/plantuml/` and lazy-loads them
+only when a PlantUML block appears.
+
+The engine's small theme and icon assets are vendored too, but the optional
+heavy standard-library bundles are not. Setting `PLANTUML_STDLIB_BASE` to the
+local directory prevents an accidental fallback to a remote renderer.
+
 ## 2026-11-16 - let the OpenCode wrapper own all CLI dispatch
 
 Contexts normally launches `~/bin/opencode`, so the wrapper must understand both

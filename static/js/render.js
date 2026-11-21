@@ -9,6 +9,7 @@ export function initRender(deps) {
 }
 
 var _depsCache = {};
+var plantumlCore;
 function loadRichDeps(lang) {
   var key = lang === 'graphviz' ? 'dot' : lang;
   if (!_depsCache[key]) {
@@ -60,9 +61,13 @@ function loadRichDeps(lang) {
           );
         });
     } else if (key === 'plantuml') {
-      _depsCache[key] = loadScript(
-        'https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js',
-      );
+      _depsCache[key] = Promise.all([
+        loadScript('/vendor/plantuml/viz-global.js'),
+        import('/vendor/plantuml/plantuml.js'),
+      ]).then(function (results) {
+        plantumlCore = results[1];
+        globalThis.PLANTUML_STDLIB_BASE = '/vendor/plantuml/';
+      });
     } else {
       _depsCache[key] = Promise.resolve();
     }
@@ -247,15 +252,18 @@ export function renderRichBlocks() {
                 '<em style="color:#999">Failed to render mind map</em>';
             }
           } else if (lang === 'plantuml') {
-            var encoded = plantumlEncode(src);
-            var img = document.createElement('img');
-            img.src = 'https://www.plantuml.com/plantuml/svg/' + encoded;
-            img.alt = 'PlantUML diagram';
-            img.onerror = function () {
-              el.innerHTML =
-                '<em style="color:#999">Failed to render PlantUML diagram</em>';
-            };
-            el.appendChild(img);
+            plantumlCore.renderToString(
+              src.split(/\r?\n/),
+              function (svg) {
+                el.innerHTML = svg;
+              },
+              function (error) {
+                el.innerHTML =
+                  '<em style="color:#999">Failed to render PlantUML diagram: ' +
+                  esc(String(error)) +
+                  '</em>';
+              },
+            );
           }
         })
         .catch(function () {
@@ -263,45 +271,6 @@ export function renderRichBlocks() {
             '<em style="color:#999">Failed to load rendering library</em>';
         });
     });
-}
-
-function plantumlEncode(text) {
-  function encode6bit(b) {
-    if (b < 10) return String.fromCharCode(48 + b);
-    b -= 10;
-    if (b < 26) return String.fromCharCode(65 + b);
-    b -= 26;
-    if (b < 26) return String.fromCharCode(97 + b);
-    b -= 26;
-    if (b === 0) return '-';
-    if (b === 1) return '_';
-    return '?';
-  }
-  function append3bytes(b1, b2, b3) {
-    var c1 = b1 >> 2;
-    var c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
-    var c3 = ((b2 & 0xf) << 2) | (b3 >> 6);
-    var c4 = b3 & 0x3f;
-    return (
-      encode6bit(c1 & 0x3f) +
-      encode6bit(c2 & 0x3f) +
-      encode6bit(c3 & 0x3f) +
-      encode6bit(c4 & 0x3f)
-    );
-  }
-  var data = new TextEncoder().encode(text);
-  var deflated = new Uint8Array(pako.deflateRaw(data));
-  var r = '';
-  for (var i = 0; i < deflated.length; i += 3) {
-    if (i + 2 === deflated.length) {
-      r += append3bytes(deflated[i], deflated[i + 1], 0);
-    } else if (i + 1 === deflated.length) {
-      r += append3bytes(deflated[i], 0, 0);
-    } else {
-      r += append3bytes(deflated[i], deflated[i + 1], deflated[i + 2]);
-    }
-  }
-  return r;
 }
 
 export function initAutolinks() {

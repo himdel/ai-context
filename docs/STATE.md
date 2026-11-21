@@ -1,6 +1,15 @@
 # State
 
-_Last updated: 2026-10-12_
+_Last updated: 2026-11-21_
+
+## 2026-11-21
+
+PlantUML blocks now render locally in the browser with the official `@plantuml/core`
+JavaScript engine. The old public `plantuml.com` request and local URL encoder are gone;
+the no-build frontend lazy-loads the vendored engine from `static/vendor/plantuml/`.
+
+Verified with the browser smoke page that the local engine produces SVG without a network
+request. `make lint` passes and Django's test runner reports 24 tests passing.
 
 ## Where we are
 

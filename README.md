@@ -19,7 +19,7 @@ directory and sorted by date. Everything else is Claude-only.
 - Conversations from Claude Code and opencode in one list, tagged by source
 - Full-text search with SQLite-backed index
 - Markdown rendering with syntax highlighting, Mermaid diagrams
-- Rich code blocks: LaTeX, Graphviz, Vega-Lite, GeoJSON, ABC notation (with audio), Markmap, PlantUML
+- Rich code blocks: LaTeX, Graphviz, Vega-Lite, GeoJSON, ABC notation (with audio), Markmap, PlantUML (locally rendered)
 - Diagrams download as SVG or PNG from the block toolbar
 - Tool use, thinking, subagent, and workflow blocks with inline results
 - Edit blocks rendered as diffs, skill invocations collapsed under prompt
