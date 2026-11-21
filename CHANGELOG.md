@@ -4,6 +4,16 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-11-21
+
+### Action required
+
+None.
+
+### New features
+
+- `da784cc` PlantUML diagrams now render locally in the browser; no Java or configuration is required.
+
 ## 2026-10-22
 
 ### Action required
