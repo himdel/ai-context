@@ -9,6 +9,23 @@ body {
   height: 100vh;
 }
 
+a.report-action-link,
+a.report-action-link:visited {
+  color: #8b3dff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 600;
+}
+a.report-action-link:hover,
+a.report-action-link:focus-visible {
+  color: #8b3dff;
+  text-decoration-thickness: 2px;
+}
+a.report-action-link:focus-visible {
+  outline: 2px solid #8b3dff;
+  outline-offset: 3px;
+}
+
 #sidebar {
   width: 320px;
   min-width: 320px;

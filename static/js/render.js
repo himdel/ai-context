@@ -1,5 +1,6 @@
 import { esc, loadScript, loadCSS } from '/js/utils.js';
 import { linkifyForge } from '/js/forge.js';
+import { isReportActionLink } from '/js/report-action-links.js';
 
 let mainEl, mainWrapEl;
 
@@ -90,6 +91,16 @@ var richLangs = [
 
 marked.use({
   renderer: {
+    link: function (token) {
+      if (!isReportActionLink(token.href)) return false;
+      return (
+        '<a class="report-action-link" href="' +
+        esc(token.href) +
+        '" target="_blank" rel="noopener noreferrer" title="Continue in Contexts: review before confirming a separate follow-up. Opening this link does not run it.">' +
+        this.parser.parseInline(token.tokens) +
+        '</a>'
+      );
+    },
     code: function (token) {
       var lang = (token.lang || '').toLowerCase();
       if (richLangs.indexOf(lang) === -1) return false;

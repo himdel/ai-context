@@ -8,6 +8,29 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-25 - saved, explicitly confirmed report follow-ups
+
+Local Markdown reports need optional next steps without turning document viewing
+into execution. Save immutable proposals in Contexts and link to inert review
+pages; do not encode prompts in query strings or require active report content.
+
+Always fork the exact source session, live or idle, so report choices never abduct
+a live conversation. This refines the existing harness launch/fork contract rather
+than adding a second agent transport. Forks use current history and shared project
+files, not report-time snapshots; disclose that distinction.
+
+Support both independent one-shot actions and exclusive choice groups. Persist the
+claim before external effects; ambiguous delivery stays consumed rather than
+retrying something potentially already running. Make report age progressively more
+prominent after 2, 6 and 29 days, with acknowledgement from day 7, rather than
+arbitrarily expiring useful old evidence. Loopback-only access applies even when
+the main app serves the LAN; broader security changes are out of scope.
+
+Use continuation violet (`#8B3DFF`, dark-surface text `#B987FF`) consistently in the
+confirmation page and recognized links. Keep reusable authoring instructions in
+the bundled `report-actions` skill and only a discovery rule in global instructions,
+so cronjobs and ad-hoc reports share one procedure. See `REPORT-ACTIONS.md`.
+
 ## 2026-11-21 - render PlantUML in the browser
 
 The old renderer compressed each PlantUML block and sent it to the public

@@ -39,6 +39,16 @@ directory and sorted by date. Everything else is Claude-only.
 - Grouped by repo, linked back to originating conversation
 - Full markdown rendering with Execute button to launch a new session
 
+### Local report follow-ups
+
+- Register proposed actions and link to a confirmation page from ordinary Markdown
+- Review/edit the exact user message before forking a separate follow-up conversation
+- Independent actions can each run once; exclusive alternatives allow one choice
+- Progressively stronger old-report warnings; no takeover of live sessions
+- Always loopback-only, even when the main UI serves the LAN
+- See [the API contract](docs/REPORT-ACTIONS.md) and the optional bundled
+  [report-actions skill](contrib/skills/report-actions/SKILL.md)
+
 ### Skills
 
 - Browse commands, skills, and saved workflows
@@ -111,6 +121,9 @@ Python packages are managed by `uv` (see `pyproject.toml`). The app also shells
 out to a few external tools:
 
 - **Required:** `git`, and the `claude` CLI (configurable via `CLAUDE_CMD`).
+- **Optional, browser development checks only:** `google-chrome` and Python's
+  `websockets` package for `tools/report_actions_smoke.py`. The app and report
+  registration helper do not need either.
 - **Optional:** the `opencode` CLI (`OPENCODE_CMD`), needed only to launch,
   resume or fork opencode sessions. Reading its conversations needs nothing but
   the database. A bare name is resolved against `PATH` and the usual per-user

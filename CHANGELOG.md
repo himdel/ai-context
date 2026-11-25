@@ -4,6 +4,19 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-11-25
+
+### Action required
+
+- Saved report proposals add migration `0015`: run `make migrate`, and
+  `make migrate-<name>` for each extra instance. Existing databases are unchanged
+  apart from the new action/group tables.
+
+### New features
+
+- Local report action links open a violet review page and explicitly fork a one-shot
+  follow-up; independent actions and exclusive choices are both supported.
+
 ## 2026-11-21
 
 ### Action required

@@ -106,7 +106,7 @@ function render(p, keepMessage = false) {
     resultLink(
       $('result'),
       'Open follow-up conversation',
-      `/?conversation=${encodeURIComponent(p.result.conversation_id)}`,
+      `/conversations/${encodeURIComponent(p.result.conversation_id)}`,
     );
   } else if (p.result.session) {
     $('result').textContent =

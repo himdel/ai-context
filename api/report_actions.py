@@ -103,7 +103,7 @@ def _detail(request, action):
         "source": group.source,
         "project": group.project,
         "conversation_id": group.conversation_id,
-        "conversation_url": f"/?conversation={group.conversation_id}",
+        "conversation_url": f"/conversations/{group.conversation_id}",
         "source_active": bool(
             adapter and group.conversation_id in adapter.active_ids()
         ),

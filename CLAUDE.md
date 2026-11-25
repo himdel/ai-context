@@ -36,7 +36,10 @@ anything in the tmux/session layer.
 | `docs/IDEAS.md` | Backlog: record now, do later |
 | `docs/CLAUDE-SESSION-FILES.md` | Format and gotchas of `~/.claude/sessions/<pid>.json` |
 | `docs/HARNESSES.md` | The harness adapter contract and canonical conversation model |
+| `docs/REPORT-ACTIONS.md` | Local report action API, confirmation, grouping and delivery contract |
 | `contrib/opencode/` | Optional opencode plugin for repository context metadata |
+| `contrib/skills/report-actions/` | Reusable report-authoring skill and registration-only helper |
+| `tools/report_actions_smoke.py` | Isolated browser checks for report confirmations; all action APIs mocked |
 | `CHANGELOG.md` | For people already running contexts. Rules below |
 | `CLAUDE.local.md` | Local learnings and followups. Gitignored, stays out of the public repo |
 
@@ -92,6 +95,7 @@ ordinary fixes and refactors.
 - No auth, CSRF, HTTPS - localhost by default; `BIND` opts into a trusted LAN
 - Static files served from `static/` on `/`, with index.html for directories
 - REST API on `/api/`
+- Report action APIs and `/actions/<UUID>` are always loopback-only, even with LAN `BIND`
 - All URL routes must work with and without trailing slash
 - Minimal INSTALLED_APPS - only add what's actually needed
 - No build step or bundler for frontend - ES modules served directly

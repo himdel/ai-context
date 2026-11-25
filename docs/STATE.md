@@ -1,6 +1,27 @@
 # State
 
-_Last updated: 2026-11-21_
+_Last updated: 2026-11-25_
+
+## 2026-11-25
+
+Local report proposals now register stable confirmation links at `/actions/<UUID>`.
+Review shows the exact editable message and original context, with escalating age
+warnings and explicit acknowledgement for reports at least seven days old.
+Confirmed actions always fork; independent one-shot actions and exclusive choice
+groups persist their claims before launch and never automatically retry uncertain
+delivery. New action routes are loopback-only even when the main app serves a LAN.
+
+The bundled `contrib/skills/report-actions` skill/helper owns report authoring;
+mdview and Contexts recognize ordinary action links in continuation violet.
+See `REPORT-ACTIONS.md`. Migration 0015 adds action/group tables.
+
+Verified:
+- 38 focused backend/harness/cron tests and two registration-helper tests pass.
+- `tools/report_actions_smoke.py` against the running :8062 UI passes all mocked
+  submission scenarios, including stale acknowledgement, exclusive lockout,
+  duplicate clicks and lost-response reconciliation, without launching real agents.
+- The companion mdview browser check passes on :6821, including both theme colors
+  and no action requests during rendering.
 
 ## 2026-11-21
 
