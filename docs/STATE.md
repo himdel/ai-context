@@ -21,6 +21,10 @@ edits. The shared skill/helper also supplies an originating-session link for rep
 without actions through its registration-free `--provenance-only` mode.
 
 Verified:
+- On 2026-11-25, the user confirmed the real mdview report -> confirmation ->
+  OpenCode fork -> desktop notification flow worked. The first attempt exposed
+  terminal cleanup appended to API JSON by a local CLI wrapper; correcting that
+  wrapper, rather than weakening Contexts' parser, enabled the successful fresh test.
 - 21 focused report/helper tests and the extended browser checks pass for the
   mdview/session backlinks and registration-free provenance output.
 - 38 focused backend/harness/cron tests and two registration-helper tests pass.
