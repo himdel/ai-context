@@ -31,6 +31,23 @@ confirmation page and recognized links. Keep reusable authoring instructions in
 the bundled `report-actions` skill and only a discovery rule in global instructions,
 so cronjobs and ad-hoc reports share one procedure. See `REPORT-ACTIONS.md`.
 
+## 2026-11-25 - use launchd for macOS cronjobs
+
+macOS does not provide a user-level systemd manager. Use per-user `launchd`
+LaunchAgents under `~/Library/LaunchAgents`, with one plist per enabled
+Contexts cronjob and the database still authoritative.
+
+Translate the existing five-field cron syntax into `StartCalendarInterval`
+dictionaries, preserving cron's day-of-month/day-of-week OR semantics. Keep the
+same direct `manage.py run_cronjob` worker and harness launch path as systemd;
+manual runs use a detached worker because launchd calendar agents have fixed
+arguments.
+
+Do not claim systemd's `Persistent=true` behavior: launchd can run a missed
+calendar job after sleep, but a full shutdown can skip it. Keep the explicit
+`internal` backend for machines without a usable per-user launchd or systemd
+manager.
+
 ## 2026-11-21 - render PlantUML in the browser
 
 The old renderer compressed each PlantUML block and sent it to the public

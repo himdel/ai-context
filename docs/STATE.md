@@ -23,6 +23,18 @@ Verified:
 - The companion mdview browser check passes on :6821, including both theme colors
   and no action requests during rendering.
 
+## 2026-11-25 - macOS cron support
+
+Cronjobs now have a platform-native persistent backend on macOS: Contexts
+reconciles per-user `launchd` LaunchAgents under `~/Library/LaunchAgents`, while
+Linux continues to use systemd user timers. Migration `0016` adds the backend;
+new jobs default to launchd on macOS. Launchd calendar intervals preserve the
+supported cron syntax and day-of-month/day-of-week OR behavior.
+
+The macOS backend deliberately does not promise systemd's shutdown catch-up
+semantics. A launchd agent can run after sleep, but a full shutdown can skip a
+calendar occurrence.
+
 ## 2026-11-21
 
 PlantUML blocks now render locally in the browser with the official `@plantuml/core`

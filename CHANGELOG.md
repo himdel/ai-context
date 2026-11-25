@@ -8,6 +8,17 @@ git history for the full list of fixes and smaller changes.
 
 ### Action required
 
+- macOS cronjobs add migration `0016`: run `make migrate` before selecting the
+  launchd backend.
+
+### New features
+
+- macOS cronjobs use per-user launchd agents.
+
+## 2026-11-25
+
+### Action required
+
 - Saved report proposals add migration `0015`: run `make migrate`, and
   `make migrate-<name>` for each extra instance. Existing databases are unchanged
   apart from the new action/group tables.

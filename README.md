@@ -149,6 +149,10 @@ out to a few external tools:
   does not wait for a VPN. Timer workers
   retain the user-manager PATH and environment so tmux, agent wrappers, and
   agent credentials work the same way as interactive launches.
+- **macOS:** persistent cronjobs use per-user `launchd` agents in
+  `~/Library/LaunchAgents`. They use native calendar intervals and can wake
+  after sleep, but do not provide systemd's shutdown catch-up guarantee. The
+  in-process scheduler remains available as an alternative.
 - **Optional:** `gh`, used for GitHub pull-request lookup. Without it, repository
   and branch links still work, but PR metadata is unavailable.
 
