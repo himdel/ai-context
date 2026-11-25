@@ -1,7 +1,13 @@
 from django.urls import path
-from api import views
+from api import report_actions, views
 
 urlpatterns = [
+    path("report-actions", report_actions.register),
+    path("report-actions/", report_actions.register),
+    path("report-actions/<uuid:action_id>", report_actions.detail),
+    path("report-actions/<uuid:action_id>/", report_actions.detail),
+    path("report-actions/<uuid:action_id>/submit", report_actions.submit),
+    path("report-actions/<uuid:action_id>/submit/", report_actions.submit),
     path("", views.index),
     path("autolinks/", views.autolinks),
     path("autolinks", views.autolinks),

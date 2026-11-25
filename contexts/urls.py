@@ -2,6 +2,7 @@ from django.urls import include, path, re_path
 from django.views.static import serve
 from django.conf import settings
 from django.http import Http404
+from api.report_actions import page as action_page
 
 
 def serve_with_index(request, path=""):
@@ -19,6 +20,8 @@ def serve_with_index(request, path=""):
 
 
 urlpatterns = [
+    path("actions/<uuid:action_id>", action_page),
+    path("actions/<uuid:action_id>/", action_page),
     path("api/", include("api.urls")),
     path("api", include("api.urls")),
     re_path(r"^(?P<path>.*)$", serve_with_index),

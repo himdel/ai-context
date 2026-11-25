@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.utils import timezone
 
@@ -98,3 +100,33 @@ class LaunchedSession(models.Model):
     cwd = models.CharField(max_length=512, default="")
     conversation_id = models.CharField(max_length=64, blank=True, default="")
     started_at = models.DateTimeField(default=timezone.now)
+
+
+class ReportActionGroup(models.Model):
+    """Immutable report context; exclusive groups claim one choice atomically."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    mode = models.CharField(max_length=16, default="independent")
+    title = models.CharField(max_length=255)
+    report_path = models.CharField(max_length=1024, blank=True)
+    report_created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    conversation_id = models.CharField(max_length=64)
+    source = models.CharField(max_length=32)
+    project = models.CharField(max_length=512)
+    message_count = models.IntegerField(default=0)
+    last_timestamp = models.CharField(max_length=64, blank=True)
+    selected_action = models.UUIDField(null=True, blank=True)
+
+
+class ReportAction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group = models.ForeignKey(
+        ReportActionGroup, on_delete=models.CASCADE, related_name="actions"
+    )
+    label = models.CharField(max_length=255)
+    text = models.TextField()
+    status = models.CharField(max_length=16, default="pending")
+    submitted_text = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    result = models.JSONField(default=dict)
