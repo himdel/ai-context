@@ -5,7 +5,7 @@ from api.models import CronJob
 
 
 class Command(BaseCommand):
-    help = "Run one persisted cronjob from a systemd timer"
+    help = "Run one persisted cronjob from a persistent scheduler"
 
     def add_arguments(self, parser):
         parser.add_argument("cronjob_id", type=int)

@@ -1,7 +1,12 @@
+import sys
 import uuid
 
 from django.db import models
 from django.utils import timezone
+
+
+def default_cron_backend():
+    return "launchd" if sys.platform == "darwin" else "systemd"
 
 
 class ForgePR(models.Model):
@@ -45,9 +50,11 @@ class ConversationIndex(models.Model):
 class CronJob(models.Model):
     BACKEND_INTERNAL = "internal"
     BACKEND_SYSTEMD = "systemd"
+    BACKEND_LAUNCHD = "launchd"
     BACKEND_CHOICES = (
         (BACKEND_INTERNAL, "Contexts process"),
         (BACKEND_SYSTEMD, "systemd user timer"),
+        (BACKEND_LAUNCHD, "launchd user agent"),
     )
 
     skill_name = models.CharField(max_length=255)
@@ -57,7 +64,7 @@ class CronJob(models.Model):
     natural_language = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
     backend = models.CharField(
-        max_length=16, choices=BACKEND_CHOICES, default=BACKEND_SYSTEMD
+        max_length=16, choices=BACKEND_CHOICES, default=default_cron_backend
     )
     runner = models.CharField(max_length=32, default="claude")
     agent = models.CharField(max_length=128, default="", blank=True)

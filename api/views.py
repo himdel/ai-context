@@ -1470,7 +1470,7 @@ def cronjobs_list(request):
         repo = request.data.get("repo", "").strip()
         cron_expression = request.data.get("cron_expression", "").strip()
         params = request.data.get("params", "")
-        backend = request.data.get("backend", CronJob.BACKEND_SYSTEMD)
+        backend = request.data.get("backend", cronjob_service.default_backend())
         runner = request.data.get("runner", "claude")
         agent = request.data.get("agent", "")
         model = request.data.get("model", "")
@@ -1504,7 +1504,7 @@ def cronjobs_list(request):
             model=model,
             effort=effort,
         )
-        cronjob_service.reconcile_systemd_jobs()
+        cronjob_service.reconcile_persistent_jobs()
         return Response(_serialize_cronjob(cj), status=201)
 
     cronjobs = CronJob.objects.all().order_by("-created_at")
@@ -1520,7 +1520,7 @@ def cronjob_detail(request, cronjob_id):
 
     if request.method == "DELETE":
         cj.delete()
-        cronjob_service.reconcile_systemd_jobs()
+        cronjob_service.reconcile_persistent_jobs()
         return Response({"status": "deleted"})
 
     if request.method == "PUT":
@@ -1562,7 +1562,7 @@ def cronjob_detail(request, cronjob_id):
         for field, value in values.items():
             setattr(cj, field, value)
         cj.save()
-        cronjob_service.reconcile_systemd_jobs()
+        cronjob_service.reconcile_persistent_jobs()
 
     runs = list(CronJobRun.objects.filter(cronjob=cj).order_by("-triggered_at")[:20])
     _resolve_run_conversations(runs)
@@ -1595,6 +1595,12 @@ def cronjob_run(request, cronjob_id):
             result,
             status=202 if result["status"] == "queued" else 400,
         )
+    if cronjob_service.effective_backend(cj) == CronJob.BACKEND_LAUNCHD:
+        result = cronjob_service.queue_launchd_manual(cj)
+        return Response(
+            result,
+            status=202 if result["status"] == "queued" else 400,
+        )
     return _execute_cronjob(cj, trigger_type="manual")
 
 
@@ -1603,6 +1609,7 @@ def cronjob_options(request):
     return Response(
         {
             "backends": cronjob_service.backend_options(),
+            "default": cronjob_service.default_backend(),
             "runners": cronjob_service.runner_options(),
             "efforts": ["", "low", "medium", "high", "xhigh", "max"],
         }

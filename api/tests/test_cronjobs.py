@@ -9,7 +9,7 @@ from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 
 from api import cronjobs
-from api.croncalendar import CronCalendarError, calendar_expressions
+from api.croncalendar import CronCalendarError, calendar_expressions, launchd_intervals
 from api.harness import base
 from api.harness.claude import ClaudeHarness
 from api.harness.opencode import (
@@ -83,6 +83,33 @@ class CronjobBackendTests(SimpleTestCase):
             calendar_expressions("22 */4 * * *"),
             ("*-*-* 00,04,08,12,16,20:22:00",),
         )
+
+    def test_launchd_calendar_expands_weekdays(self):
+        self.assertEqual(
+            launchd_intervals("0 9 * * 1-5"),
+            [
+                {"Weekday": 1, "Minute": 0, "Hour": 9},
+                {"Weekday": 2, "Minute": 0, "Hour": 9},
+                {"Weekday": 3, "Minute": 0, "Hour": 9},
+                {"Weekday": 4, "Minute": 0, "Hour": 9},
+                {"Weekday": 5, "Minute": 0, "Hour": 9},
+            ],
+        )
+
+    def test_launchd_calendar_preserves_day_or_semantics(self):
+        self.assertEqual(
+            launchd_intervals("0 9 1 * 1"),
+            [
+                {"Day": 1, "Minute": 0, "Hour": 9},
+                {"Weekday": 1, "Minute": 0, "Hour": 9},
+            ],
+        )
+
+    def test_launchd_calendar_expands_every_minute(self):
+        intervals = launchd_intervals("* * * * *")
+        self.assertEqual(len(intervals), 60)
+        self.assertEqual(intervals[0], {"Minute": 0})
+        self.assertEqual(intervals[-1], {"Minute": 59})
 
     def test_calendar_rejects_reboot(self):
         with self.assertRaises(CronCalendarError):

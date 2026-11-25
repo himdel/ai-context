@@ -5,13 +5,19 @@ let cronjobListEl, mainEl, setActiveScreen, closeConversation, loadConversation;
 let getActiveCronjobId;
 let RepoIdentity, navigateToSkillByName;
 let cronjobOptionsPromise;
+let cronjobOptions;
 let cronConfigCounter = 0;
 
 function loadCronjobOptions() {
   if (!cronjobOptionsPromise) {
-    cronjobOptionsPromise = fetch('/api/cronjobs/options/').then(function (r) {
-      return r.json();
-    });
+    cronjobOptionsPromise = fetch('/api/cronjobs/options/')
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (options) {
+        cronjobOptions = options;
+        return options;
+      });
   }
   return cronjobOptionsPromise;
 }
@@ -59,11 +65,12 @@ function addCronConfigFields(form, data) {
 
   loadCronjobOptions().then(function (options) {
     backendSelect.innerHTML = '';
+    var defaultBackend = data.backend || options.default || 'systemd';
     options.backends.forEach(function (option) {
       var el = document.createElement('option');
       el.value = option.key;
       el.textContent = option.label;
-      if (option.key === (data.backend || 'systemd')) el.selected = true;
+      if (option.key === defaultBackend) el.selected = true;
       backendSelect.appendChild(el);
     });
 
@@ -476,7 +483,11 @@ export function loadCronjob(cronjobId, pushHistory) {
             natural_language: naturalCheck.checked,
             cron_expression: cronInput.value,
             enabled: enabledCheck.checked,
-            backend: configFields.backend.value || data.backend || 'systemd',
+            backend:
+              configFields.backend.value ||
+              data.backend ||
+              (cronjobOptions && cronjobOptions.default) ||
+              'systemd',
             runner: configFields.runner.value || data.runner || 'claude',
             agent: configFields.agent.value,
             model: configFields.model.value,
@@ -689,7 +700,7 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
   form.appendChild(repoLabel);
 
   var configFields = addCronConfigFields(form, {
-    backend: 'systemd',
+    backend: null,
     runner: 'claude',
     agent: '',
     model: '',
@@ -782,7 +793,10 @@ export function showCreateCronjobForm(prefilledName, pushHistory) {
         params: paramsInput.value,
         natural_language: naturalCheck.checked,
         cron_expression: cronInput.value,
-        backend: configFields.backend.value || 'systemd',
+        backend:
+          configFields.backend.value ||
+          (cronjobOptions && cronjobOptions.default) ||
+          'systemd',
         runner: configFields.runner.value || 'claude',
         agent: configFields.agent.value,
         model: configFields.model.value,

@@ -26,13 +26,11 @@ def _start_scheduler():
 
 def _scheduler_loop():
     time.sleep(10)
-    from api.cronjobs import systemd_available
+    from api.cronjobs import reconcile_persistent_jobs, systemd_available
 
     systemd = systemd_available()
     try:
-        from api.cronjobs import reconcile_systemd_jobs
-
-        reconcile_systemd_jobs()
+        reconcile_persistent_jobs()
     except Exception:
         logger.exception("systemd cron reconciliation error")
     while True:

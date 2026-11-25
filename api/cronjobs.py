@@ -1,15 +1,17 @@
-"""Cronjob execution and systemd integration.
+"""Cronjob execution and persistent scheduler integration.
 
-The database remains the source of truth. For systemd-backed jobs, an exact
-calendar timer wakes a direct Django worker; the stored cron expression is
-translated to systemd calendar syntax when units are reconciled.
+The database remains the source of truth. Persistent scheduler jobs wake a
+direct Django worker; the stored cron expression is translated to the native
+calendar syntax when units or agents are reconciled.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import plistlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,7 +24,11 @@ from django.conf import settings
 from django.db import OperationalError
 
 from api import harness
-from api.croncalendar import CronCalendarError, calendar_expressions
+from api.croncalendar import (
+    CronCalendarError,
+    calendar_expressions,
+    launchd_intervals,
+)
 from api.models import CronJob, CronJobRun
 
 logger = logging.getLogger(__name__)
@@ -40,11 +46,39 @@ def _systemctl(*args, check=False):
     )
 
 
+def _launchctl(*args, check=False):
+    return subprocess.run(
+        ["launchctl", *args],
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
 def systemd_available():
     try:
         return _systemctl("show-environment").returncode == 0
     except OSError:
         return False
+
+
+def _launchd_domain():
+    return f"gui/{os.getuid()}"
+
+
+def launchd_available():
+    if sys.platform != "darwin" or shutil.which("launchctl") is None:
+        return False
+    try:
+        return _launchctl("print", _launchd_domain()).returncode == 0
+    except OSError:
+        return False
+
+
+def default_backend():
+    return (
+        CronJob.BACKEND_LAUNCHD if sys.platform == "darwin" else CronJob.BACKEND_SYSTEMD
+    )
 
 
 def effective_backend(job, available=None):
@@ -111,6 +145,13 @@ def validate_job_config(backend, runner, model, effort, cron_expression="", agen
                 return (
                     result.stderr.strip() or f"invalid systemd calendar: {expression}"
                 )
+    if backend == CronJob.BACKEND_LAUNCHD:
+        if not launchd_available():
+            return "launchd user agent is unavailable"
+        try:
+            launchd_intervals(cron_expression)
+        except CronCalendarError as exc:
+            return str(exc)
     return ""
 
 
@@ -232,6 +273,39 @@ def queue_systemd_manual(job):
     return {"status": "queued", "unit": unit}
 
 
+def queue_launchd_manual(job):
+    """Queue a manual run as a detached worker on macOS.
+
+    launchd calendar agents have fixed arguments, so a one-shot manual
+    invocation is simpler and safer as a detached worker than mutating the
+    scheduled agent's arguments.
+    """
+
+    if not launchd_available():
+        return {"status": "failed", "error": "launchd user agent is unavailable"}
+    manage = Path(settings.BASE_DIR) / "manage.py"
+    command = [
+        sys.executable,
+        str(manage),
+        "run_cronjob",
+        str(job.id),
+        "--manual",
+    ]
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=settings.BASE_DIR,
+            env=os.environ.copy(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return {"status": "failed", "error": str(exc)}
+    return {"status": "queued", "pid": process.pid}
+
+
 def next_run_at(job, now=None):
     now = now or datetime.now(timezone.utc)
     base = job.last_run_at or job.created_at
@@ -257,6 +331,14 @@ def _unit_dir():
     return config / "systemd" / "user"
 
 
+def _launchd_dir():
+    return Path.home() / "Library" / "LaunchAgents"
+
+
+def _launchd_log_dir():
+    return Path.home() / "Library" / "Logs" / "Contexts"
+
+
 def _unit_quote(value):
     if re.fullmatch(r"[A-Za-z0-9_./:=+-]+", value):
         return value
@@ -267,6 +349,14 @@ def _job_slug(job):
     skill = re.sub(r"[^A-Za-z0-9]+", "-", job.skill_name).strip("-").lower()
     skill = skill[:48] or "job"
     return f"{skill}-{job.id}"
+
+
+def _launchd_prefix():
+    return f"contexts-cron-{_instance_key()}-"
+
+
+def _launchd_label(job):
+    return f"{_launchd_prefix()}{_job_slug(job)}"
 
 
 def _service_name(job):
@@ -325,12 +415,54 @@ WantedBy=timers.target
 """
 
 
+def _launchd_plist(job):
+    label = _launchd_label(job)
+    manage = Path(settings.BASE_DIR) / "manage.py"
+    log_dir = _launchd_log_dir()
+    return {
+        "Label": label,
+        "ProgramArguments": [
+            sys.executable,
+            str(manage),
+            "run_cronjob",
+            str(job.id),
+            "--scheduled",
+        ],
+        "WorkingDirectory": str(settings.BASE_DIR),
+        "RunAtLoad": False,
+        "StartCalendarInterval": launchd_intervals(job.cron_expression),
+        "EnvironmentVariables": {
+            "HOME": str(Path.home()),
+            "PATH": os.environ.get("PATH", ""),
+            "CONTEXTS_INSTANCE": os.environ.get("CONTEXTS_INSTANCE", ""),
+            "PYTHONUNBUFFERED": "1",
+        },
+        "StandardOutPath": str(log_dir / f"{label}.out.log"),
+        "StandardErrorPath": str(log_dir / f"{label}.err.log"),
+    }
+
+
 def _write(path, content):
     old = path.read_text() if path.exists() else None
     if old == content:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False) as stream:
+        stream.write(content)
+        temporary = Path(stream.name)
+    temporary.chmod(0o644)
+    os.replace(temporary, path)
+    return True
+
+
+def _write_plist(path, value):
+    content = plistlib.dumps(value, fmt=plistlib.FMT_XML, sort_keys=False)
+    old = path.read_bytes() if path.exists() else None
+    if old == content:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _launchd_log_dir().mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False) as stream:
         stream.write(content)
         temporary = Path(stream.name)
     temporary.chmod(0o644)
@@ -390,3 +522,59 @@ def reconcile_systemd_jobs():
         if timer in changed_timers and timer in old_timer_names:
             _systemctl("restart", timer, check=True)
     return True
+
+
+def reconcile_launchd_jobs():
+    """Make contexts-owned launchd user agents match the database."""
+
+    if not launchd_available():
+        return False
+    try:
+        jobs = list(CronJob.objects.all())
+    except OperationalError:
+        return False
+
+    destination = _launchd_dir()
+    prefix = _launchd_prefix()
+    domain = _launchd_domain()
+    existing_paths = set(destination.glob(f"{prefix}*.plist"))
+    desired_jobs = [
+        job
+        for job in jobs
+        if effective_backend(job, available=True) == CronJob.BACKEND_LAUNCHD
+        and job.enabled
+    ]
+    desired_paths = {
+        destination / f"{_launchd_label(job)}.plist" for job in desired_jobs
+    }
+
+    for path in existing_paths - desired_paths:
+        label = path.stem
+        _launchctl("bootout", f"{domain}/{label}")
+        path.unlink(missing_ok=True)
+
+    for job in desired_jobs:
+        label = _launchd_label(job)
+        path = destination / f"{label}.plist"
+        changed = _write_plist(path, _launchd_plist(job))
+        loaded = _launchctl("print", f"{domain}/{label}").returncode == 0
+        if not changed and loaded:
+            continue
+        if changed and loaded:
+            _launchctl("bootout", f"{domain}/{label}")
+        try:
+            _launchctl("bootstrap", domain, str(path), check=True)
+        except (OSError, subprocess.CalledProcessError):
+            logger.exception("could not bootstrap launchd agent %s", label)
+    return True
+
+
+def reconcile_persistent_jobs():
+    """Reconcile whichever persistent user scheduler this platform provides."""
+
+    result = False
+    if systemd_available():
+        result = reconcile_systemd_jobs() or result
+    if launchd_available():
+        result = reconcile_launchd_jobs() or result
+    return result
