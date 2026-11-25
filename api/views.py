@@ -955,6 +955,12 @@ def _spawn_session(
     name = _tmux_session_name(cwd, mode, source)
     env = _clean_env()
     reused = name in _tmux_sessions()
+    if reused and mode == "new":
+        # Another launch can take the name between choosing and checking it.
+        # A fresh launch must never become a reuse of somebody else's session.
+        return Response(
+            {"error": "session name was claimed by another launch"}, status=409
+        )
     if reused:
         if prompt:
             _tmux_send(name, prompt)
