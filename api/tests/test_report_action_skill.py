@@ -57,6 +57,7 @@ class RegistrationHelperTests(SimpleTestCase):
                 json.dumps(
                     {
                         "mode": "independent",
+                        "conversation_url": "http://localhost:8062/conversations/ses_current",
                         "actions": [
                             {
                                 "label": "Review [carefully]",
@@ -89,4 +90,35 @@ class RegistrationHelperTests(SimpleTestCase):
             self.assertEqual(data["conversation_id"], "ses_current")
             self.assertEqual(data["source"], "opencode")
             self.assertIn(r"Review \[carefully\]", out.getvalue())
+            self.assertIn(
+                "Originating session: [ses_current](<http://localhost:8062/conversations/ses_current>)",
+                out.getvalue(),
+            )
             opener.open.assert_called_once()
+
+    def test_provenance_without_actions_makes_no_http_requests(self):
+        out = StringIO()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "sys.argv",
+                [
+                    "register.py",
+                    "--provenance-only",
+                    "--source",
+                    "claude",
+                    "--conversation",
+                    "exact-session",
+                    "--base-url",
+                    "http://localhost:8063",
+                ],
+            ),
+            patch.object(helper.urllib.request, "build_opener") as opener,
+            redirect_stdout(out),
+        ):
+            self.assertEqual(helper.main(), 0)
+        self.assertEqual(
+            out.getvalue().strip(),
+            "Originating session: [exact-session](<http://localhost:8063/conversations/exact-session>)",
+        )
+        opener.assert_not_called()

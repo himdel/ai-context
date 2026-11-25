@@ -8,6 +8,22 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-25 - link report evidence and session provenance
+
+Refine the saved report-follow-up decision below: report paths on confirmation
+pages should open the current file in mdview, and source/follow-up IDs should link
+directly to their Contexts conversations. Open evidence links in new tabs so
+checking them does not discard an edited message.
+
+Derive mdview links from the existing recorded report/project paths with a
+configurable origin; do not store a second file identity or require mdview to be
+running during registration. These are current-file links, not snapshots, so
+disclose possible overwrites and prefer timestamped reports.
+
+Report provenance is useful independently of follow-up actions. The shared skill
+and helper should emit an originating-session link even when there is no action
+worth proposing; this must not create dummy actions or guess a session.
+
 ## 2026-11-25 - saved, explicitly confirmed report follow-ups
 
 Local Markdown reports need optional next steps without turning document viewing

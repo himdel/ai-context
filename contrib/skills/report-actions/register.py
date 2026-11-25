@@ -9,7 +9,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 
 def local_base(value):
@@ -54,7 +54,7 @@ def markdown_label(value):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("proposals", type=Path)
+    parser.add_argument("proposals", type=Path, nargs="?")
     parser.add_argument(
         "--base-url",
         type=local_base,
@@ -63,9 +63,16 @@ def main():
     parser.add_argument("--source", choices=["claude", "opencode"])
     parser.add_argument("--conversation")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--provenance-only",
+        action="store_true",
+        help="Print an originating-session link without registering actions or making HTTP requests.",
+    )
     args = parser.parse_args()
+    if args.proposals is None and not args.provenance_only:
+        parser.error("Provide a proposals file, or use --provenance-only.")
     try:
-        data = json.loads(args.proposals.read_text())
+        data = json.loads(args.proposals.read_text()) if args.proposals else {}
         if not isinstance(data, dict):
             raise ValueError("Proposal file must contain a JSON object.")
         current = os.environ.get("OPENCODE_SESSION_ID", "")
@@ -80,6 +87,21 @@ def main():
                 "Supply the exact --conversation and --source; no session will be guessed."
             )
         data.update(conversation_id=conversation, source=source)
+        conversation_url = (
+            f"{args.base_url}/conversations/{quote(conversation, safe='')}"
+        )
+        if args.provenance_only:
+            provenance = {
+                "conversation_id": conversation,
+                "conversation_url": conversation_url,
+            }
+            if args.json:
+                print(json.dumps(provenance, indent=2))
+            else:
+                print(
+                    f"Originating session: [{markdown_label(conversation)}](<{conversation_url}>)"
+                )
+            return 0
         request = urllib.request.Request(
             f"{args.base_url}/api/report-actions",
             data=json.dumps(data).encode(),
@@ -95,6 +117,10 @@ def main():
         if args.json:
             print(json.dumps(saved, indent=2))
         else:
+            print(
+                f"Originating session: [{markdown_label(conversation)}]"
+                f"(<{saved['conversation_url']}>)\n"
+            )
             print(
                 "Choose one next step:"
                 if saved["mode"] == "exclusive"

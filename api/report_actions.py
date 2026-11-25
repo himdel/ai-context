@@ -2,9 +2,12 @@
 
 import ipaddress
 import logging
+import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
+from django.conf import settings
 from django.db import transaction
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -42,6 +45,41 @@ def _guard(request):
 
 def _url(request, action):
     return request.build_absolute_uri(f"/actions/{action.id}")
+
+
+def _conversation_path(conversation_id):
+    return f"/conversations/{quote(conversation_id, safe='')}"
+
+
+def report_url(report_path, project):
+    """Link to the current file without reading it or resolving symlinks."""
+    base = settings.MDVIEW_URL
+    if not report_path or not isinstance(base, str) or not base:
+        return None
+    try:
+        origin = urlsplit(base)
+        if (
+            origin.scheme not in ("http", "https")
+            or not origin.hostname
+            or origin.username
+            or origin.password
+            or origin.query
+            or origin.fragment
+            or origin.path not in ("", "/")
+        ):
+            return None
+        origin.port  # Reject malformed configured ports.
+        path = Path(report_path).expanduser()
+        if not path.is_absolute():
+            if not Path(project).is_absolute():
+                return None
+            path = Path(project) / path
+        relative = Path(os.path.normpath(path)).relative_to(Path.home())
+    except (ValueError, RuntimeError):
+        # mdview only addresses paths beneath home. Keep other paths as text.
+        return None
+    suffix = "/" + quote(relative.as_posix(), safe="/") if relative.parts else ""
+    return f"{base.rstrip('/')}/~{suffix}"
 
 
 def freshness(created_at, now=None):
@@ -87,6 +125,7 @@ def _detail(request, action):
         "url": _url(request, action),
         "title": group.title,
         "report_path": group.report_path,
+        "report_url": report_url(group.report_path, group.project),
         "report_created_at": group.report_created_at,
         "freshness": freshness(group.report_created_at),
         "mode": group.mode,
@@ -103,7 +142,7 @@ def _detail(request, action):
         "source": group.source,
         "project": group.project,
         "conversation_id": group.conversation_id,
-        "conversation_url": f"/conversations/{group.conversation_id}",
+        "conversation_url": _conversation_path(group.conversation_id),
         "source_active": bool(
             adapter and group.conversation_id in adapter.active_ids()
         ),
@@ -213,6 +252,10 @@ def register(request):
         {
             "group_id": str(group.id),
             "mode": mode,
+            "conversation_id": group.conversation_id,
+            "conversation_url": request.build_absolute_uri(
+                _conversation_path(group.conversation_id)
+            ),
             "actions": [
                 {"id": str(a.id), "label": a.label, "url": _url(request, a)}
                 for a in saved

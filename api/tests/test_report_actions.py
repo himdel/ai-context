@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from api.harness.base import Conversation, Message
 from api.models import ReportAction, ReportActionGroup
-from api.report_actions import freshness
+from api.report_actions import freshness, report_url
 
 
 @override_settings(ALLOWED_HOSTS=["testserver", "localhost"])
@@ -88,6 +88,9 @@ class ReportActionsTests(TestCase):
             self.assertEqual(
                 response.data["conversation_url"], "/conversations/ses_source"
             )
+            self.assertEqual(
+                response.data["report_url"], "http://localhost:6821/~/reports/weekly.md"
+            )
             self.assertTrue(response.data["source_active"])
             self.assertFalse(response.data["source_changed"])
             self.assertEqual(response["Cache-Control"], "no-store")
@@ -97,6 +100,15 @@ class ReportActionsTests(TestCase):
         self.adapter.fork_session.assert_not_called()
         self._spawn_session.assert_not_called()
         self.assertEqual(ReportActionGroup.objects.count(), 1)
+
+    def test_registration_returns_absolute_source_session_link(self):
+        response = self.register()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["conversation_id"], "ses_source")
+        self.assertEqual(
+            response.data["conversation_url"],
+            "http://testserver/conversations/ses_source",
+        )
 
     def test_local_only_including_forwarded_header_spoofing(self):
         action = self.actions()[0]
@@ -281,7 +293,48 @@ class ReportActionsTests(TestCase):
         self.adapter.fork_session.assert_not_called()
 
 
-class FreshnessTests(SimpleTestCase):
+class ReportMetadataTests(SimpleTestCase):
+    @override_settings(MDVIEW_URL="http://localhost:7689/")
+    def test_report_links_encode_paths_without_reading_files(self):
+        home = Path.home()
+        for path, project, expected in (
+            ("~/reports/a b#x?.md", str(home), "/~/reports/a%20b%23x%3F.md"),
+            (str(home / "reports/x%.md"), str(home), "/~/reports/x%25.md"),
+            ("out/report.md", str(home / "work"), "/~/work/out/report.md"),
+            ("../report.md", str(home / "work"), "/~/report.md"),
+        ):
+            with (
+                self.subTest(path=path),
+                patch(
+                    "pathlib.Path.resolve",
+                    side_effect=AssertionError("No symlink resolution"),
+                ),
+                patch(
+                    "pathlib.Path.exists", side_effect=AssertionError("No file probes")
+                ),
+            ):
+                self.assertEqual(
+                    report_url(path, project), f"http://localhost:7689{expected}"
+                )
+        self.assertIsNone(report_url("", str(home)))
+        self.assertIsNone(
+            report_url(str(home.parent / "outside-home/report.md"), str(home))
+        )
+        self.assertIsNone(report_url("report.md", "relative-project"))
+
+    def test_disabled_or_invalid_mdview_origin_keeps_path_as_text(self):
+        for base in (
+            "",
+            None,
+            "javascript:alert(1)",
+            "http://localhost:bad",
+            "http://localhost:6821?x=1",
+            "http://localhost:6821/view",
+            "http://user@localhost:6821",
+        ):
+            with self.subTest(base=base), override_settings(MDVIEW_URL=base):
+                self.assertIsNone(report_url("~/reports/file.md", str(Path.home())))
+
     def test_progressively_stronger_age_bands(self):
         now = timezone.now()
         for days, level, ack in (

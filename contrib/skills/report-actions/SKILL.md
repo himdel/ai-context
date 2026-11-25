@@ -1,12 +1,30 @@
 ---
 name: report-actions
-description: Add optional, explicitly confirmed Contexts follow-up actions or decision choices to locally generated Markdown reports, including reports opened in mdview and produced by Contexts cronjobs.
+description: Link local Markdown reports to their originating Contexts sessions, and optionally add explicitly confirmed follow-up actions or decision choices. Covers mdview reports and Contexts cronjobs.
 ---
 
 # Local report actions
 
-Use when a local Markdown report would benefit from a concrete next action or a
-choice the reader can make. Do not pad reports with invented follow-ups.
+Use for local Markdown report provenance and, when useful, concrete next actions
+or choices. Do not pad reports with invented follow-ups.
+
+## Link the originating session
+
+Include an **Originating session** link to the exact conversation in the correct
+Contexts instance, even when the report offers no actions. Make the session ID
+itself the link label so it remains identifiable when copied. Never guess the
+session or use whichever instance happens to answer.
+
+For a report with no actions, the helper prints that Markdown without registering
+anything or making an HTTP request:
+
+```sh
+uv run --no-project python ~/.claude/skills/report-actions/register.py --provenance-only
+```
+
+It uses `OPENCODE_SESSION_ID` and `CONTEXTS_URL` as described below. For other
+harnesses, pass the exact `--source` and `--conversation`. If session identity or
+instance is unknown, say provenance is unavailable rather than inventing a link.
 
 ## Contract
 
@@ -84,6 +102,19 @@ uv run --no-project python ~/.claude/skills/report-actions/register.py proposals
 `register.py` only calls the registration endpoint. It prints Markdown links ready
 to include under "Follow-up actions" or "Choose one next step". `--json` prints the
 registration result instead. Source fields can also be stored in the JSON object.
+Its normal output starts with the originating-session link; put that in the
+report's metadata/header rather than duplicating it for every action group.
+
+Supply `report_path` as a home-relative (`~/...`) or absolute path, or relative to
+the source project. The confirmation page links it back into mdview, alongside a
+clickable source session ID in Contexts. Those links open new tabs to preserve
+edited messages. The mdview origin is configurable through Contexts' `MDVIEW_URL`
+(default `http://localhost:6821`; empty disables report backlinks).
+
+The report backlink opens the **current file**, not a report-time snapshot.
+Prefer timestamped report filenames so a later cron run does not overwrite the
+evidence linked by earlier actions. Keep the original timestamp when linking an
+existing report.
 
 Use the URLs returned by Contexts verbatim. Do not invent UUIDs, put prompts in
 URLs, embed API submit links, or request the action endpoints while rendering.

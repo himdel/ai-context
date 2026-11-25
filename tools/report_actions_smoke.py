@@ -33,6 +33,7 @@ const action = {
   text: 'Review only; do not modify anything.',
   submitted_text: '', submitted_at: null, result: {},
   title: 'Fixture report', report_path: '~/reports/fixture.md',
+  report_url: kind === 'unlinked-report' ? null : 'http://localhost:6821/~/reports/fixture.md',
   report_created_at: new Date(Date.now() - age * 86400000).toISOString(),
   freshness: {days: age, level: ['recent', 'aging', 'stale', 'old'].includes(kind) ? kind : 'recent',
     requires_acknowledgement: age >= 7},
@@ -134,6 +135,22 @@ async def checks(page):
     assert await page.js(
         "document.getElementById('source-state').textContent.includes('left untouched')"
     )
+    assert await page.js("""
+      [...document.querySelectorAll('#details a')].some(a =>
+        a.textContent === '~/reports/fixture.md' &&
+        a.href === 'http://localhost:6821/~/reports/fixture.md' &&
+        a.target === '_blank' && a.rel.includes('noopener') &&
+        a.title.includes('not a snapshot'))
+    """), "Source report needs a new-tab mdview backlink"
+    assert await page.js("""
+      [...document.querySelectorAll('#details a')].some(a =>
+        a.textContent === 'ses_source' && a.getAttribute('href') === '/conversations/ses_source' &&
+        a.target === '_blank' && a.rel.includes('noopener'))
+    """), "Source session ID must itself link to Contexts"
+    assert await page.js(
+        "!document.getElementById('report-note').hidden && "
+        "document.getElementById('report-note').textContent.includes('overwritten')"
+    )
     for theme, expected in (
         ("light", "rgb(139, 61, 255)"),
         ("dark", "rgb(185, 135, 255)"),
@@ -163,8 +180,11 @@ async def checks(page):
     assert await page.js(
         "document.querySelector('#result a').getAttribute('href') === '/conversations/ses_fixture_fork'"
     )
+    assert await page.js(
+        "document.querySelector('#result a').textContent.includes('ses_fixture_fork')"
+    )
     print(
-        "ok  recent action, exact edited message, double-click guard, result link, purple in both themes"
+        "ok  report/session backlinks, exact edited message, double-click guard, result link, purple in both themes"
     )
 
     for kind in ("aging", "stale", "old"):
@@ -194,6 +214,12 @@ async def checks(page):
     assert await page.js(
         "document.getElementById('source-state').textContent.includes('changed since')"
     )
+    await visit("unlinked-report")
+    assert await page.js(
+        "document.querySelectorAll('#details a').length === 1 && "
+        "document.getElementById('details').textContent.includes('~/reports/fixture.md') && "
+        "document.getElementById('report-note').hidden"
+    ), "An unlinked report must retain its plain path"
     await visit("missing")
     assert await page.js(
         "document.getElementById('error').textContent.includes('Nothing was submitted')"

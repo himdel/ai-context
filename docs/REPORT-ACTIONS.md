@@ -19,14 +19,16 @@ Every route works with or without a trailing slash.
   Required: `title`, `source`, `conversation_id`, `actions` (1-30 objects with
   `label` and `text`). Optional: `mode` (`independent`, default, or `exclusive`),
   `report_path`, `report_created_at` (timezone-aware ISO-8601, defaults to now).
-  Returns `group_id`, `mode`, `actions` with stable UUIDs, labels and page URLs.
+  Returns `group_id`, `mode`, `actions` with stable UUIDs, labels and page URLs,
+  plus `conversation_id` and an absolute originating `conversation_url`.
   The original project is resolved from the source conversation, not caller input.
   Registration never launches anything.
 - `GET /actions/<UUID>`: inert confirmation page. Missing saved IDs show an
   explanation once the page requests its record; nothing is launched.
 - `GET /api/report-actions/<UUID>`: proposal, group/choice status, original context,
   age band, changed-history/live-source hints, current launch availability and
-  saved outcome. Responses are not cached.
+  saved outcome, source `conversation_url`, and optional mdview `report_url`.
+  Responses are not cached.
 - `POST /api/report-actions/<UUID>/submit`: explicit JSON confirmation with
   `{"confirm":"fork"}` and optional edited `text`. For reports at least seven days
   old, also require `"acknowledge_stale":true`. Browser requests must be same-origin.
@@ -35,6 +37,33 @@ Every route works with or without a trailing slash.
 Action records live in the selected Contexts database, not the report file. Keep
 that database and port/instance stable for old links. No automatic expiry or pruning.
 Opening a link on a different host cannot find the original database.
+
+## Report and session navigation
+
+The confirmation page makes the report path a link into mdview and the source
+session ID a link into Contexts. These and known follow-up IDs open new tabs, so
+reviewing evidence does not discard an edited confirmation message.
+
+Set `MDVIEW_URL` in `contexts/settings_local.py` (or the named instance's settings)
+to the mdview HTTP(S) origin; the default is `http://localhost:6821`. Set it to `""`
+to keep report paths unlinked. mdview remains optional: preparing a backlink never
+contacts it, reads the report file, or registers a viewer root.
+
+Home-relative and absolute report paths beneath the server user's home are
+supported; project-relative paths are resolved against the recorded source project.
+Paths are normalized/URL-encoded without resolving symlinks, so existing symlink
+aliases keep their mdview meaning. Empty/unrepresentable paths stay plain text.
+This works for already-registered actions without a migration.
+
+Backlinks open the **current file**, not a preserved report snapshot; the page
+explicitly warns that a recurring report may have overwritten it. Prefer timestamped
+report filenames when retaining evidence from multiple runs.
+
+Reports themselves should include an **Originating session** link whose label is
+the exact session ID, even without action proposals. The bundled registration helper
+includes that link in its normal Markdown output. `--provenance-only` prints it
+without any API request or registration; the author still needs the exact source
+session and correct instance, not a guessed recent conversation.
 
 ## Forks and delivery
 
@@ -65,7 +94,8 @@ authors must retain existing links rather than bypassing submission state.
 
 When the harness only discovers its fork ID after launch, the result gives the tmux
 session name; normal Contexts conversation pairing makes it visible in the main UI.
-No extra terminal viewer is opened by report actions.
+With tmux enabled, report actions launch detached without an extra terminal viewer.
+If tmux is disabled/unavailable, the existing launcher falls back to a terminal.
 
 ## Age and visual convention
 

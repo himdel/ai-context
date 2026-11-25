@@ -10,11 +10,16 @@ function showError(message) {
   $('error').hidden = false;
 }
 
-function resultLink(parent, label, href) {
+function resultLink(parent, label, href, newTab = false) {
   const link = document.createElement('a');
   link.href = href;
   link.textContent = label;
+  if (newTab) {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
   parent.append(link);
+  return link;
 }
 
 function updateButton() {
@@ -46,21 +51,30 @@ function render(p, keepMessage = false) {
   date.textContent = `Report generated ${new Date(p.report_created_at).toLocaleString()} (${p.report_created_at}). ${age.days >= 3 ? "Check the findings and proposed message against today's project state." : 'Review the proposed message before confirming.'}`;
   $('age').append(title, date);
   $('details').replaceChildren();
-  for (const [key, value] of [
+  for (const [key, value, href] of [
     ['Report', p.title],
-    ['Report file', p.report_path || 'Not recorded'],
+    ['Report file', p.report_path || 'Not recorded', p.report_url],
     ['Project', p.project],
     ['Harness', p.source],
-    ['Source session', p.conversation_id],
+    ['Source session', p.conversation_id, p.conversation_url],
     ['Operation', 'Fork a separate follow-up'],
   ]) {
     const dt = document.createElement('dt');
     const dd = document.createElement('dd');
     dt.textContent = key;
-    dd.textContent = value;
+    if (href) {
+      const link = resultLink(dd, value, href, true);
+      if (key === 'Report file') {
+        link.title =
+          'Open source report in mdview (current file, not a snapshot)';
+      }
+    } else {
+      dd.textContent = value;
+    }
     $('details').append(dt, dd);
   }
   $('source').href = p.conversation_url;
+  $('report-note').hidden = !p.report_url;
   $('source-state').textContent = [
     p.source_active
       ? 'The source is live; it will be left untouched.'
@@ -105,8 +119,9 @@ function render(p, keepMessage = false) {
   if (p.result.conversation_id) {
     resultLink(
       $('result'),
-      'Open follow-up conversation',
+      `Open follow-up conversation (${p.result.conversation_id})`,
       `/conversations/${encodeURIComponent(p.result.conversation_id)}`,
+      true,
     );
   } else if (p.result.session) {
     $('result').textContent =

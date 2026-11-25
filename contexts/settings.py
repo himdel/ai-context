@@ -119,6 +119,9 @@ OPENCODE_CMD = "opencode"
 # absent, the adapter falls back to the current checkout branch.
 OPENCODE_CONTEXT_CACHE_DIR = Path.home() / ".cache/opencode-contexts"
 
+# Optional source-report backlinks; empty string disables them. No mdview dependency.
+MDVIEW_URL = "http://localhost:6821"
+
 # Session substrate + viewer defaults, autodetected for the current machine.
 # All of these can be overridden in settings_local (see below).
 #

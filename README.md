@@ -43,6 +43,7 @@ directory and sorted by date. Everything else is Claude-only.
 
 - Register proposed actions and link to a confirmation page from ordinary Markdown
 - Review/edit the exact user message before forking a separate follow-up conversation
+- Open the current source report in mdview and source/follow-up session IDs in Contexts
 - Independent actions can each run once; exclusive alternatives allow one choice
 - Progressively stronger old-report warnings; no takeover of live sessions
 - Always loopback-only, even when the main UI serves the LAN

@@ -15,7 +15,14 @@ The bundled `contrib/skills/report-actions` skill/helper owns report authoring;
 mdview and Contexts recognize ordinary action links in continuation violet.
 See `REPORT-ACTIONS.md`. Migration 0015 adds action/group tables.
 
+Report paths now link to their current file in mdview (configurable `MDVIEW_URL`);
+source and known follow-up IDs link directly into Contexts, in new tabs to preserve
+edits. The shared skill/helper also supplies an originating-session link for reports
+without actions through its registration-free `--provenance-only` mode.
+
 Verified:
+- 21 focused report/helper tests and the extended browser checks pass for the
+  mdview/session backlinks and registration-free provenance output.
 - 38 focused backend/harness/cron tests and two registration-helper tests pass.
 - `tools/report_actions_smoke.py` against the running :8062 UI passes all mocked
   submission scenarios, including stale acknowledgement, exclusive lockout,
