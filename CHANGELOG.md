@@ -4,6 +4,17 @@ What someone already running contexts should know, newest first. Grouped by
 date; under each date, anything needing action comes before new features. See
 git history for the full list of fixes and smaller changes.
 
+## 2026-11-28
+
+### Action required
+
+- Cost model attribution adds migration `0017`: run `make migrate` (and
+  `make migrate-<name>` for each extra instance).
+
+### New features
+
+- `3d9168d` Costs can optionally be split by model as well as repository.
+
 ## 2026-11-25
 
 ### Action required
