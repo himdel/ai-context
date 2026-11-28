@@ -102,6 +102,11 @@ function activityWindow(from, to) {
   };
 }
 
+function activityContentWidth(container) {
+  var width = container.clientWidth;
+  return width > 0 ? Math.max(320, width - 16) : 800;
+}
+
 export function showActivityHome() {
   var container = document.getElementById('home-cols');
   if (!container) return;
@@ -397,6 +402,15 @@ function renderHeatmap(container, days, from, to) {
   }
 
   var numWeeks = weeks.length;
+  var cellSize = Math.max(
+    14,
+    Math.min(
+      40,
+      Math.floor(
+        (activityContentWidth(container) - 30 - (numWeeks - 1) * 2) / numWeeks,
+      ),
+    ),
+  );
   var monthNames = [
     'Jan',
     'Feb',
@@ -415,7 +429,9 @@ function renderHeatmap(container, days, from, to) {
   var monthsHtml =
     '<div class="heatmap-months" style="grid-template-columns: 30px repeat(' +
     numWeeks +
-    ', 14px);">';
+    ', ' +
+    cellSize +
+    'px);">';
   monthsHtml += '<span></span>';
   var lastMonth = -1;
   for (var w = 0; w < numWeeks; w++) {
@@ -438,7 +454,11 @@ function renderHeatmap(container, days, from, to) {
   var gridHtml =
     '<div class="heatmap" style="grid-template-columns: 30px repeat(' +
     numWeeks +
-    ', 14px); grid-template-rows: repeat(7, 14px);">';
+    ', ' +
+    cellSize +
+    'px); grid-template-rows: repeat(7, ' +
+    cellSize +
+    'px);">';
 
   for (var row = 0; row < 7; row++) {
     gridHtml += '<div class="heatmap-day-label">' + dayLabels[row] + '</div>';
@@ -451,12 +471,20 @@ function renderHeatmap(container, days, from, to) {
           cell.dateStr +
           '" data-count="' +
           cell.count +
-          '"' +
+          '" style="width:' +
+          cellSize +
+          'px;height:' +
+          cellSize +
+          'px;"' +
           (level ? ' data-level="' + level + '"' : '') +
           '></div>';
       } else {
         gridHtml +=
-          '<div class="heatmap-cell" style="visibility:hidden"></div>';
+          '<div class="heatmap-cell" style="width:' +
+          cellSize +
+          'px;height:' +
+          cellSize +
+          'px;visibility:hidden"></div>';
       }
     }
   }
@@ -594,7 +622,10 @@ function renderLineChart(container, days, modelDays, mode, from, to) {
   var paddingLeft = 30;
   var paddingTop = 5;
   var paddingBottom = 18;
-  var cssWidth = paddingLeft + numWeeks * 16 - 2;
+  var cssWidth = Math.max(
+    paddingLeft + numWeeks * 16 - 2,
+    activityContentWidth(container),
+  );
   var cssHeight = 160;
   var chartWidth = cssWidth - paddingLeft;
   var chartHeight = cssHeight - paddingTop - paddingBottom;
