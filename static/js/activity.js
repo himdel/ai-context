@@ -402,15 +402,19 @@ function renderHeatmap(container, days, from, to) {
   }
 
   var numWeeks = weeks.length;
-  var cellSize = Math.max(
-    14,
-    Math.min(
-      40,
-      Math.floor(
-        (activityContentWidth(container) - 30 - (numWeeks - 1) * 2) / numWeeks,
+  var cellSize = 14;
+  if (from || to) {
+    cellSize = Math.max(
+      14,
+      Math.min(
+        40,
+        Math.floor(
+          (activityContentWidth(container) - 30 - (numWeeks - 1) * 2) /
+            numWeeks,
+        ),
       ),
-    ),
-  );
+    );
+  }
   var monthNames = [
     'Jan',
     'Feb',
@@ -622,10 +626,10 @@ function renderLineChart(container, days, modelDays, mode, from, to) {
   var paddingLeft = 30;
   var paddingTop = 5;
   var paddingBottom = 18;
-  var cssWidth = Math.max(
-    paddingLeft + numWeeks * 16 - 2,
-    activityContentWidth(container),
-  );
+  var cssWidth = paddingLeft + numWeeks * 16 - 2;
+  if (from || to) {
+    cssWidth = Math.max(cssWidth, activityContentWidth(container));
+  }
   var cssHeight = 160;
   var chartWidth = cssWidth - paddingLeft;
   var chartHeight = cssHeight - paddingTop - paddingBottom;
