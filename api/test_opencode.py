@@ -252,6 +252,94 @@ class OpencodeHarnessTests(SimpleTestCase):
         with self.assertRaisesRegex(RuntimeError, "not available"):
             self.adapter.fork_session("ses_unmigrated")
 
+    def test_v2_session_part_content_rows(self):
+        with sqlite3.connect(self.path) as conn:
+            conn.executescript(
+                "create table session_v2 (id text, parent_id text, agent text,"
+                " time_updated integer, time_created integer, directory text,"
+                " title text, version text, model text, cost real,"
+                " tokens_input integer, tokens_output integer,"
+                " tokens_reasoning integer, tokens_cache_read integer,"
+                " tokens_cache_write integer);"
+                "create table session_message (id text, session_id text,"
+                " type text, seq integer, data text);"
+                "create table session_part (message_id text, session_id text,"
+                " ordinal integer, type text, call_id text, time_created integer,"
+                " time_updated integer, data text);"
+            )
+            conn.execute(
+                "insert into session_v2 values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "ses_parts",
+                    None,
+                    "build",
+                    2000,
+                    1000,
+                    "/work",
+                    "parts",
+                    "2.0.26",
+                    '{"id":"model"}',
+                    0.5,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                ),
+            )
+            conn.executemany(
+                "insert into session_message values (?,?,?,?,?)",
+                (
+                    (
+                        "user",
+                        "ses_parts",
+                        "user",
+                        1,
+                        '{"text":"question","time":{"created":1000}}',
+                    ),
+                    (
+                        "assistant",
+                        "ses_parts",
+                        "assistant",
+                        2,
+                        '{"time":{"created":1010},"content":[]}',
+                    ),
+                ),
+            )
+            conn.executemany(
+                "insert into session_part values (?,?,?,?,?,?,?,?)",
+                (
+                    (
+                        "assistant",
+                        "ses_parts",
+                        0,
+                        "reasoning",
+                        None,
+                        1011,
+                        1011,
+                        '{"type":"reasoning","text":"thinking"}',
+                    ),
+                    (
+                        "assistant",
+                        "ses_parts",
+                        1,
+                        "text",
+                        None,
+                        1012,
+                        1012,
+                        '{"type":"text","text":"answer"}',
+                    ),
+                ),
+            )
+
+        conv = self.adapter.load("ses_parts")
+
+        self.assertEqual([m.role for m in conv.messages], ["user", "assistant"])
+        self.assertEqual(
+            [b["type"] for b in conv.messages[1].blocks], ["thinking", "text"]
+        )
+        self.assertEqual(conv.messages[1].blocks[1]["text"], "answer")
+
     def test_v2_fork_launches_exact_api_id_and_fails_closed(self):
         request = APIRequestFactory().post(
             "/api/sessions/fork", {"conversation_id": "ses_new"}

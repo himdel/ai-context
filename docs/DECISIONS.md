@@ -22,6 +22,14 @@ be wrong. New model-split requests lazily reparse legacy index rows whose
 attribution is still null; rows that remain unavailable are represented as
 `unknown` so the displayed groups still add up to the total.
 
+## 2026-11-28 - read OpenCode V2 session parts
+
+An OpenCode upgrade added `session_part`, moving assistant reasoning, text and
+tool content out of the `session_message` metadata rows. Keep supporting the
+older inline V2 layout as well as the new one. Without both readers, the
+conversation still lists user prompts and costs but silently loses the
+assistant history.
+
 ## 2026-11-25 - link report evidence and session provenance
 
 Refine the saved report-follow-up decision below: report paths on confirmation

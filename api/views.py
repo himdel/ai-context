@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _forge_repo_cache = {}
 _forge_remote_cache = {}
+_model_cost_refresh_lock = threading.Lock()
 
 _KNOWN_FORGE_DOMAINS = {
     "github.com": "github",
@@ -3271,6 +3273,11 @@ def stats(request):
 
 
 def _refresh_model_costs():
+    with _model_cost_refresh_lock:
+        _refresh_model_costs_unlocked()
+
+
+def _refresh_model_costs_unlocked():
     """Backfill model attribution when the optional model split is requested."""
     from api.models import ConversationIndex
 

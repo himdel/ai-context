@@ -1,7 +1,8 @@
 """opencode adapter: a live SQLite database, not files on disk.
 
 V1 uses `session` / `message` / `part`; V2 uses `session_v2` /
-`session_message`, with content embedded in each message. Several things
+`session_message` plus, in newer databases, `session_part` rows for content.
+Several things
 Claude makes us reconstruct are already right here: a tool call carries its own
 result, a subagent names its child session outright, and cost is a column.
 
@@ -361,10 +362,20 @@ class OpencodeHarness(base.Harness):
                     return None
                 if table == "session_v2":
                     rows = conn.execute(
-                        "select type, data from session_message"
+                        "select id, type, data from session_message"
                         " where session_id = ? order by seq",
                         (conversation_id,),
                     ).fetchall()
+                    parts = {}
+                    if _has_table(conn, "session_part"):
+                        for part in conn.execute(
+                            "select message_id, ordinal, data from session_part"
+                            " where session_id = ? order by message_id, ordinal",
+                            (conversation_id,),
+                        ).fetchall():
+                            parts.setdefault(part["message_id"], []).append(
+                                _json(part["data"])
+                            )
                 else:
                     rows = conn.execute(
                         "select m.id mid, m.data mdata, p.data pdata"
@@ -385,7 +396,7 @@ class OpencodeHarness(base.Harness):
             return None
 
         if table == "session_v2":
-            messages, text_parts = self._build_v2_messages(rows)
+            messages, text_parts = self._build_v2_messages(rows, parts)
         else:
             messages, text_parts = self._build_messages(rows)
         for block in _tool_blocks(messages):
@@ -470,16 +481,18 @@ class OpencodeHarness(base.Harness):
             messages[-1].blocks.append(block)
         return [m for m in messages if m.blocks], text_parts
 
-    def _build_v2_messages(self, rows):
-        """V2 keeps user text and assistant content inline in ordered messages."""
+    def _build_v2_messages(self, rows, parts_by_message=None):
+        """Build V2 messages from inline or separately stored content."""
         messages, text_parts = [], []
+        parts_by_message = parts_by_message or {}
         for row in rows:
             data = _json(row["data"])
             role = row["type"]
             if role == "user":
                 blocks = [base.text_block(data["text"])] if data.get("text") else []
             elif role == "assistant":
-                blocks = [_v2_block(part) for part in data.get("content") or []]
+                content = data.get("content") or parts_by_message.get(row["id"], [])
+                blocks = [_v2_block(part) for part in content]
                 blocks = [block for block in blocks if block is not None]
             else:
                 continue

@@ -130,10 +130,12 @@ context plugin is installed, the adapter reads the session's captured metadata f
 `~/.cache/opencode-contexts/<session-id>.json`; otherwise it falls back to the branch in
 the current checkout.
 
-V2 writes sessions to `session_v2` and ordered, inline-content rows to
-`session_message`. Migrated V1 rows may exist in both schemas. Discovery
-deduplicates by ID and prefers V2; V1-only rows remain readable. The schema
-name in the revision forces a one-time reindex of migrated conversations.
+V2 writes sessions to `session_v2` and ordered rows to `session_message`; newer
+versions keep assistant content in `session_part` rows keyed by message ID,
+while older versions embed it inline. Migrated V1 rows may exist in both
+schemas. Discovery deduplicates by ID and prefers V2; V1-only rows remain
+readable. The schema name in the revision forces a one-time reindex of
+migrated conversations.
 
 ## Launching
 
