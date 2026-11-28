@@ -79,6 +79,29 @@ function statsUrl(params) {
   return '/api/stats/' + (parts.length ? '?' + parts.join('&') : '');
 }
 
+function parseYmd(value) {
+  var parts = value.split('-').map(Number);
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function activityWindow(from, to) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var startDate;
+  if (from) {
+    startDate = parseYmd(from);
+  } else {
+    startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 52 * 7);
+    var startDow = (startDate.getDay() + 6) % 7;
+    startDate.setDate(startDate.getDate() - startDow);
+  }
+  return {
+    startDate: startDate,
+    endDate: to ? parseYmd(to) : today,
+  };
+}
+
 export function showActivityHome() {
   var container = document.getElementById('home-cols');
   if (!container) return;
@@ -104,8 +127,15 @@ export function showActivityHome() {
       })
       .then(function (data) {
         renderTotal(totalEl, data.total_cost);
-        renderHeatmap(container, data.days);
-        renderLineChart(container, data.days, data.model_days, state.chart);
+        renderHeatmap(container, data.days, r.from, r.to);
+        renderLineChart(
+          container,
+          data.days,
+          data.model_days,
+          state.chart,
+          r.from,
+          r.to,
+        );
       });
   }
 
@@ -164,8 +194,15 @@ export function showActivityHome() {
       container.appendChild(controls);
 
       renderTotal(totalEl, data.total_cost);
-      renderHeatmap(container, data.days);
-      renderLineChart(container, data.days, data.model_days, state.chart);
+      renderHeatmap(container, data.days, rangeMap.all.from, rangeMap.all.to);
+      renderLineChart(
+        container,
+        data.days,
+        data.model_days,
+        state.chart,
+        rangeMap.all.from,
+        rangeMap.all.to,
+      );
     });
 }
 
@@ -301,7 +338,7 @@ function escAttr(s) {
   return escHtml(s).replace(/"/g, '&quot;');
 }
 
-function renderHeatmap(container, days) {
+function renderHeatmap(container, days, from, to) {
   var existing = container.querySelector('.heatmap-wrapper');
   if (existing) existing.remove();
 
@@ -334,17 +371,17 @@ function renderHeatmap(container, days) {
     return 4;
   }
 
-  var today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  var startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 52 * 7);
+  var window = activityWindow(from, to);
+  var startDate = new Date(window.startDate);
+  var endDate = new Date(window.endDate);
   var startDow = (startDate.getDay() + 6) % 7;
   startDate.setDate(startDate.getDate() - startDow);
+  var endDow = (endDate.getDay() + 6) % 7;
+  endDate.setDate(endDate.getDate() + (6 - endDow));
 
   var weeks = [];
   var d = new Date(startDate);
-  while (d <= today) {
+  while (d <= endDate) {
     var dayIdx = (d.getDay() + 6) % 7;
     if (dayIdx === 0 || weeks.length === 0) {
       weeks.push([]);
@@ -493,7 +530,7 @@ function modelLabel(model) {
   return model === 'unknown' ? 'Unknown model' : model;
 }
 
-function renderLineChart(container, days, modelDays, mode) {
+function renderLineChart(container, days, modelDays, mode, from, to) {
   var existing = container.querySelector('.linechart-wrapper');
   if (existing) existing.remove();
 
@@ -516,16 +553,13 @@ function renderLineChart(container, days, modelDays, mode) {
     return modelTotals[b] - modelTotals[a] || a.localeCompare(b);
   });
 
-  var today = new Date();
-  today.setHours(0, 0, 0, 0);
-  var startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 52 * 7);
-  var startDow = (startDate.getDay() + 6) % 7;
-  startDate.setDate(startDate.getDate() - startDow);
+  var window = activityWindow(from, to);
+  var startDate = window.startDate;
+  var endDate = window.endDate;
 
   var dailyData = [];
   var d = new Date(startDate);
-  while (d <= today) {
+  while (d <= endDate) {
     var ds =
       d.getFullYear() +
       '-' +
