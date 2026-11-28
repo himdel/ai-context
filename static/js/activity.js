@@ -102,10 +102,9 @@ function activityWindow(from, to) {
   };
 }
 
-function activityContentWidth(container) {
-  var width = container.clientWidth;
-  return width > 0 ? Math.max(320, width - 16) : 800;
-}
+var ACTIVITY_SURFACE_WIDTH = 30 + 53 * 16 - 2;
+var ACTIVITY_HEATMAP_LABEL_WIDTH = 30;
+var ACTIVITY_HEATMAP_CELL_SIZE = 14;
 
 export function showActivityHome() {
   var container = document.getElementById('home-cols');
@@ -402,19 +401,12 @@ function renderHeatmap(container, days, from, to) {
   }
 
   var numWeeks = weeks.length;
-  var cellSize = 14;
-  if (from || to) {
-    cellSize = Math.max(
-      14,
-      Math.min(
-        24,
-        Math.floor(
-          (activityContentWidth(container) - 30 - (numWeeks - 1) * 2) /
-            numWeeks,
-        ),
-      ),
-    );
-  }
+  var cellSize = ACTIVITY_HEATMAP_CELL_SIZE;
+  var columnGap =
+    (ACTIVITY_SURFACE_WIDTH -
+      ACTIVITY_HEATMAP_LABEL_WIDTH -
+      numWeeks * cellSize) /
+    numWeeks;
   var monthNames = [
     'Jan',
     'Feb',
@@ -431,7 +423,13 @@ function renderHeatmap(container, days, from, to) {
   ];
 
   var monthsHtml =
-    '<div class="heatmap-months" style="grid-template-columns: 30px repeat(' +
+    '<div class="heatmap-months" style="width:' +
+    ACTIVITY_SURFACE_WIDTH +
+    'px;column-gap:' +
+    columnGap +
+    'px;grid-template-columns: ' +
+    ACTIVITY_HEATMAP_LABEL_WIDTH +
+    'px repeat(' +
     numWeeks +
     ', ' +
     cellSize +
@@ -456,7 +454,13 @@ function renderHeatmap(container, days, from, to) {
 
   var dayLabels = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'];
   var gridHtml =
-    '<div class="heatmap" style="grid-template-columns: 30px repeat(' +
+    '<div class="heatmap" style="width:' +
+    ACTIVITY_SURFACE_WIDTH +
+    'px;column-gap:' +
+    columnGap +
+    'px;grid-template-columns: ' +
+    ACTIVITY_HEATMAP_LABEL_WIDTH +
+    'px repeat(' +
     numWeeks +
     ', ' +
     cellSize +
@@ -622,18 +626,10 @@ function renderLineChart(container, days, modelDays, mode, from, to) {
       ? maxModelCost * 1.1 || 0.01
       : Math.ceil(maxCount * 1.1) || 1;
 
-  var numWeeks = Math.ceil(dailyData.length / 7);
   var paddingLeft = 30;
   var paddingTop = 5;
   var paddingBottom = 18;
-  var baseCssWidth = paddingLeft + numWeeks * 16 - 2;
-  var cssWidth = baseCssWidth;
-  if (from || to) {
-    cssWidth = Math.max(
-      baseCssWidth,
-      Math.min(activityContentWidth(container), baseCssWidth * 3),
-    );
-  }
+  var cssWidth = ACTIVITY_SURFACE_WIDTH;
   var cssHeight = 160;
   var chartWidth = cssWidth - paddingLeft;
   var chartHeight = cssHeight - paddingTop - paddingBottom;
