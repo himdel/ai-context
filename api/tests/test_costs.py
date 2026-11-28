@@ -52,6 +52,14 @@ class ModelCostStatsTests(TestCase):
             cost_by_model={"claude-sonnet-4": 3.0},
         )
         ConversationIndex.objects.create(
+            conversation_id="older-sonnet",
+            first_timestamp="2026-11-26T10:00:00Z",
+            project="/work/one",
+            message_count=1,
+            cost_usd=0.5,
+            cost_by_model={"claude-sonnet-4": 0.5},
+        )
+        ConversationIndex.objects.create(
             conversation_id="opus",
             first_timestamp="2026-11-27T11:00:00Z",
             project="/work/two",
@@ -72,18 +80,35 @@ class ModelCostStatsTests(TestCase):
     def test_model_split_is_opt_in_and_keeps_total_cost(self, refresh):
         default_response = stats(self.factory.get("/api/stats/"))
         self.assertNotIn("model_costs", default_response.data)
-        self.assertEqual(default_response.data["total_cost"], 6.0)
+        self.assertEqual(default_response.data["total_cost"], 6.5)
         refresh.assert_not_called()
 
         response = stats(self.factory.get("/api/stats/?split=model"))
 
         refresh.assert_called_once_with()
-        self.assertEqual(response.data["total_cost"], 6.0)
+        self.assertEqual(response.data["total_cost"], 6.5)
         self.assertEqual(
             response.data["model_costs"],
             [
-                {"model": "claude-sonnet-4", "cost": 3.0},
+                {"model": "claude-sonnet-4", "cost": 3.5},
                 {"model": "claude-opus-4", "cost": 2.0},
                 {"model": "unknown", "cost": 1.0},
+            ],
+        )
+        self.assertEqual(
+            response.data["model_days"],
+            [
+                {
+                    "date": "2026-11-26",
+                    "costs": [{"model": "claude-sonnet-4", "cost": 0.5}],
+                },
+                {
+                    "date": "2026-11-27",
+                    "costs": [
+                        {"model": "claude-sonnet-4", "cost": 3.0},
+                        {"model": "claude-opus-4", "cost": 2.0},
+                        {"model": "unknown", "cost": 1.0},
+                    ],
+                },
             ],
         )

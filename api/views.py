@@ -3223,28 +3223,39 @@ def stats(request):
     total_cost = qs.aggregate(total=Sum("cost_usd"))["total"] or 0.0
 
     model_costs = []
+    model_days = []
     if split == "model":
         by_model = {}
-        for row in qs.values("cost_usd", "cost_by_model"):
+        by_date = {}
+        for row in qs.values("first_timestamp", "cost_usd", "cost_by_model"):
             cost = row["cost_usd"] or 0.0
-            grouped = row["cost_by_model"]
-            if grouped is None:
-                grouped = {}
-                unknown_cost = cost
-            else:
-                unknown_cost = cost - sum(grouped.values())
-            for model, model_cost in grouped.items():
-                by_model[model or "unknown"] = by_model.get(model or "unknown", 0.0) + (
-                    model_cost or 0.0
-                )
-            if unknown_cost > 0.0000005:
-                by_model["unknown"] = by_model.get("unknown", 0.0) + unknown_cost
+            breakdown = _model_cost_breakdown(cost, row["cost_by_model"])
+            date = row["first_timestamp"][:10]
+            if not breakdown:
+                continue
+            day_costs = by_date.setdefault(date, {})
+            for model, model_cost in breakdown.items():
+                by_model[model] = by_model.get(model, 0.0) + model_cost
+                day_costs[model] = day_costs.get(model, 0.0) + model_cost
         model_costs = [
             {"model": model, "cost": round(cost, 6)}
             for model, cost in sorted(
                 by_model.items(), key=lambda item: (-item[1], item[0])
             )
             if cost > 0
+        ]
+        model_days = [
+            {
+                "date": date,
+                "costs": [
+                    {"model": model, "cost": round(cost, 6)}
+                    for model, cost in sorted(
+                        costs.items(), key=lambda item: (-item[1], item[0])
+                    )
+                    if cost > 0
+                ],
+            }
+            for date, costs in sorted(by_date.items())
         ]
 
     response = {
@@ -3269,7 +3280,20 @@ def stats(request):
     }
     if split == "model":
         response["model_costs"] = model_costs
+        response["model_days"] = model_days
     return Response(response)
+
+
+def _model_cost_breakdown(cost, grouped):
+    """Return one row's model costs, preserving the scalar total."""
+    grouped = grouped or {}
+    breakdown = {
+        model or "unknown": model_cost or 0.0 for model, model_cost in grouped.items()
+    }
+    unknown_cost = cost - sum(breakdown.values())
+    if unknown_cost > 0.0000005:
+        breakdown["unknown"] = breakdown.get("unknown", 0.0) + unknown_cost
+    return breakdown
 
 
 def _refresh_model_costs():

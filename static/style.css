@@ -1569,6 +1569,24 @@ details > summary {
 .linechart-wrapper canvas {
   display: block;
 }
+.linechart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #666;
+}
+.linechart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.linechart-legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 .linechart-hover-line {
   position: absolute;
   top: 0;

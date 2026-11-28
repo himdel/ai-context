@@ -87,18 +87,25 @@ export function showActivityHome() {
   ranges.forEach(function (r) {
     rangeMap[r.value] = r;
   });
-  var state = { repo: '', range: 'all' };
+  var state = { repo: '', range: 'all', chart: 'messages' };
 
   function fetchAndRender(totalEl) {
     var r = rangeMap[state.range] || rangeMap.all;
-    fetch(statsUrl({ repo: state.repo, from: r.from, to: r.to }))
+    fetch(
+      statsUrl({
+        repo: state.repo,
+        from: r.from,
+        to: r.to,
+        split: state.chart === 'model' ? 'model' : '',
+      }),
+    )
       .then(function (x) {
         return x.json();
       })
       .then(function (data) {
         renderTotal(totalEl, data.total_cost);
         renderHeatmap(container, data.days);
-        renderLineChart(container, data.days);
+        renderLineChart(container, data.days, data.model_days, state.chart);
       });
   }
 
@@ -135,14 +142,30 @@ export function showActivityHome() {
         fetchAndRender(totalEl);
       };
 
+      var chartSel = document.createElement('select');
+      [
+        { value: 'messages', label: 'Messages' },
+        { value: 'model', label: 'Cost by model' },
+      ].forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        chartSel.appendChild(opt);
+      });
+      chartSel.onchange = function () {
+        state.chart = chartSel.value;
+        fetchAndRender(totalEl);
+      };
+
       controls.appendChild(select);
       controls.appendChild(rangeSel);
+      controls.appendChild(chartSel);
       controls.appendChild(totalEl);
       container.appendChild(controls);
 
       renderTotal(totalEl, data.total_cost);
       renderHeatmap(container, data.days);
-      renderLineChart(container, data.days);
+      renderLineChart(container, data.days, data.model_days, state.chart);
     });
 }
 
@@ -458,15 +481,39 @@ function computeAvg(counts, windowSize) {
   return result;
 }
 
-function renderLineChart(container, days) {
+function formatAxisCost(usd) {
+  var n = Number(usd) || 0;
+  if (n <= 0) return '$0';
+  if (n < 0.01) return '$0.01';
+  if (n < 100) return '$' + n.toFixed(2);
+  return '$' + Math.round(n);
+}
+
+function modelLabel(model) {
+  return model === 'unknown' ? 'Unknown model' : model;
+}
+
+function renderLineChart(container, days, modelDays, mode) {
   var existing = container.querySelector('.linechart-wrapper');
   if (existing) existing.remove();
 
   var countMap = {};
   var costMap = {};
+  var modelCostMap = {};
+  var modelTotals = {};
   days.forEach(function (d) {
     countMap[d.date] = d.count;
     costMap[d.date] = d.cost || 0;
+  });
+  (modelDays || []).forEach(function (d) {
+    modelCostMap[d.date] = {};
+    (d.costs || []).forEach(function (entry) {
+      modelCostMap[d.date][entry.model] = entry.cost || 0;
+      modelTotals[entry.model] = (modelTotals[entry.model] || 0) + entry.cost;
+    });
+  });
+  var modelNames = Object.keys(modelTotals).sort(function (a, b) {
+    return modelTotals[b] - modelTotals[a] || a.localeCompare(b);
   });
 
   var today = new Date();
@@ -489,6 +536,7 @@ function renderLineChart(container, days) {
       date: ds,
       count: countMap[ds] || 0,
       cost: costMap[ds] || 0,
+      modelCosts: modelCostMap[ds] || {},
     });
     d.setDate(d.getDate() + 1);
   }
@@ -496,8 +544,17 @@ function renderLineChart(container, days) {
   var rawCounts = dailyData.map(function (d) {
     return d.count;
   });
+  var maxModelCost = 0;
+  dailyData.forEach(function (d) {
+    modelNames.forEach(function (model) {
+      maxModelCost = Math.max(maxModelCost, d.modelCosts[model] || 0);
+    });
+  });
   var maxCount = Math.max.apply(null, rawCounts);
-  var yMax = Math.ceil(maxCount * 1.1) || 1;
+  var yMax =
+    mode === 'model'
+      ? maxModelCost * 1.1 || 0.01
+      : Math.ceil(maxCount * 1.1) || 1;
 
   var numWeeks = Math.ceil(dailyData.length / 7);
   var paddingLeft = 30;
@@ -526,7 +583,10 @@ function renderLineChart(container, days) {
   ctx.textBaseline = 'middle';
   for (var g = 0; g <= gridLines; g++) {
     var gy = paddingTop + chartHeight - (g / gridLines) * chartHeight;
-    var val = Math.round((g / gridLines) * yMax);
+    var val =
+      mode === 'model'
+        ? formatAxisCost((g / gridLines) * yMax)
+        : Math.round((g / gridLines) * yMax);
     ctx.beginPath();
     ctx.moveTo(paddingLeft, gy);
     ctx.lineTo(cssWidth, gy);
@@ -544,19 +604,49 @@ function renderLineChart(container, days) {
     { size: 1, color: 'rgba(0,0,0,1.0)', width: 1 },
   ];
 
-  for (var w = 0; w < windows.length; w++) {
-    var avg = computeAvg(rawCounts, windows[w].size);
-    ctx.beginPath();
-    ctx.strokeStyle = windows[w].color;
-    ctx.lineWidth = windows[w].width;
-    ctx.lineJoin = 'round';
-    for (var i = 0; i < avg.length; i++) {
-      var x = paddingLeft + (i / (avg.length - 1)) * chartWidth;
-      var y = paddingTop + chartHeight - (avg[i] / yMax) * chartHeight;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+  if (mode === 'model') {
+    var modelColors = [
+      '#2563eb',
+      '#dc2626',
+      '#16a34a',
+      '#9333ea',
+      '#ea580c',
+      '#0891b2',
+      '#db2777',
+      '#65a30d',
+    ];
+    for (var m = 0; m < modelNames.length; m++) {
+      var model = modelNames[m];
+      ctx.beginPath();
+      ctx.strokeStyle = modelColors[m % modelColors.length];
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      for (var mi = 0; mi < dailyData.length; mi++) {
+        var modelX = paddingLeft + (mi / (dailyData.length - 1)) * chartWidth;
+        var modelY =
+          paddingTop +
+          chartHeight -
+          ((dailyData[mi].modelCosts[model] || 0) / yMax) * chartHeight;
+        if (mi === 0) ctx.moveTo(modelX, modelY);
+        else ctx.lineTo(modelX, modelY);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
+  } else {
+    for (var w = 0; w < windows.length; w++) {
+      var avg = computeAvg(rawCounts, windows[w].size);
+      ctx.beginPath();
+      ctx.strokeStyle = windows[w].color;
+      ctx.lineWidth = windows[w].width;
+      ctx.lineJoin = 'round';
+      for (var i = 0; i < avg.length; i++) {
+        var x = paddingLeft + (i / (avg.length - 1)) * chartWidth;
+        var y = paddingTop + chartHeight - (avg[i] / yMax) * chartHeight;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
   }
 
   var monthNames = [
@@ -590,6 +680,21 @@ function renderLineChart(container, days) {
   var wrapper = document.createElement('div');
   wrapper.className = 'linechart-wrapper';
   wrapper.appendChild(canvas);
+  if (mode === 'model' && modelNames.length) {
+    var legend = document.createElement('div');
+    legend.className = 'linechart-legend';
+    modelNames.forEach(function (model, index) {
+      var item = document.createElement('span');
+      item.className = 'linechart-legend-item';
+      var swatch = document.createElement('span');
+      swatch.className = 'linechart-legend-swatch';
+      swatch.style.backgroundColor = modelColors[index % modelColors.length];
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(modelLabel(model)));
+      legend.appendChild(item);
+    });
+    wrapper.appendChild(legend);
+  }
 
   var hoverLine = document.createElement('div');
   hoverLine.className = 'linechart-hover-line';
@@ -621,18 +726,32 @@ function renderLineChart(container, days) {
     hoverLine.style.left = dayX + 'px';
 
     var day = dailyData[dayIndex];
-    var dayCost = formatCost(day.cost);
     hoverTooltip.style.display = 'block';
-    hoverTooltip.textContent =
-      day.count +
-      ' message' +
-      (day.count === 1 ? '' : 's') +
-      (dayCost ? ' · ~' + dayCost : '') +
-      ' on ' +
-      day.date;
+    if (mode === 'model') {
+      var modelLines = modelNames
+        .filter(function (model) {
+          return day.modelCosts[model] > 0;
+        })
+        .map(function (model) {
+          return modelLabel(model) + ': ~' + formatCost(day.modelCosts[model]);
+        });
+      hoverTooltip.textContent =
+        day.date + (modelLines.length ? ' · ' + modelLines.join(' · ') : '');
+    } else {
+      var dayCost = formatCost(day.cost);
+      hoverTooltip.textContent =
+        day.count +
+        ' message' +
+        (day.count === 1 ? '' : 's') +
+        (dayCost ? ' · ~' + dayCost : '') +
+        ' on ' +
+        day.date;
+    }
 
     var tooltipLeft = dayX + 8;
-    if (tooltipLeft + 160 > cssWidth) tooltipLeft = dayX - 168;
+    var tooltipWidth = mode === 'model' ? 280 : 160;
+    if (tooltipLeft + tooltipWidth > cssWidth)
+      tooltipLeft = dayX - tooltipWidth - 8;
     hoverTooltip.style.left = tooltipLeft + 'px';
     hoverTooltip.style.top = Math.max(0, mouseY - 20) + 'px';
   });

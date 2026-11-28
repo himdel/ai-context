@@ -14,6 +14,8 @@ The Costs screen keeps its repository breakdown as the default and offers a
 second, opt-in model breakdown. The API exposes that view only for
 `GET /api/stats/?split=model`, so existing callers keep the smaller response
 and the normal stats path does not pay for model aggregation.
+Activity has the same opt-in mode as a separate cost chart, where each model
+gets its own daily line rather than sharing the message-count scale.
 
 Store each conversation's own cost grouped by the model reported by its
 harness in the conversation index. Claude may use several models in one
