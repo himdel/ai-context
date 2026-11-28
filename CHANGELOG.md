@@ -14,6 +14,7 @@ git history for the full list of fixes and smaller changes.
 ### New features
 
 - `3d9168d` Costs can optionally be split by model as well as repository.
+- `b5f8107` Activity can show daily cost lines split by model.
 
 ## 2026-11-25
 
