@@ -104,6 +104,9 @@ class Conversation:
     last_timestamp: str = ""
     searchable_text: str = ""
     cost_usd: float = 0.0
+    # Own cost grouped by the model reported by the harness. This is separate
+    # from the scalar usage fields so descendant rollups stay numeric-only.
+    cost_by_model: dict = field(default_factory=dict)
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
@@ -155,6 +158,9 @@ class Conversation:
             "messages": [m.as_dict() for m in self.messages],
             "todos": self.todos,
             "running_agents": self.running_agents,
+            "cost_by_model": {
+                model: round(cost, 6) for model, cost in self.cost_by_model.items()
+            },
             **self.usage(),
         }
 

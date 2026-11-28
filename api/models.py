@@ -41,6 +41,9 @@ class ConversationIndex(models.Model):
     message_count = models.IntegerField(default=0)
     searchable_text = models.TextField(default="")
     cost_usd = models.FloatField(default=0.0)
+    # Null means this legacy cache row has not yet been reparsed with model
+    # attribution. An empty dict is a valid, fully indexed zero-cost result.
+    cost_by_model = models.JSONField(null=True, blank=True, default=None)
     input_tokens = models.BigIntegerField(default=0)
     output_tokens = models.BigIntegerField(default=0)
     cache_read_tokens = models.BigIntegerField(default=0)

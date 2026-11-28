@@ -375,6 +375,7 @@ def conversation_detail(request, conversation_id):
                 "todos": [],
                 "running_agents": [],
                 "cost_usd": ci.cost_usd,
+                "cost_by_model": ci.cost_by_model or {},
                 "input_tokens": ci.input_tokens,
                 "output_tokens": ci.output_tokens,
                 "cache_read_tokens": ci.cache_read_tokens,
@@ -3174,6 +3175,10 @@ def stats(request):
 
     from api.models import ConversationIndex
 
+    split = request.query_params.get("split", "")
+    if split == "model":
+        _refresh_model_costs()
+
     base = ConversationIndex.objects.exclude(first_timestamp="")
 
     # Optional inclusive date range (YYYY-MM-DD). first_timestamp is an ISO
@@ -3215,28 +3220,83 @@ def stats(request):
 
     total_cost = qs.aggregate(total=Sum("cost_usd"))["total"] or 0.0
 
-    return Response(
-        {
-            "days": [
-                {
-                    "date": r["date"],
-                    "count": r["count"],
-                    "cost": round(r["cost"] or 0.0, 6),
-                }
-                for r in rows
-            ],
-            "projects": projects,
-            "total_cost": round(total_cost, 6),
-            "repo_costs": [
-                {
-                    "project": r["project"],
-                    "cost": round(r["cost"] or 0.0, 6),
-                    "count": r["count"],
-                }
-                for r in repo_costs
-            ],
-        }
-    )
+    model_costs = []
+    if split == "model":
+        by_model = {}
+        for row in qs.values("cost_usd", "cost_by_model"):
+            cost = row["cost_usd"] or 0.0
+            grouped = row["cost_by_model"]
+            if grouped is None:
+                grouped = {}
+                unknown_cost = cost
+            else:
+                unknown_cost = cost - sum(grouped.values())
+            for model, model_cost in grouped.items():
+                by_model[model or "unknown"] = by_model.get(model or "unknown", 0.0) + (
+                    model_cost or 0.0
+                )
+            if unknown_cost > 0.0000005:
+                by_model["unknown"] = by_model.get("unknown", 0.0) + unknown_cost
+        model_costs = [
+            {"model": model, "cost": round(cost, 6)}
+            for model, cost in sorted(
+                by_model.items(), key=lambda item: (-item[1], item[0])
+            )
+            if cost > 0
+        ]
+
+    response = {
+        "days": [
+            {
+                "date": r["date"],
+                "count": r["count"],
+                "cost": round(r["cost"] or 0.0, 6),
+            }
+            for r in rows
+        ],
+        "projects": projects,
+        "total_cost": round(total_cost, 6),
+        "repo_costs": [
+            {
+                "project": r["project"],
+                "cost": round(r["cost"] or 0.0, 6),
+                "count": r["count"],
+            }
+            for r in repo_costs
+        ],
+    }
+    if split == "model":
+        response["model_costs"] = model_costs
+    return Response(response)
+
+
+def _refresh_model_costs():
+    """Backfill model attribution when the optional model split is requested."""
+    from api.models import ConversationIndex
+
+    for adapter in harness.enabled():
+        try:
+            refs = adapter.list_refs() or ()
+            for ref in refs:
+                try:
+                    cached = ConversationIndex.objects.filter(
+                        conversation_id=ref.id
+                    ).first()
+                    if (
+                        cached is not None
+                        and cached.revision == ref.revision
+                        and cached.cost_by_model is not None
+                    ):
+                        continue
+                    _ensure_index(adapter, ref, require_model_costs=True)
+                except Exception:
+                    logger.exception(
+                        "harness %s failed model-cost refresh for %s",
+                        adapter.key,
+                        ref.id,
+                    )
+        except Exception:
+            logger.exception("harness %s failed model-cost refresh", adapter.key)
 
 
 def _cached_summary(ci):
@@ -3260,13 +3320,17 @@ def _cached_summary(ci):
     }
 
 
-def _ensure_index(adapter, ref):
-    """Return a list entry for one conversation, reparsing only if it changed."""
+def _ensure_index(adapter, ref, require_model_costs=False):
+    """Return a list entry, optionally requiring model attribution too."""
     from api.models import ConversationIndex
 
     try:
         cached = ConversationIndex.objects.get(conversation_id=ref.id)
-        if cached.revision and cached.revision == ref.revision:
+        if (
+            cached.revision
+            and cached.revision == ref.revision
+            and (not require_model_costs or cached.cost_by_model is not None)
+        ):
             return _cached_summary(cached)
     except ConversationIndex.DoesNotExist:
         pass
@@ -3293,6 +3357,7 @@ def _ensure_index(adapter, ref):
             "last_timestamp": conv.last_timestamp,
             "message_count": len(conv.messages),
             "searchable_text": conv.searchable_text,
+            "cost_by_model": conv.cost_by_model,
             **conv.usage(),
         },
     )

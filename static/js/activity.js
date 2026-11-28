@@ -75,6 +75,7 @@ function statsUrl(params) {
   if (params.repo) parts.push('repo=' + encodeURIComponent(params.repo));
   if (params.from) parts.push('from=' + params.from);
   if (params.to) parts.push('to=' + params.to);
+  if (params.split) parts.push('split=' + params.split);
   return '/api/stats/' + (parts.length ? '?' + parts.join('&') : '');
 }
 
@@ -153,25 +154,51 @@ export function showCostsHome() {
   ranges.forEach(function (r) {
     rangeMap[r.value] = r;
   });
-  var state = { range: 'all' };
+  var state = { range: 'all', split: 'repo' };
 
   function fetchAndRender() {
     var r = rangeMap[state.range] || rangeMap.all;
-    fetch(statsUrl({ from: r.from, to: r.to }))
+    fetch(
+      statsUrl({
+        from: r.from,
+        to: r.to,
+        split: state.split === 'model' ? 'model' : '',
+      }),
+    )
       .then(function (x) {
         return x.json();
       })
       .then(function (data) {
-        renderRepoCosts(container, data.repo_costs, data.total_cost);
+        renderCostBreakdown(
+          container,
+          state.split === 'model' ? data.model_costs : data.repo_costs,
+          data.total_cost,
+          state.split,
+        );
       });
   }
 
   var controls = document.createElement('div');
   controls.className = 'activity-controls';
+  var splitSel = document.createElement('select');
+  [
+    { value: 'repo', label: 'By repository' },
+    { value: 'model', label: 'By model' },
+  ].forEach(function (o) {
+    var opt = document.createElement('option');
+    opt.value = o.value;
+    opt.textContent = o.label;
+    splitSel.appendChild(opt);
+  });
+  splitSel.onchange = function () {
+    state.split = splitSel.value;
+    fetchAndRender();
+  };
   var rangeSel = makeRangeSelect(ranges, function () {
     state.range = rangeSel.value;
     fetchAndRender();
   });
+  controls.appendChild(splitSel);
   controls.appendChild(rangeSel);
   container.appendChild(controls);
 
@@ -183,12 +210,12 @@ function renderTotal(el, totalCost) {
   el.textContent = cost ? 'Total: ~' + cost : '';
 }
 
-function renderRepoCosts(container, repoCosts, totalCost) {
+function renderCostBreakdown(container, costs, totalCost, split) {
   var existing = container.querySelector('.repo-costs-wrapper');
   if (existing) existing.remove();
-  if (!repoCosts || !repoCosts.length) return;
+  if (!costs || !costs.length) return;
 
-  var withCost = repoCosts.filter(function (r) {
+  var withCost = costs.filter(function (r) {
     return r.cost > 0;
   });
   if (!withCost.length) return;
@@ -197,18 +224,25 @@ function renderRepoCosts(container, repoCosts, totalCost) {
   wrapper.className = 'repo-costs-wrapper';
   var heading = document.createElement('div');
   heading.className = 'repo-costs-heading';
-  heading.textContent = 'Estimated cost per repo';
+  heading.textContent =
+    split === 'model' ? 'Estimated cost per model' : 'Estimated cost per repo';
   wrapper.appendChild(heading);
 
   var maxCost = withCost[0].cost || 1;
   withCost.forEach(function (r) {
     var row = document.createElement('div');
     row.className = 'repo-cost-row';
-    var name = r.project.replace(/^\/home\/[^/]+\//, '~/');
+    var rawName = split === 'model' ? r.model : r.project;
+    var name =
+      split === 'model'
+        ? rawName === 'unknown'
+          ? 'Unknown model'
+          : rawName
+        : rawName.replace(/^\/home\/[^/]+\//, '~/');
     var pct = Math.max(2, Math.round((r.cost / maxCost) * 100));
     row.innerHTML =
       '<span class="repo-cost-name" title="' +
-      escAttr(r.project) +
+      escAttr(rawName) +
       '">' +
       escHtml(name) +
       '</span>' +

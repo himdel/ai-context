@@ -404,6 +404,7 @@ class OpencodeHarness(base.Harness):
             repo_context.get("branch", "") if repo_context else _git_branch(directory)
         )
         model = _json(session["model"]).get("id", "") or session["agent"] or ""
+        cost = session["cost"] or 0.0
         return Conversation(
             id=conversation_id,
             source=self.key,
@@ -422,7 +423,8 @@ class OpencodeHarness(base.Harness):
             # session.cost is this session's own spend - a parent's cost does
             # not include its children's, which is exactly the split the index
             # wants. Verified against sum(message.cost) per session.
-            cost_usd=session["cost"] or 0.0,
+            cost_usd=cost,
+            cost_by_model={model or "unknown": cost},
             input_tokens=session["tokens_input"] or 0,
             # tokens_reasoning is a separate bucket here, NOT part of
             # tokens_output - and it is routinely the larger of the two (768 vs

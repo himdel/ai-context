@@ -510,6 +510,7 @@ class ClaudeHarness(base.Harness):
 def _empty_totals():
     return {
         "cost_usd": 0.0,
+        "cost_by_model": {},
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_read_tokens": 0,
@@ -532,7 +533,10 @@ def _accumulate_usage(data, totals, seen_request_ids):
     msg = data.get("message", {}) or {}
     usage = msg.get("usage") or {}
     cache = usage.get("cache_creation") or {}
-    totals["cost_usd"] += _cost_for_usage(msg.get("model", ""), usage)
+    model = msg.get("model", "") or "unknown"
+    cost = _cost_for_usage(model, usage)
+    totals["cost_usd"] += cost
+    totals["cost_by_model"][model] = totals["cost_by_model"].get(model, 0.0) + cost
     totals["input_tokens"] += usage.get("input_tokens", 0)
     totals["output_tokens"] += usage.get("output_tokens", 0)
     totals["cache_read_tokens"] += usage.get("cache_read_input_tokens", 0)

@@ -8,6 +8,20 @@ records what breaks. This file records why anything was chosen.
 
 ---
 
+## 2026-11-28 - keep model cost attribution optional
+
+The Costs screen keeps its repository breakdown as the default and offers a
+second, opt-in model breakdown. The API exposes that view only for
+`GET /api/stats/?split=model`, so existing callers keep the smaller response
+and the normal stats path does not pay for model aggregation.
+
+Store each conversation's own cost grouped by the model reported by its
+harness in the conversation index. Claude may use several models in one
+transcript, so deriving the split from the conversation's display model would
+be wrong. New model-split requests lazily reparse legacy index rows whose
+attribution is still null; rows that remain unavailable are represented as
+`unknown` so the displayed groups still add up to the total.
+
 ## 2026-11-25 - link report evidence and session provenance
 
 Refine the saved report-follow-up decision below: report paths on confirmation
